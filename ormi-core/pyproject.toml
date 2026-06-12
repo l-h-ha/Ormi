@@ -11,7 +11,7 @@ dependencies = [
 ]
 
 [build-system]
-requires = ["scikit-build-core>=0.8.0", "pybind11>=2.11.0", "cmake>=3.20"]
+requires = ["scikit-build-core>=0.8.0", "pybind11>=2.11.0", "ninja"]
 build-backend = "scikit_build_core.build"
 
 [tool.scikit-build]
@@ -33,9 +33,13 @@ manylinux-x86_64-image = "manylinux_2_28"
 [tool.cibuildwheel.linux]
 before-all = [
     "dnf install -y dnf-plugins-core epel-release",
-    "dnf config-manager --set-enabled crb",
+    "dnf config-manager --set-enabled powertools",
     "dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/cuda-rhel8.repo",
     "dnf clean all",
     "dnf -y install cuda-toolkit-12-4 openblas-devel"
 ]
 environment = { PATH="/usr/local/cuda/bin:$PATH", CUDACXX="/usr/local/cuda/bin/nvcc" }
+
+[tool.cibuildwheel.windows]
+before-all = "vcpkg install openblas:x64-windows"
+environment = { SKBUILD_CMAKE_ARGS="-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" }
