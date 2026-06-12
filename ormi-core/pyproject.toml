@@ -39,7 +39,7 @@ before-all = [
     "dnf -y install cuda-toolkit-12-4 openblas-devel"
 ]
 environment = { PATH="/usr/local/cuda-12.4/bin:$PATH", CUDACXX="/usr/local/cuda-12.4/bin/nvcc" }
-repair-command = "auditwheel repair --exclude libcuda.so.1 -w {dest_dir} {wheel}"
+repair-wheel-command = "auditwheel repair --exclude libcuda.so.1 -w {dest_dir} {wheel}"
 
 [tool.cibuildwheel.windows]
 before-all = "vcpkg install openblas:x64-windows"
