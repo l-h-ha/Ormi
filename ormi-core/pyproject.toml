@@ -11,12 +11,13 @@ dependencies = [
 ]
 
 [build-system]
-requires = ["scikit-build-core>=0.8.0", "pybind11>=2.11.0", "ninja"]
+requires = ["scikit-build-core>=0.8.0", "pybind11>=2.11.0"]
 build-backend = "scikit_build_core.build"
 
 [tool.scikit-build]
 wheel.packages = ["src/ormi_core"]
 cmake.build-type = "Release"
+cmake.generator = "Ninja"
 
 build-dir = "build"
 editable.mode = "inplace"
@@ -38,8 +39,8 @@ before-all = [
     "dnf clean all",
     "dnf -y install cuda-toolkit-12-4 openblas-devel"
 ]
-environment = { PATH="/usr/local/cuda/bin:$PATH", CUDACXX="/usr/local/cuda/bin/nvcc" }
+environment = { PATH="/usr/local/cuda-12.4/bin:$PATH", CUDACXX="/usr/local/cuda-12.4/bin/nvcc" }
 
 [tool.cibuildwheel.windows]
 before-all = "vcpkg install openblas:x64-windows"
-environment = { SKBUILD_CMAKE_ARGS="-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" }
+environment = { CUDACXX="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.4/bin/nvcc.exe", SKBUILD_CMAKE_ARGS="-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" }
