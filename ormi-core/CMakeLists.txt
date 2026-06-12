@@ -100,6 +100,8 @@ add_library(ormi_engine OBJECT
     csrc/backend/cpu/lowerings/pointwise.cpp
 )
 
+set_target_properties(ormi_engine PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 target_link_libraries(ormi_engine PRIVATE 
     CUDA::cudart_static
     CUDA::nvrtc 
@@ -161,5 +163,7 @@ if(MSVC)
     target_link_options(ormi_backend PRIVATE /NODEFAULTLIB:libcmt.lib)
 endif()
 
-enable_testing()
-add_subdirectory(csrc/tests)
+if(NOT SKBUILD)
+    enable_testing()
+    add_subdirectory(csrc/tests)
+endif()
