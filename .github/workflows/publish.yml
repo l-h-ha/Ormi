@@ -57,18 +57,59 @@ jobs:
           name: cibw-sdist
           path: ormi-core/dist/*.tar.gz
 
-  upload_pypi:
+  publish:
+    name: Publish to Custom PyPI Index
     needs: [build_wheels, build_sdist]
     runs-on: ubuntu-latest
-    environment: pypi
     permissions:
+      contents: write
+      pages: write
       id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
         with:
           pattern: cibw-*
           path: dist
           merge-multiple: true
 
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          fail_on_unmatched_files: true
+
+      - name: Generate Index
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p pypi_server/ormi-core
+          
+          echo "<!DOCTYPE html><html><body>" > pypi_server/index.html
+          echo "<a href=\"ormi-core/\">ormi-core</a>" >> pypi_server/index.html
+          echo "</body></html>" >> pypi_server/index.html
+          
+          echo "<!DOCTYPE html><html><body>" > pypi_server/ormi-core/index.html
+          
+          gh release list --repo ${{ github.repository }} --limit 100 | awk '{print $1}' | while read tag; do
+            if [ -n "$tag" ]; then
+              gh release view "$tag" --repo ${{ github.repository }} --json assets --jq '.assets[] | "<a href=\"" + .url + "\">" + .name + "</a><br>"' >> pypi_server/ormi-core/index.html
+            fi
+          done
+          
+          echo "</body></html>" >> pypi_server/ormi-core/index.html
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+        
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: pypi_server
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
