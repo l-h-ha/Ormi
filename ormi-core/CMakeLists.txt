@@ -28,8 +28,12 @@ file(TO_CMAKE_PATH "${PYBIND11_CMAKE_DIR}" PYBIND11_CMAKE_DIR)
 message(STATUS "Strictly locking Pybind11 to: ${PYBIND11_CMAKE_DIR}")
 find_package(pybind11 CONFIG REQUIRED PATHS "${PYBIND11_CMAKE_DIR}" NO_DEFAULT_PATH)
 
-find_package(OpenBLAS CONFIG REQUIRED)
-find_path(OPENBLAS_INCLUDE_DIR NAMES cblas.h PATH_SUFFIXES openblas)
+if(WIN32)
+    find_package(OpenBLAS CONFIG REQUIRED)
+else()
+    find_library(OPENBLAS_LIB NAMES openblas REQUIRED)
+endif()
+find_path(OPENBLAS_INCLUDE_DIR NAMES cblas.h PATH_SUFFIXES openblas REQUIRED)
 
 find_package(CUDAToolkit REQUIRED)
 
@@ -102,7 +106,11 @@ target_link_libraries(ormi_engine PRIVATE
     CUDA::cuda_driver
     CUDA::cublas
 )
-target_link_libraries(ormi_engine PRIVATE OpenBLAS::OpenBLAS)
+if(WIN32)
+    target_link_libraries(ormi_engine PRIVATE OpenBLAS::OpenBLAS)
+else()
+    target_link_libraries(ormi_engine PRIVATE ${OPENBLAS_LIB})
+endif()
 target_include_directories(ormi_engine PRIVATE ${OPENBLAS_INCLUDE_DIR})
 
 target_include_directories(ormi_engine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/csrc)
