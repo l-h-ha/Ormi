@@ -30,7 +30,7 @@ jobs:
           cuda: '12.4.0'
           
       - name: Build wheels
-        uses: pypa/cibuildwheel@v2.17.0
+        uses: pypa/cibuildwheel@v2.22.0
         env:
           CIBW_PROJECT_REQUIRES_PYTHON: ">=3.10"
         with:
@@ -86,21 +86,21 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p pypi_server/ormi-core
+          mkdir -p pypi_server/whl/ormi-core
           
-          echo "<!DOCTYPE html><html><body>" > pypi_server/index.html
-          echo "<a href=\"ormi-core/\">ormi-core</a>" >> pypi_server/index.html
-          echo "</body></html>" >> pypi_server/index.html
+          echo "<!DOCTYPE html><html><body>" > pypi_server/whl/index.html
+          echo "<a href=\"ormi-core/\">ormi-core</a>" >> pypi_server/whl/index.html
+          echo "</body></html>" >> pypi_server/whl/index.html
           
-          echo "<!DOCTYPE html><html><body>" > pypi_server/ormi-core/index.html
+          echo "<!DOCTYPE html><html><body>" > pypi_server/whl/ormi-core/index.html
           
           gh release list --repo ${{ github.repository }} --limit 100 | awk '{print $1}' | while read tag; do
             if [ -n "$tag" ]; then
-              gh release view "$tag" --repo ${{ github.repository }} --json assets --jq '.assets[] | "<a href=\"" + .url + "\">" + .name + "</a><br>"' >> pypi_server/ormi-core/index.html
+              gh release view "$tag" --repo ${{ github.repository }} --json assets --jq '.assets[] | "<a href=\"" + .url + "\">" + .name + "</a><br>"' >> pypi_server/whl/ormi-core/index.html
             fi
           done
           
-          echo "</body></html>" >> pypi_server/ormi-core/index.html
+          echo "</body></html>" >> pypi_server/whl/ormi-core/index.html
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
