@@ -1,9 +1,16 @@
-import importlib.util
 import pytest
 import numpy as np
 import ormi_core as oc
 
-CUDA_AVAILABLE = importlib.util.find_spec("cupy") is not None
+def _cuda_available() -> bool:
+    try:
+        oc.Tensor([0.0], device="cuda").numpy()
+    except Exception:
+        return False
+    return True
+
+
+CUDA_AVAILABLE = _cuda_available()
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc):

@@ -4,7 +4,7 @@
 
 #include "tests/test_utils.h"
 #include "core/node.h"
-#include "core/memory.h"
+#include "core/buffer.h"
 #include "core/ops.h"
 #include "backend/cuda/jit.cuh"
 #include "core/ops/pointwise/add.h"
@@ -17,15 +17,15 @@ class CUDAJitTest : public ormi::testing::HardwareTestSuite {
 protected:
     std::shared_ptr<Node> make_leaf(const std::vector<int>& shape, float val) {
         auto dev = Device(DeviceEnum::CUDA);
-        auto buf = full(shape, val, dev.type);
-        return std::make_shared<Node>(buf, false, dev);
+        auto buf = full(shape, val, dev, DType::Float32);
+        return std::make_shared<Node>(buf, false);
     }
 
     void SetUp() override {
         HardwareTestSuite::SetUp();
         bool has_cuda = false;
         for (auto dev : available_devices) {
-            if (dev == DeviceEnum::CUDA) has_cuda = true;
+            if (dev.type == DeviceEnum::CUDA) has_cuda = true;
         }
         if (!has_cuda) GTEST_SKIP() << "Skipping CUDA JIT tests: CUDA device unavailable.";
     }
@@ -42,7 +42,7 @@ TEST_F(CUDAJitTest, BasicExecution) {
     EXPECT_EQ(c->view.shape, (std::vector<int>{4}));
 
     std::vector<float> out(4);
-    get_allocator(Device(DeviceEnum::CUDA).type)->copy_device_to_host(out.data(), c->data->ptr, 4 * sizeof(float));
+    get_allocator(Device::cuda(0))->copy_device_to_host(out.data(), c->data->ptr, 4 * sizeof(float));
 
     for (int i = 0; i < 4; ++i) {
         EXPECT_FLOAT_EQ(out[i], 5.0f);
@@ -61,7 +61,7 @@ TEST_F(CUDAJitTest, TapeChaining) {
     cuda::execute_jit(d);
 
     std::vector<float> out(4);
-    get_allocator(Device(DeviceEnum::CUDA).type)->copy_device_to_host(out.data(), d->data->ptr, 4 * sizeof(float));
+    get_allocator(Device::cuda(0))->copy_device_to_host(out.data(), d->data->ptr, 4 * sizeof(float));
 
     for (int i = 0; i < 4; ++i) {
         EXPECT_FLOAT_EQ(out[i], 20.0f);
@@ -79,7 +79,7 @@ TEST_F(CUDAJitTest, BroadcastingExecution) {
     EXPECT_EQ(c->view.shape, (std::vector<int>{2, 3}));
 
     std::vector<float> out(6);
-    get_allocator(Device(DeviceEnum::CUDA).type)->copy_device_to_host(out.data(), c->data->ptr, 6 * sizeof(float));
+    get_allocator(Device::cuda(0))->copy_device_to_host(out.data(), c->data->ptr, 6 * sizeof(float));
 
     for (int i = 0; i < 6; ++i) {
         EXPECT_FLOAT_EQ(out[i], 7.0f);
@@ -95,7 +95,7 @@ TEST_F(CUDAJitTest, ScalarExecution) {
     cuda::execute_jit(c);
 
     std::vector<float> out(4);
-    get_allocator(Device(DeviceEnum::CUDA).type)->copy_device_to_host(out.data(), c->data->ptr, 4 * sizeof(float));
+    get_allocator(Device::cuda(0))->copy_device_to_host(out.data(), c->data->ptr, 4 * sizeof(float));
 
     for (int i = 0; i < 4; ++i) {
         EXPECT_FLOAT_EQ(out[i], 13.0f);
@@ -110,7 +110,7 @@ TEST_F(CUDAJitTest, UnaryMathFunctions) {
     cuda::execute_jit(b);
 
     std::vector<float> out(2);
-    get_allocator(Device(DeviceEnum::CUDA).type)->copy_device_to_host(out.data(), b->data->ptr, 2 * sizeof(float));
+    get_allocator(Device::cuda(0))->copy_device_to_host(out.data(), b->data->ptr, 2 * sizeof(float));
 
     for (int i = 0; i < 2; ++i) {
         EXPECT_NEAR(out[i], 1.0f, 1e-5f);

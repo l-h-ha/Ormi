@@ -4,7 +4,7 @@
 
 #include "tests/test_utils.h"
 #include "core/node.h"
-#include "core/memory.h"
+#include "core/buffer.h"
 #include "core/ops.h"
 #include "core/attributes.h"
 
@@ -14,8 +14,8 @@ class NodeTest : public ormi::testing::HardwareTestSuite {};
 
 TEST_F(NodeTest, LeafNodeInitialization) {
     for (auto dev : available_devices) {
-        auto buf = empty({2, 3, 4}, dev);
-        auto node = std::make_shared<Node>(buf, true, dev);
+        auto buf = empty({2, 3, 4}, dev, DType::Float32);
+        auto node = std::make_shared<Node>(buf, true);
 
         EXPECT_EQ(node->op, ops::OpEnum::LEAF);
         EXPECT_TRUE(node->requires_grad);
@@ -29,42 +29,42 @@ TEST_F(NodeTest, LeafNodeInitialization) {
 }
 
 TEST_F(NodeTest, RequiresGradInheritance) {
-    auto dev = Device(DeviceEnum::CPU); 
-    
-    auto buf1 = empty({2}, dev.type);
-    auto buf2 = empty({2}, dev.type);
+    auto dev = Device::cpu();
 
-    auto leaf_false = std::make_shared<Node>(buf1, false, dev);
-    auto leaf_true = std::make_shared<Node>(buf2, true, dev);
+    auto buf1 = empty({2}, dev, DType::Float32);
+    auto buf2 = empty({2}, dev, DType::Float32);
+
+    auto leaf_false = std::make_shared<Node>(buf1, false);
+    auto leaf_true = std::make_shared<Node>(buf2, true);
 
     // False + False = False
     auto node_ff = std::make_shared<Node>(
-        ops::OpEnum::ADD, std::vector<std::shared_ptr<Node>>{leaf_false, leaf_false}, dev
+        ops::OpEnum::ADD, std::vector<std::shared_ptr<Node>>{leaf_false, leaf_false}
     );
     EXPECT_FALSE(node_ff->requires_grad);
 
     // True + False = True
     auto node_tf = std::make_shared<Node>(
-        ops::OpEnum::ADD, std::vector<std::shared_ptr<Node>>{leaf_true, leaf_false}, dev
+        ops::OpEnum::ADD, std::vector<std::shared_ptr<Node>>{leaf_true, leaf_false}
     );
     EXPECT_TRUE(node_tf->requires_grad);
 
     // True + True = True
     auto node_tt = std::make_shared<Node>(
-        ops::OpEnum::ADD, std::vector<std::shared_ptr<Node>>{leaf_true, leaf_true}, dev
+        ops::OpEnum::ADD, std::vector<std::shared_ptr<Node>>{leaf_true, leaf_true}
     );
     EXPECT_TRUE(node_tt->requires_grad);
 }
 
 TEST_F(NodeTest, DefaultStrideInference) {
-    auto dev = Device(DeviceEnum::CPU);
-    auto buf = empty({4, 5}, dev.type);
-    auto a = std::make_shared<Node>(buf, false, dev);
-    auto b = std::make_shared<Node>(buf, false, dev);
+    auto dev = Device::cpu();
+    auto buf = empty({4, 5}, dev, DType::Float32);
+    auto a = std::make_shared<Node>(buf, false);
+    auto b = std::make_shared<Node>(buf, false);
 
     // ADD has no RegisterStride hook, so it must default to contiguous
     auto c = std::make_shared<Node>(
-        ops::OpEnum::ADD, std::vector<std::shared_ptr<Node>>{a, b}, dev
+        ops::OpEnum::ADD, std::vector<std::shared_ptr<Node>>{a, b}
     );
 
     EXPECT_EQ(c->view.shape, (std::vector<int>{4, 5}));
@@ -72,17 +72,17 @@ TEST_F(NodeTest, DefaultStrideInference) {
 }
 
 TEST_F(NodeTest, CustomStrideInference) {
-    auto dev = Device(DeviceEnum::CPU);
+    auto dev = Device::cpu();
     // Base Shape [2, 3, 4], Contiguous Strides [12, 4, 1]
-    auto buf = empty({2, 3, 4}, dev.type);
-    auto a = std::make_shared<Node>(buf, false, dev);
+    auto buf = empty({2, 3, 4}, dev, DType::Float32);
+    auto a = std::make_shared<Node>(buf, false);
 
     // Transpose axes (0, 2, 1) -> new shape should be [2, 4, 3]
     PermuteAttrs attrs{std::vector<int>{0, 2, 1}};
-    
-    // TRANSPOSE has a custom RegisterStride hook. 
+
+    // TRANSPOSE has a custom RegisterStride hook.
     auto transposed = std::make_shared<Node>(
-        ops::OpEnum::TRANSPOSE, std::vector<std::shared_ptr<Node>>{a}, dev, attrs
+        ops::OpEnum::TRANSPOSE, std::vector<std::shared_ptr<Node>>{a}, attrs
     );
 
     // Expect strides to be permuted the same way as the shape: [12, 1, 4]
@@ -92,11 +92,11 @@ TEST_F(NodeTest, CustomStrideInference) {
 
 TEST_F(NodeTest, RealizationState) {
     for (auto dev : available_devices) {
-        auto a = std::make_shared<Node>(empty({2, 2}, dev), false, dev);
-        auto b = std::make_shared<Node>(empty({2, 2}, dev), false, dev);
+        auto a = std::make_shared<Node>(empty({2, 2}, dev, DType::Float32), false);
+        auto b = std::make_shared<Node>(empty({2, 2}, dev, DType::Float32), false);
 
         auto c = std::make_shared<Node>(
-            ops::OpEnum::ADD, std::vector<std::shared_ptr<Node>>{a, b}, dev
+            ops::OpEnum::ADD, std::vector<std::shared_ptr<Node>>{a, b}
         );
 
         // memory is not allocated yet
@@ -110,4 +110,48 @@ TEST_F(NodeTest, RealizationState) {
         EXPECT_TRUE(c->is_realized());
         EXPECT_NE(c->data, nullptr);
     }
+}
+
+TEST_F(NodeTest, ConstructorValidationThrows) {
+    auto dev = Device::cpu();
+    auto node_a = std::make_shared<Node>(empty({2}, dev, DType::Float32), false);
+
+    // DType Mismatch
+    auto node_int = std::make_shared<Node>(empty({2}, dev, DType::Int32), false);
+    EXPECT_THROW(
+        (void)std::make_shared<Node>(ops::OpEnum::ADD, std::vector<std::shared_ptr<Node>>{node_a, node_int}),
+        ormi::DTypeError
+    );
+
+    // Empty Parents
+    EXPECT_THROW(
+        (void)std::make_shared<Node>(ops::OpEnum::ADD, std::vector<std::shared_ptr<Node>>{}),
+        ormi::NodeError
+    );
+}
+
+TEST_F(NodeTest, DeviceMismatch) {
+    bool has_cuda = false;
+        for (auto dev : available_devices) {
+            if (dev.type == DeviceEnum::CUDA) has_cuda = true;
+        }
+        if (!has_cuda) GTEST_SKIP() << "Skipping node device mismatch test: CUDA device unavailable.";
+
+    auto dev = Device::cpu();
+    auto node_a = std::make_shared<Node>(empty({2}, dev, DType::Float32), false);
+    auto node_gpu = std::make_shared<Node>(empty({2}, Device::cuda(), DType::Float32), false);
+    EXPECT_THROW(
+        (void)std::make_shared<Node>(ops::OpEnum::ADD, std::vector<std::shared_ptr<Node>>{node_a, node_gpu}),
+        ormi::DeviceError
+    );
+}
+
+TEST_F(NodeTest, NodeNaming) {
+    auto dev = Device::cpu();
+    auto node = std::make_shared<Node>(empty({2}, dev, DType::Float32), false, "A");
+
+    EXPECT_EQ(node->name, "A");
+
+    node->set_name("B");
+    EXPECT_EQ(node->name, "B");
 }

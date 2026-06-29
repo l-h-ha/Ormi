@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <functional>
 #include <stdexcept>
+#include <iostream>
 #include "core/attributes.h"
 #include "core/ops.h"
 
@@ -19,7 +20,7 @@ namespace ormi::cuda {
         static LoweringFunc get(ops::OpEnum op) {
             auto& reg = get_registry();
             if (reg.find(op) == reg.end()) {
-                throw std::runtime_error("CUDA JIT Compiler Error: No lowering rule registered for this operation.");
+                ORMI_THROW(RegistryError, "Unrecognized operation registry. (CUDA)");
             }
             return reg[op];
         }

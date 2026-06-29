@@ -9,11 +9,24 @@
 
 namespace ormi {
     struct Node;
+    struct GradContext;
 
     // Signatures
-    using ShapeInferFunc = std::function<std::vector<int>(const std::vector<std::shared_ptr<Node>>&, const OpAttributes&)>;
-    using StrideInferFunc = std::function<std::vector<int>(const std::vector<std::shared_ptr<Node>>&, const OpAttributes&, const std::vector<int>& out_shape)>;
-    using AdjointFunc = std::function<void(std::shared_ptr<Node>)>;
+    using ShapeInferFunc = std::function<std::vector<int>(
+        const std::vector<std::shared_ptr<Node>>&,
+        const OpAttributes&
+    )>;
+
+    using StrideInferFunc = std::function<std::vector<int>(
+        const std::vector<std::shared_ptr<Node>>&,
+        const OpAttributes&,
+        const std::vector<int>& out_shape
+    )>;
+
+    using AdjointFunc = std::function<void(
+        const std::shared_ptr<Node>&,
+        GradContext&
+    )>;
 
     // Templates
     template<typename FuncType>
@@ -48,7 +61,6 @@ namespace ormi {
         std::unordered_set<ops::OpEnum> ops_;
     };
 
-    //
     struct RegisterViewOp {
         RegisterViewOp(ops::OpEnum op) {
             ViewOpRegistry::get().add(op);

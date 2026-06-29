@@ -1,0 +1,64 @@
+enums:
+  - name: DeviceEnum
+    cpp_type: ormi::DeviceEnum
+    include: core/device.h
+    values:
+      - { name: CPU, cpp: CPU, aliases: [CPU] }
+      - { name: CUDA, cpp: CUDA, aliases: [CUDA] }
+
+classes:
+  - name: Device
+    cpp_type: ormi::Device
+    include: core/device.h
+    constructors:
+      - args: []
+
+      - signature: "ormi::DeviceEnum, int"
+        args:
+          - { name: type }
+          - { name: id, default: 0 }
+
+    properties_readonly:
+      - { name: type, expr: self.type }
+      - { name: id, expr: self.id }
+
+    methods:
+      - name: is_device_enum
+        cpp: is_device_enum
+        args:
+          - { name: device_type }
+
+functions:
+  - name: cpu
+    include: core/device.h
+    namespace: ormi::Device
+    cpp: cpu
+    python: cpu
+    args: []
+
+  - name: cuda
+    include: core/device.h
+    namespace: ormi::Device
+    cpp: cuda
+    python: cuda
+    overload: "ormi::Device (*)(int)"
+    args:
+      - { name: id, default: 0 }
+
+  - name: device_to_string
+    include: core/device.h
+    namespace: ormi
+    cpp: to_string
+    python: device_to_string
+    overload: "std::string (*)(const ormi::Device&)"
+    args:
+      - { name: device }
+
+  - name: device_type_to_string
+    include: core/device.h
+    namespace: ormi
+    cpp: to_string
+    python: device_type_to_string
+    overload: "std::string (*)(ormi::DeviceEnum)"
+    args:
+      - { name: device_type }

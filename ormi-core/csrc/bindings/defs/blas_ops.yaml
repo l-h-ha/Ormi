@@ -1,0 +1,10 @@
+ops:
+  - name: matmul
+    include: core/ops/blas/matmul.h
+    namespace: ormi::ops
+    cpp: matmul
+    python: matmul
+    returns: "Node"
+    args:
+      - { name: A, py_type: "Node" }
+      - { name: B, py_type: "Node" }

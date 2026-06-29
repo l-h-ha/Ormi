@@ -3,35 +3,72 @@
 #include "core/shape.h"
 #include "core/adjoint.h"
 #include "core/registry.h"
+#include "core/grad_context.h"
+#include "core/node_allocator.h"
 
 namespace ormi {
     namespace ops {
-        std::shared_ptr<Node> div(std::shared_ptr<Node> a, std::shared_ptr<Node> b) {
-            return std::make_shared<Node>(OpEnum::DIV, std::vector<std::shared_ptr<Node>>{a, b}, a->device);
+        std::shared_ptr<Node> div(const std::shared_ptr<Node>& a, const std::shared_ptr<Node>& b) {
+            return std::allocate_shared<Node>(
+                get_node_allocator<Node>(),
+                OpEnum::DIV,
+                std::vector<std::shared_ptr<Node>>{a, b}
+            );
         }
     }
 
-    void adjoint_div(std::shared_ptr<Node> node) {
-        auto dz = node->grad;
-        auto x = node->parents[0];
-        auto y = node->parents[1];
+    void adjoint_div(const std::shared_ptr<Node>& node, GradContext& ctx) {
+        const auto& dz = ctx.get(node);
+
+        if (!dz) {
+            return;
+        }
+
+        const auto& x = node->parents[0];
+        const auto& y = node->parents[1];
 
         if (x->requires_grad) {
             // dX = dZ / Y
-            auto local_dx = unbroadcast(std::make_shared<Node>(ops::OpEnum::DIV, std::vector<std::shared_ptr<Node>>{dz, y}, node->device), x->view.shape);
-            if (!x->grad) x->grad = local_dx;
-            else x->grad = std::make_shared<Node>(ops::OpEnum::ADD, std::vector<std::shared_ptr<Node>>{x->grad, local_dx}, node->device);
+            auto local_dx = unbroadcast(
+                std::allocate_shared<Node>(
+                    get_node_allocator<Node>(),
+                    ops::OpEnum::DIV,
+                    std::vector<std::shared_ptr<Node>>{dz, y}
+                ),
+                x->view.shape
+            );
+
+            ctx.add(x, local_dx);
         }
+
         if (y->requires_grad) {
             // dY = -dZ * X / (Y * Y)
-            auto y_sq = std::make_shared<Node>(ops::OpEnum::MUL, std::vector<std::shared_ptr<Node>>{y, y}, node->device);
-            auto x_div_ysq = std::make_shared<Node>(ops::OpEnum::DIV, std::vector<std::shared_ptr<Node>>{x, y_sq}, node->device);
-            auto dz_mul = std::make_shared<Node>(ops::OpEnum::MUL, std::vector<std::shared_ptr<Node>>{dz, x_div_ysq}, node->device);
-            auto neg_dy = std::make_shared<Node>(ops::OpEnum::NEG, std::vector<std::shared_ptr<Node>>{dz_mul}, node->device);
-            
+            auto y_sq = std::allocate_shared<Node>(
+                get_node_allocator<Node>(),
+                ops::OpEnum::MUL,
+                std::vector<std::shared_ptr<Node>>{y, y}
+            );
+
+            auto x_div_ysq = std::allocate_shared<Node>(
+                get_node_allocator<Node>(),
+                ops::OpEnum::DIV,
+                std::vector<std::shared_ptr<Node>>{x, y_sq}
+            );
+
+            auto dz_mul = std::allocate_shared<Node>(
+                get_node_allocator<Node>(),
+                ops::OpEnum::MUL,
+                std::vector<std::shared_ptr<Node>>{dz, x_div_ysq}
+            );
+
+            auto neg_dy = std::allocate_shared<Node>(
+                get_node_allocator<Node>(),
+                ops::OpEnum::NEG,
+                std::vector<std::shared_ptr<Node>>{dz_mul}
+            );
+
             auto local_dy = unbroadcast(neg_dy, y->view.shape);
-            if (!y->grad) y->grad = local_dy;
-            else y->grad = std::make_shared<Node>(ops::OpEnum::ADD, std::vector<std::shared_ptr<Node>>{y->grad, local_dy}, node->device);
+            ctx.add(y, local_dy);
         }
     }
 

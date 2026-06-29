@@ -1,24 +1,27 @@
 #pragma once
+
 #include <gtest/gtest.h>
 #include <vector>
+
 #include "core/device.h"
 #include "core/allocator.h"
 
 namespace ormi::testing {
     class HardwareTestSuite : public ::testing::Test {
     protected:
-        std::vector<DeviceEnum> available_devices;
+        std::vector<Device> available_devices;
 
         void SetUp() override {
-            // CPU
-            available_devices.push_back(DeviceEnum::CPU);
-            
-            // CUDA
+            available_devices.push_back(Device::cpu());
+
             try {
-                if (get_allocator(DeviceEnum::CUDA) != nullptr) {
-                    available_devices.push_back(DeviceEnum::CUDA);
+                IAllocator* cuda_alloc = get_allocator(Device::cuda(0));
+                if (cuda_alloc != nullptr) {
+                    available_devices.push_back(Device::cuda(0));
                 }
-            } catch (...) {}
+            } catch (...) {
+                // CUDA is unavailable on this machine.
+            }
         }
     };
 }

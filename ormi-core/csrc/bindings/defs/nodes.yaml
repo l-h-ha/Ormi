@@ -1,0 +1,162 @@
+classes:
+  - name: Node
+    cpp_type: ormi::Node
+    holder: std::shared_ptr<ormi::Node>
+    include: core/node.h
+
+    constructors:
+      - signature: "std::shared_ptr<ormi::Buffer>, bool, std::string"
+        args:
+          - { name: buffer }
+          - { name: requires_grad }
+          - { name: name }
+
+    properties_readonly:
+      - { name: op, expr: self.op }
+      - { name: parents, expr: self.parents }
+      - { name: data, expr: self.data }
+      - { name: name, expr: self.name }
+      - { name: requires_grad, expr: self.requires_grad }
+      - { name: device, expr: self.device }
+      - { name: dtype, expr: self.dtype }
+      - { name: view, expr: self.view }
+      - { name: shape, expr: self.view.shape }
+      - { name: strides, expr: self.view.strides }
+
+    methods:
+      - { name: is_realized, cpp: is_realized }
+      - { name: realize, cpp: realize }
+
+      - name: set_name
+        cpp: set_name
+        args:
+          - { name: name }
+
+
+functions:
+  - name: full
+    include: core/node.h
+    namespace: ormi
+    cpp: full
+    python: full
+    overload: "std::shared_ptr<ormi::Node> (*)(const std::vector<int>&, float, ormi::Device, ormi::DType, bool)"
+    args:
+      - { name: shape }
+      - { name: fill_value }
+      - { name: device }
+      - { name: dtype }
+      - { name: requires_grad, default: false }
+
+  - name: scalar
+    include: core/node.h
+    namespace: ormi
+    cpp: scalar
+    python: scalar
+    overload: "std::shared_ptr<ormi::Node> (*)(float, ormi::Device, ormi::DType, bool)"
+    args:
+      - { name: value }
+      - { name: device }
+      - { name: dtype }
+      - { name: requires_grad, default: false }
+
+  - name: zeros
+    include: core/node.h
+    namespace: ormi
+    cpp: zeros
+    python: zeros
+    overload: "std::shared_ptr<ormi::Node> (*)(const std::vector<int>&, ormi::Device, ormi::DType, bool)"
+    args:
+      - { name: shape }
+      - { name: device }
+      - { name: dtype }
+      - { name: requires_grad, default: false }
+
+  - name: ones
+    include: core/node.h
+    namespace: ormi
+    cpp: ones
+    python: ones
+    overload: "std::shared_ptr<ormi::Node> (*)(const std::vector<int>&, ormi::Device, ormi::DType, bool)"
+    args:
+      - { name: shape }
+      - { name: device }
+      - { name: dtype }
+      - { name: requires_grad, default: false }
+
+  - name: zeros_like_same_device
+    include: core/node.h
+    namespace: ormi
+    cpp: zeros_like
+    python: zeros_like
+    overload: "std::shared_ptr<ormi::Node> (*)(const std::shared_ptr<ormi::Node>&, ormi::DType, bool)"
+    args:
+      - { name: array }
+      - { name: dtype }
+      - { name: requires_grad, default: false }
+
+  - name: zeros_like_device
+    include: core/node.h
+    namespace: ormi
+    cpp: zeros_like
+    python: zeros_like
+    overload: "std::shared_ptr<ormi::Node> (*)(const std::shared_ptr<ormi::Node>&, ormi::Device, ormi::DType, bool)"
+    args:
+      - { name: array }
+      - { name: device }
+      - { name: dtype }
+      - { name: requires_grad, default: false }
+
+  - name: ones_like_same_device
+    include: core/node.h
+    namespace: ormi
+    cpp: ones_like
+    python: ones_like
+    overload: "std::shared_ptr<ormi::Node> (*)(const std::shared_ptr<ormi::Node>&, ormi::DType, bool)"
+    args:
+      - { name: array }
+      - { name: dtype }
+      - { name: requires_grad, default: false }
+
+  - name: ones_like_device
+    include: core/node.h
+    namespace: ormi
+    cpp: ones_like
+    python: ones_like
+    overload: "std::shared_ptr<ormi::Node> (*)(const std::shared_ptr<ormi::Node>&, ormi::Device, ormi::DType, bool)"
+    args:
+      - { name: array }
+      - { name: device }
+      - { name: dtype }
+      - { name: requires_grad, default: false }
+
+  - name: scalar_like_same_device
+    include: core/node.h
+    namespace: ormi
+    cpp: scalar_like
+    python: scalar_like
+    overload: "std::shared_ptr<ormi::Node> (*)(const std::shared_ptr<ormi::Node>&, float, bool)"
+    args:
+      - { name: array }
+      - { name: value }
+      - { name: requires_grad, default: false }
+
+  - name: scalar_like_device
+    include: core/node.h
+    namespace: ormi
+    cpp: scalar_like
+    python: scalar_like
+    overload: "std::shared_ptr<ormi::Node> (*)(const std::shared_ptr<ormi::Node>&, float, ormi::Device, bool)"
+    args:
+      - { name: array }
+      - { name: value }
+      - { name: device }
+      - { name: requires_grad, default: false }
+
+  - name: node_to_string
+    include: core/node.h
+    namespace: ormi
+    cpp: to_string
+    python: node_to_string
+    overload: "std::string (*)(const std::shared_ptr<ormi::Node>&)"
+    args:
+      - { name: node }

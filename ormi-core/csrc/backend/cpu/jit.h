@@ -3,5 +3,5 @@
 #include "core/node.h"
 
 namespace ormi::cpu {
-    void execute_jit(std::shared_ptr<Node> root);
+    void execute_jit(const std::shared_ptr<Node>& root);
 }

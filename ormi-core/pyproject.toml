@@ -1,6 +1,6 @@
 [project]
 name = "ormi-core"
-version = "0.1.0a1"
+version = "0.1.0a2"
 description = "A C++ lazily accelerated tensor/autograd engine."
 readme = "README.md"
 authors = [{ name = "Ha H. Le" }]
@@ -20,10 +20,6 @@ cmake.build-type = "Release"
 
 build-dir = "build"
 editable.mode = "inplace"
-
-[project.optional-dependencies]
-cuda12 = ["cupy-cuda12x"]
-cuda13 = ["cupy-cuda13x"]
 
 [tool.cibuildwheel]
 build = "cp310-* cp311-* cp312-* cp313-*"

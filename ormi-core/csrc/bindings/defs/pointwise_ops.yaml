@@ -1,0 +1,49 @@
+ops:
+  - name: add
+    include: core/ops/pointwise/add.h
+    namespace: ormi::ops
+    cpp: add
+    python: add
+    returns: "Node"
+    args:
+      - { name: a, py_type: "Node" }
+      - { name: b, py_type: "Node" }
+
+  - name: sub
+    include: core/ops/pointwise/sub.h
+    namespace: ormi::ops
+    cpp: sub
+    python: sub
+    returns: "Node"
+    args:
+      - { name: a, py_type: "Node" }
+      - { name: b, py_type: "Node" }
+
+  - name: mul
+    include: core/ops/pointwise/mul.h
+    namespace: ormi::ops
+    cpp: mul
+    python: mul
+    returns: "Node"
+    args:
+      - { name: a, py_type: "Node" }
+      - { name: b, py_type: "Node" }
+
+  - name: div
+    include: core/ops/pointwise/div.h
+    namespace: ormi::ops
+    cpp: div
+    python: div
+    returns: "Node"
+    args:
+      - { name: a, py_type: "Node" }
+      - { name: b, py_type: "Node" }
+
+  - name: cos
+    include: core/ops/pointwise/cos.h
+    namespace: ormi::ops
+    cpp: cos
+    python: cos
+    returns: "Node"
+    args:
+      - { name: a, py_type: "Node" }

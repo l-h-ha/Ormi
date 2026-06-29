@@ -1,12 +1,14 @@
 #pragma once
 #include <vector>
+#include <string>
 #include <unordered_map>
 #include <stdexcept>
 #include "core/attributes.h"
 #include "core/ops.h"
+#include "core/error.h"
 
 namespace ormi::cpu {
-    using LoweringFunc = void(*)(std::vector<float>& regs, int dest, int src1, int src2);
+    using LoweringFunc = std::string(*)(const std::vector<std::string>&);
 
     class CPULoweringRegistry {
     public:
@@ -17,7 +19,7 @@ namespace ormi::cpu {
         static LoweringFunc get(ops::OpEnum op) {
             auto& reg = get_registry();
             if (reg.find(op) == reg.end()) {
-                throw std::runtime_error("CPU JIT Compiler Error: No lowering rule registered for this operation.");
+                ORMI_THROW(RegistryError, "Unrecognized operation registry.");
             }
             return reg[op];
         }

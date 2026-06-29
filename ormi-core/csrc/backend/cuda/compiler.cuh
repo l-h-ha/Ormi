@@ -13,5 +13,5 @@ namespace ormi::cuda {
         std::vector<int> out_shape;
     };
 
-    CompilationResult compile(std::shared_ptr<Node> root);
+    CompilationResult compile(const std::shared_ptr<Node>& root);
 }

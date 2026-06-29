@@ -4,7 +4,7 @@
 
 #include "tests/test_utils.h"
 #include "core/node.h"
-#include "core/memory.h"
+#include "core/buffer.h"
 #include "core/ops.h"
 #include "backend/graph_breakers.h"
 
@@ -14,8 +14,8 @@ class GraphBreakerTest : public ::testing::Test {
 protected:
     std::shared_ptr<Node> make_dummy_node(ops::OpEnum op, DeviceEnum dev_type) {
         auto dev = Device(dev_type);
-        auto buf = empty({2, 2}, dev_type);
-        auto node = std::make_shared<Node>(buf, false, dev);
+        auto buf = empty({2, 2}, dev, DType::Float32);
+        auto node = std::make_shared<Node>(buf, false);
         // Manually override the OP enum for testing interception without triggering shape rules
         node->op = op; 
         return node;

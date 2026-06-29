@@ -30,35 +30,61 @@ namespace ormi {
         int ndim_b = shape_b.size();
         int out_ndim = std::max(ndim_a, ndim_b);
         out_shape.resize(out_ndim);
-    
+
         for (int i = 0; i < out_ndim; ++i) {
             int dim_a = (i < out_ndim - ndim_a) ? 1 : shape_a[i - (out_ndim - ndim_a)];
             int dim_b = (i < out_ndim - ndim_b) ? 1 : shape_b[i - (out_ndim - ndim_b)];
-    
+
             if (dim_a != dim_b && dim_a != 1 && dim_b != 1) {
-                throw std::runtime_error("Operands could not be broadcast together.");
+                using ormi::detail::operator<<;
+
+                std::ostringstream oss;
+                oss << "Operands could not be broadcast together.\n"
+                    << "  Shape A: " << shape_a << "\n"
+                    << "  Shape B: " << shape_b << "\n"
+                    << "  Mismatch at aligned dimension " << i << " (" << dim_a << " != " << dim_b << ").";
+
+                ORMI_THROW(ormi::ShapeError, oss.str());
             }
             out_shape[i] = std::max(dim_a, dim_b);
         }
         return out_shape;
     }
-    
+
     std::vector<int> infer_shape(ops::OpEnum op, const std::vector<std::shared_ptr<Node>>& parents, const OpAttributes& attrs) {
         if (op == ops::OpEnum::LEAF || op == ops::OpEnum::CONST || parents.empty()) {
             return {};
         }
         auto func = Registry<ShapeInferFunc>::get(op);
-        if (!func) throw std::runtime_error("Shape inference rule not registered for this OpEnum.");
+        if (!func) {
+            ORMI_THROW(
+              RegistryError,
+              "Unrecognized shape inference registry."
+            );
+        }
 
         return func(parents, attrs);
     }
 
     // Generic shape inference
     std::vector<int> infer_unary_shape(const std::vector<std::shared_ptr<Node>>& parents, const OpAttributes&) {
+        if (parents.size() != 1) {
+            ORMI_THROW(
+                ShapeError,
+                "Expected 1 parent node but got " + std::to_string(parents.size()) + " instead."
+            );
+        }
+
         return parents[0]->view.shape;
     }
-    
+
     std::vector<int> infer_binary_shape(const std::vector<std::shared_ptr<Node>>& parents, const OpAttributes&) {
+        if (parents.size() != 2) {
+            ORMI_THROW(
+                ShapeError,
+                "Expected 2 parent nodes but got " + std::to_string(parents.size()) + " instead."
+            );
+        }
         return broadcast_shapes(parents[0]->view.shape, parents[1]->view.shape);
     }
 }

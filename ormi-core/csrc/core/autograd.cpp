@@ -4,56 +4,102 @@
 
 #include "core/autograd.h"
 #include "core/registry.h"
-#include "core/memory.h"
+#include "core/buffer.h"
 #include "core/allocator.h"
+#include "core/node_allocator.h"
+#include "core/node.h"
 
 namespace ormi {
     // Topo sort
-    void build_topo(std::shared_ptr<Node> node, 
-                    std::unordered_set<Node*>& visited, 
-                    std::vector<std::shared_ptr<Node>>& topo) {
-        if (!node || visited.count(node.get())) return;
+    void build_topo(
+        const std::shared_ptr<Node>& node,
+        std::unordered_set<Node*>& visited,
+        std::vector<std::shared_ptr<Node>>& topo
+    ) {
+        if (!node || visited.count(node.get())) {
+            return;
+        }
+
         visited.insert(node.get());
-        
+
         for (auto& parent : node->parents) {
             build_topo(parent, visited, topo);
         }
+
         topo.push_back(node);
     }
-    
-    void compute_gradients(std::shared_ptr<Node> root) {
+
+    std::vector<std::shared_ptr<Node>> grad(
+        const std::shared_ptr<Node>& root,
+        const std::vector<std::shared_ptr<Node>>& inputs,
+        const std::shared_ptr<Node>& seed
+    ) {
         std::vector<std::shared_ptr<Node>> topo;
         std::unordered_set<Node*> visited;
+
         build_topo(root, visited, topo);
-    
-        // Seed
-        if (!root->grad) {
-            auto seed_buf = ones(root->view.shape, root->device.type);
-            root->grad = std::make_shared<Node>(seed_buf, false, root->device);
-        }
-    
-        // Backprop
+
+        GradContext ctx;
+        ctx.set(root, seed);
+
         for (auto it = topo.rbegin(); it != topo.rend(); ++it) {
-            auto node = *it;
-            if (!node->grad || node->op == ops::OpEnum::LEAF) continue;
+            const auto& node = *it;
+
+            if (node->op == ops::OpEnum::LEAF) {
+                continue;
+            }
+
+            if (!ctx.get(node)) {
+                continue;
+            }
 
             auto adjoint_func = Registry<AdjointFunc>::get(node->op);
-            if (adjoint_func) {
-                adjoint_func(node);
-            } else {
-                throw std::runtime_error("No Adjoint rule registered for operation.");
+
+            if (!adjoint_func) {
+                ORMI_THROW(RegistryError, "Unrecognized adjoint registry.");
+            }
+
+            adjoint_func(node, ctx);
+        }
+
+        std::vector<std::shared_ptr<Node>> result;
+        result.reserve(inputs.size());
+
+        for (const auto& input : inputs) {
+            result.push_back(ctx.get(input));
+        }
+
+        return result;
+    }
+
+    std::vector<std::shared_ptr<Node>> grad(const std::shared_ptr<Node>& root, const std::vector<std::shared_ptr<Node>>& inputs) {
+        auto seed = ones_like(root, root->dtype, false);
+        return grad(root, inputs, seed);
+    }
+
+    std::shared_ptr<Node> diff(const std::shared_ptr<Node>& y, const std::shared_ptr<Node>& x, int order) {
+        if (order < 0) {
+            ORMI_THROW(
+                AutogradError,
+                "Received a differention order of "
+                + std::to_string(order)
+                + ". Order must be non-negative."
+            );
+        }
+
+        if (order == 0) {
+            return y;
+        }
+
+        auto result = y;
+
+        for (int i = 0; i < order; ++i) {
+            result = grad(result, {x})[0];
+            if (!result) {
+                ORMI_THROW(AutogradError, "diff produced null gradient.");
             }
         }
-    }
-    
-    void zero_grad_graph(std::shared_ptr<Node> root) {
-        std::vector<std::shared_ptr<Node>> topo;
-        std::unordered_set<Node*> visited;
-        
-        build_topo(root, visited, topo);
-        
-        for (auto& node : topo) {
-            node->grad = nullptr;
-        }
+
+        return result;
     }
 }

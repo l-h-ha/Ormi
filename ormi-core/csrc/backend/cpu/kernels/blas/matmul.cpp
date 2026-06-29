@@ -1,21 +1,30 @@
 #include <memory>
 #include <vector>
 #include <cblas.h>
-#include "core/memory.h"
+#include "core/buffer.h"
 #include "core/node.h"
-#include "cpu_matmul.h"
+#include "matmul.h"
+#include "backend/cpu/utils.h"
 #include "backend/graph_breakers.h"
 
 namespace ormi::cpu {
     std::shared_ptr<Buffer> matmul(
-        std::shared_ptr<Buffer> A, 
+        const std::shared_ptr<Buffer>& A,
         const TensorView& view_A,
-        std::shared_ptr<Buffer> B, 
+        const std::shared_ptr<Buffer>& B,
         const TensorView& view_B,
-        const TensorView& out_view
+        const TensorView& out_view,
+        std::shared_ptr<Buffer> out_buffer
     ) {
         int ndim_a = view_A.shape.size();
         int ndim_b = view_B.shape.size();
+
+        if (ndim_a < 2 || ndim_b < 2) ORMI_THROW(OperationError, "MATMUL requires at least 2D tensors.");
+        if (A->dtype != B->dtype) ORMI_THROW(DTypeError, "DTypes must match.");
+
+        if (A->dtype != DType::Float32) {
+            ORMI_THROW(DTypeError, "CPU MATMUL currently requires Float32. OpenBLAS does not support native FP16 execution.");
+        }
 
         int M = view_A.shape[ndim_a - 2];
         int K = view_A.shape[ndim_a - 1];
@@ -28,12 +37,14 @@ namespace ormi::cpu {
             out_batch_shape.push_back(out_view.shape[i]);
         }
 
-        auto out_buffer = empty(out_view.shape, DeviceEnum::CPU);
+        if (!out_buffer) {
+            out_buffer = empty(out_view.shape, Device::cpu(), A->dtype);
+        }
 
         const float* a_ptr = static_cast<const float*>(A->ptr);
         const float* b_ptr = static_cast<const float*>(B->ptr);
         float* c_ptr = static_cast<float*>(out_buffer->ptr);
-        
+
         CBLAS_TRANSPOSE trans_A = (view_A.strides[ndim_a - 1] == 1) ? CblasNoTrans : CblasTrans;
         CBLAS_TRANSPOSE trans_B = (view_B.strides[ndim_b - 1] == 1) ? CblasNoTrans : CblasTrans;
 
@@ -43,15 +54,14 @@ namespace ormi::cpu {
         auto get_offset = [&](int flat_idx, const TensorView& target_view) {
             int offset = 0;
             int temp = flat_idx;
-            
+
             for (int i = (int)out_batch_shape.size() - 1; i >= 0; --i) {
                 int coord = temp % out_batch_shape[i];
                 temp /= out_batch_shape[i];
-                
+
                 int target_dim_idx = i - (out_batch_shape.size() - (target_view.shape.size() - 2));
                 if (target_dim_idx >= 0) {
                     if (target_view.shape[target_dim_idx] > 1) {
-                        // Use the explicitly provided stride!
                         offset += coord * target_view.strides[target_dim_idx];
                     }
                 }
@@ -76,13 +86,17 @@ namespace ormi::cpu {
         return out_buffer;
     }
 
-    void matmul_handler(std::shared_ptr<Node> root) {
+    void matmul_handler(const std::shared_ptr<Node>& root) {
+        const auto& A = root->parents[0];
+        const auto& B = root->parents[1];
+
         root->data = cpu::matmul(
-            root->parents[0]->data, 
-            root->parents[0]->view, 
-            root->parents[1]->data, 
-            root->parents[1]->view, 
-            root->view
+            A->data,
+            A->view,
+            B->data,
+            B->view,
+            root->view,
+            root->data
         );
     }
 

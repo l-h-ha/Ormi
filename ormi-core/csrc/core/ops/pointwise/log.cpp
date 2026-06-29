@@ -3,25 +3,39 @@
 #include "core/shape.h"
 #include "core/adjoint.h"
 #include "core/registry.h"
+#include "core/grad_context.h"
+#include "core/node_allocator.h"
 
 namespace ormi {
     namespace ops {
-        std::shared_ptr<Node> log(std::shared_ptr<Node> a) {
-            return std::make_shared<Node>(OpEnum::LOG, std::vector<std::shared_ptr<Node>>{a}, a->device);
+        std::shared_ptr<Node> log(const std::shared_ptr<Node>& a) {
+            return std::allocate_shared<Node>(
+                get_node_allocator<Node>(),
+                OpEnum::LOG,
+                std::vector<std::shared_ptr<Node>>{a}
+            );
         }
     }
 
-    void adjoint_log(std::shared_ptr<Node> node) {
-        auto dz = node->grad;
-        auto x = node->parents[0];
+    void adjoint_log(const std::shared_ptr<Node>& node, GradContext& ctx) {
+        const auto& dz = ctx.get(node);
+
+        if (!dz) {
+            return;
+        }
+
+        const auto& x = node->parents[0];
 
         if (x->requires_grad) {
             // dX = dZ * (1 / X) -> dZ / X
-            auto dz_div_x = std::make_shared<Node>(ops::OpEnum::DIV, std::vector<std::shared_ptr<Node>>{dz, x}, node->device);
-            
+            auto dz_div_x = std::allocate_shared<Node>(
+                get_node_allocator<Node>(),
+                ops::OpEnum::DIV,
+                std::vector<std::shared_ptr<Node>>{dz, x}
+            );
+
             auto local_dx = unbroadcast(dz_div_x, x->view.shape);
-            if (!x->grad) x->grad = local_dx;
-            else x->grad = std::make_shared<Node>(ops::OpEnum::ADD, std::vector<std::shared_ptr<Node>>{x->grad, local_dx}, node->device);
+            ctx.add(x, local_dx);
         }
     }
 

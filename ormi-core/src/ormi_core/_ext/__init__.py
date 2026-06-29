@@ -1,11 +1,9 @@
 try:
-    from . import ormi_backend
+    from . import _C
 except ImportError as e:
     raise ImportError(
-        "Ormi Core failed to load the hardware backend. "
-        "Ensure NVIDIA drivers and the CUDA toolkit are installed."
+        "ORMI Core failed to load the native backend.\n"
+        f"Original error: {e}"
     ) from e
 
-__all__ = [
-    "ormi_backend"
-]
+__all__ = ["_C"]

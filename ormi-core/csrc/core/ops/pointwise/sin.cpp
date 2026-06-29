@@ -3,19 +3,46 @@
 #include "core/shape.h"
 #include "core/adjoint.h"
 #include "core/registry.h"
+#include "core/grad_context.h"
+#include "core/node_allocator.h"
 
 namespace ormi {
     namespace ops {
-        std::shared_ptr<Node> sin(std::shared_ptr<Node> a) { return std::make_shared<Node>(OpEnum::SIN, std::vector<std::shared_ptr<Node>>{a}, a->device); }
+        std::shared_ptr<Node> sin(const std::shared_ptr<Node>& a) {
+            return std::allocate_shared<Node>(
+                get_node_allocator<Node>(),
+                OpEnum::SIN,
+                std::vector<std::shared_ptr<Node>>{a}
+            );
+        }
     }
-    void adjoint_sin(std::shared_ptr<Node> node) {
-        auto dz = node->grad;
-        auto x = node->parents[0];
+
+    void adjoint_sin(const std::shared_ptr<Node>& node, GradContext& ctx) {
+        const auto& dz = ctx.get(node);
+
+        if (!dz) {
+            return;
+        }
+
+        const auto& x = node->parents[0];
+
         if (x->requires_grad) {
-            auto cos_x = std::make_shared<Node>(ops::OpEnum::COS, std::vector<std::shared_ptr<Node>>{x}, node->device);
-            auto local_dx = unbroadcast(std::make_shared<Node>(ops::OpEnum::MUL, std::vector<std::shared_ptr<Node>>{cos_x, dz}, node->device), x->view.shape);
-            if (!x->grad) x->grad = local_dx;
-            else x->grad = std::make_shared<Node>(ops::OpEnum::ADD, std::vector<std::shared_ptr<Node>>{x->grad, local_dx}, node->device);
+            auto cos_x = std::allocate_shared<Node>(
+                get_node_allocator<Node>(),
+                ops::OpEnum::COS,
+                std::vector<std::shared_ptr<Node>>{x}
+            );
+
+            auto local_dx = unbroadcast(
+                std::allocate_shared<Node>(
+                    get_node_allocator<Node>(),
+                    ops::OpEnum::MUL,
+                    std::vector<std::shared_ptr<Node>>{cos_x, dz}
+                ),
+                x->view.shape
+            );
+
+            ctx.add(x, local_dx);
         }
     }
     static RegisterShape reg_shape_sin(ops::OpEnum::SIN, infer_unary_shape);

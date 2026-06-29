@@ -16,7 +16,7 @@ FetchContent_MakeAvailable(googletest)
 
 target_include_directories(ormi_engine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
-add_executable(ormi_backend_tests
+set(TEST_SRC
   test_utils.h
   core/test_memory.cpp
   core/test_ops.cpp
@@ -41,18 +41,33 @@ add_executable(ormi_backend_tests
   backend/test_graph_breakers.cpp
   backend/cpu/test_compiler.cpp
   backend/cpu/test_jit.cpp
+  backend/cpu/test_optimizer.cpp
+  backend/cpu/test_lowering_registry.cpp
   backend/cpu/kernels/blas/test_matmul.cpp
   backend/cpu/kernels/reduce/test_sum.cpp
-  backend/cuda/test_compiler.cpp
-  backend/cuda/test_jit.cpp
-  backend/cuda/kernels/blas/test_matmul.cpp
-  backend/cuda/kernels/reduce/test_sum.cpp
   core/ops/pointwise/test_log.cpp
-  core/ops/pointwise/test_pow.cpp)
-target_compile_features(ormi_backend_tests PRIVATE cxx_std_17)
+  core/ops/pointwise/test_pow.cpp
+  core/tapes/test_tape.cpp
+  core/tapes/test_grad_tape.cpp
+  core/tapes/test_compute_tape.cpp
+  core/optim/test_sgd.cpp
+)
 
+if(ORMI_USE_CUDA)
+  list(APPEND TEST_SRC
+    backend/cuda/test_compiler.cpp
+    backend/cuda/test_jit.cpp
+    backend/cuda/test_optimizer.cpp
+    backend/cuda/kernels/blas/test_matmul.cpp
+    backend/cuda/kernels/reduce/test_sum.cpp
+    backend/cuda/test_lowering_registry.cpp
+    core/tapes/test_cuda_graph_tape.cpp
+  )
+endif()
+
+add_executable(ormi_backend_tests ${TEST_SRC})
+target_compile_features(ormi_backend_tests PRIVATE cxx_std_23)
 target_include_directories(ormi_backend_tests PRIVATE ${CMAKE_SOURCE_DIR}/csrc)
-
 target_link_libraries(ormi_backend_tests PRIVATE 
     ormi_engine 
     gtest

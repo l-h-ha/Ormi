@@ -6,28 +6,28 @@
 
 #include "tests/test_utils.h"
 #include "core/node.h"
-#include "core/memory.h"
+#include "core/buffer.h"
 #include "core/ops.h"
-#include "backend/cuda/compiler.cuh"
 #include "core/ops/pointwise/add.h"
 #include "core/ops/pointwise/sin.h"
 #include "core/ops/blas/matmul.h"
+#include "backend/cuda/compiler.cuh"
 
 using namespace ormi;
 
 class CUDACompilerTest : public ormi::testing::HardwareTestSuite {
 protected:
     std::shared_ptr<Node> make_leaf(const std::vector<int>& shape) {
-        auto dev = Device(DeviceEnum::CUDA);
-        auto buf = empty(shape, dev.type);
-        return std::make_shared<Node>(buf, false, dev);
+        auto dev = Device::cuda();
+        auto buf = empty(shape, dev, DType::Float32);
+        return std::make_shared<Node>(buf, false);
     }
     
     void SetUp() override {
         HardwareTestSuite::SetUp();
         bool has_cuda = false;
         for (auto dev : available_devices) {
-            if (dev == DeviceEnum::CUDA) has_cuda = true;
+            if (dev.type == DeviceEnum::CUDA) has_cuda = true;
         }
         if (!has_cuda) GTEST_SKIP() << "Skipping CUDA compiler tests: CUDA device unavailable.";
     }

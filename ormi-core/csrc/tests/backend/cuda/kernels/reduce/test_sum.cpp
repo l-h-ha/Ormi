@@ -1,12 +1,16 @@
 #include <gtest/gtest.h>
 #include <vector>
 #include <memory>
+#include <cstring>
+#include <half.hpp>
 
 #include "tests/test_utils.h"
-#include "core/memory.h"
+#include "core/buffer.h"
 #include "core/node.h"
 #include "core/shape.h"
-#include "backend/cuda/kernels/reduce/cuda_sum.cuh"
+#include "core/ops/reduce/sum.h"
+#include "backend/cuda/kernels/reduce/sum.cuh"
+#include "backend/graph_breakers.h"
 
 using namespace ormi;
 
@@ -16,15 +20,15 @@ protected:
         HardwareTestSuite::SetUp();
         bool has_cuda = false;
         for (auto dev : available_devices) {
-            if (dev == DeviceEnum::CUDA) has_cuda = true;
+            if (dev == Device::cuda(0)) has_cuda = true;
         }
         if (!has_cuda) GTEST_SKIP() << "Skipping CUDA Sum tests: CUDA device unavailable.";
     }
 
     std::shared_ptr<Buffer> make_buffer(const std::vector<float>& data) {
-        auto dev = Device(DeviceEnum::CUDA);
-        auto buf = empty({(int)data.size()}, dev.type);
-        get_allocator(dev.type)->copy_host_to_device(buf->ptr, data.data(), data.size() * sizeof(float));
+        auto dev = Device(Device::cuda(0));
+        auto buf = empty({(int)data.size()}, dev, DType::Float32);
+        get_allocator(dev)->copy_host_to_device(buf->ptr, data.data(), data.size() * sizeof(float));
         return buf;
     }
 
@@ -39,18 +43,18 @@ protected:
 TEST_F(CUDASumKernelTest, GlobalReduction) {
     auto in_buf = make_buffer({1, 2, 3, 4, 5, 6});
     auto in_view = make_view({2, 3});
-    auto out_view = make_view({}); 
+    auto out_view = make_view({});
 
     auto out_buf = cuda::sum(in_buf, in_view, {}, out_view, false);
 
     std::vector<float> out(1);
-    get_allocator(DeviceEnum::CUDA)->copy_device_to_host(out.data(), out_buf->ptr, sizeof(float));
+    get_allocator(Device::cuda(0))->copy_device_to_host(out.data(), out_buf->ptr, sizeof(float));
 
     EXPECT_FLOAT_EQ(out[0], 21.0f);
 }
 
 TEST_F(CUDASumKernelTest, AxisReduction) {
-    // [[1, 2, 3], 
+    // [[1, 2, 3],
     //  [4, 5, 6]]
     auto in_buf = make_buffer({1, 2, 3, 4, 5, 6});
     auto in_view = make_view({2, 3});
@@ -60,9 +64,9 @@ TEST_F(CUDASumKernelTest, AxisReduction) {
     auto out_buf = cuda::sum(in_buf, in_view, {1}, out_view, false);
 
     std::vector<float> out(2);
-    get_allocator(DeviceEnum::CUDA)->copy_device_to_host(out.data(), out_buf->ptr, 2 * sizeof(float));
+    get_allocator(Device::cuda(0))->copy_device_to_host(out.data(), out_buf->ptr, 2 * sizeof(float));
 
-    EXPECT_FLOAT_EQ(out[0], 6.0f); 
+    EXPECT_FLOAT_EQ(out[0], 6.0f);
     EXPECT_FLOAT_EQ(out[1], 15.0f);
 }
 
@@ -75,11 +79,11 @@ TEST_F(CUDASumKernelTest, KeepDimsReduction) {
     auto out_buf = cuda::sum(in_buf, in_view, {0}, out_view, true);
 
     std::vector<float> out(3);
-    get_allocator(DeviceEnum::CUDA)->copy_device_to_host(out.data(), out_buf->ptr, 3 * sizeof(float));
+    get_allocator(Device::cuda(0))->copy_device_to_host(out.data(), out_buf->ptr, 3 * sizeof(float));
 
-    EXPECT_FLOAT_EQ(out[0], 5.0f); 
-    EXPECT_FLOAT_EQ(out[1], 7.0f); 
-    EXPECT_FLOAT_EQ(out[2], 9.0f); 
+    EXPECT_FLOAT_EQ(out[0], 5.0f);
+    EXPECT_FLOAT_EQ(out[1], 7.0f);
+    EXPECT_FLOAT_EQ(out[2], 9.0f);
 }
 
 TEST_F(CUDASumKernelTest, MultiAxisReduction) {
@@ -92,8 +96,58 @@ TEST_F(CUDASumKernelTest, MultiAxisReduction) {
     auto out_buf = cuda::sum(in_buf, in_view, {0, 2}, out_view, false);
 
     std::vector<float> out(2);
-    get_allocator(DeviceEnum::CUDA)->copy_device_to_host(out.data(), out_buf->ptr, 2 * sizeof(float));
+    get_allocator(Device::cuda(0))->copy_device_to_host(out.data(), out_buf->ptr, 2 * sizeof(float));
 
     EXPECT_FLOAT_EQ(out[0], 14.0f); // 1 + 2 + 5 + 6
     EXPECT_FLOAT_EQ(out[1], 22.0f); // 3 + 4 + 7 + 8
+}
+
+TEST_F(CUDASumKernelTest, Float16GlobalReduction) {
+    auto dev = Device(Device::cuda(0));
+    auto alloc = get_allocator(dev);
+
+    std::vector<float> in_data = {1.0f, 2.0f, 3.0f, 4.0f};
+    auto in_buf = empty({4}, dev, DType::Float16);
+
+    // Pack float to __half bits
+    std::vector<unsigned short> fp16_bits(4);
+    for (size_t i = 0; i < 4; ++i) {
+        half_float::half h(in_data[i]);
+        std::memcpy(&fp16_bits[i], &h, sizeof(unsigned short));
+    }
+    alloc->copy_host_to_device(in_buf->ptr, fp16_bits.data(), 4 * sizeof(unsigned short));
+
+    auto in_view = make_view({4});
+    auto out_view = make_view({});
+
+    auto out_buf = cuda::sum(in_buf, in_view, {}, out_view, false);
+
+    unsigned short out_bit = 0;
+    alloc->copy_device_to_host(&out_bit, out_buf->ptr, sizeof(unsigned short));
+
+    half_float::half h_out;
+    std::memcpy(&h_out, &out_bit, sizeof(unsigned short));
+
+    // 1 + 2 + 3 + 4 = 10.0
+    EXPECT_FLOAT_EQ(static_cast<float>(h_out), 10.0f);
+}
+
+TEST_F(CUDASumKernelTest, GraphBreakerAndBufferZeroing) {
+    auto in_buf = make_buffer({1.0f, 2.0f, 3.0f, 4.0f});
+    auto node_in = std::make_shared<Node>(in_buf, false);
+    node_in->view = make_view({2, 2});
+
+    auto root = ops::sum(node_in, {0}, false);
+    root->data = make_buffer({99.0f, 99.0f}); // simulates garbage data
+
+    bool intercepted = try_execute_graph_break(root);
+    ASSERT_TRUE(intercepted);
+
+    std::vector<float> out(2);
+    get_allocator(Device::cuda(0))->copy_device_to_host(out.data(), root->data->ptr, 2 * sizeof(float));
+
+    // [[1, 2], [3, 4]] -> [4, 6]
+    // If the memset in sum_handler failed, this would equal [103.0, 105.0]
+    EXPECT_FLOAT_EQ(out[0], 4.0f);
+    EXPECT_FLOAT_EQ(out[1], 6.0f);
 }

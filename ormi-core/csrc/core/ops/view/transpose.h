@@ -6,10 +6,9 @@
 
 namespace ormi {
     namespace ops {
-        std::shared_ptr<Node> transpose(std::shared_ptr<Node> node, const std::vector<int>& axes);
+        std::shared_ptr<Node> transpose(const std::shared_ptr<Node>& node, std::vector<int> axes);
     }
 
     std::vector<int> infer_transpose_shape(const std::vector<std::shared_ptr<Node>>& parents, const OpAttributes& attrs);
-    void adjoint_transpose(std::shared_ptr<Node> node);
     std::vector<int> infer_transpose_strides(const std::vector<std::shared_ptr<Node>>& parents, const OpAttributes& attrs, const std::vector<int>& out_shape);
 }

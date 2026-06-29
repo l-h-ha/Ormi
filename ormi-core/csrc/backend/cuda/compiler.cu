@@ -1,56 +1,90 @@
 #include <unordered_map>
 #include <sstream>
 #include <stdexcept>
+
 #include "compiler.cuh"
 #include "lowering_registry.h"
+#include "core/error.h"
 
 namespace ormi::cuda {
     struct CompilerState {
         std::unordered_map<Node*, std::string> visited;
         std::vector<std::shared_ptr<Node>> leaf_nodes;
         std::vector<std::string> leaf_names;
-        
+
         struct IRNode { std::string var; ops::OpEnum op; std::vector<std::string> operands; };
         std::vector<IRNode> tape;
-        
+
         int var_counter = 0;
         int leaf_counter = 0;
         int tensor_size = -1;
         std::vector<int> out_shape = {1};
     };
 
-    std::string build_ir(std::shared_ptr<Node> node, CompilerState& state) {
-        if (state.visited.count(node.get())) return state.visited[node.get()];
+    namespace {
+        bool is_fusible_op(ops::OpEnum op) {
+            try {
+                (void)CUDALoweringRegistry::get(op);
+                return true;
+            } catch (...) {
+                return false;
+            }
+        }
 
-        // Register buffer
-        if (node->is_realized()) {
+        std::string register_leaf(
+            const std::shared_ptr<Node>& node,
+            CompilerState& state
+        ) {
+            if (!node->data || !node->data->ptr) {
+                ORMI_THROW(
+                    DeviceError,
+                    "CUDA JIT tried to use an unrealized non-fusible node as a leaf."
+                );
+            }
+
             std::string param_name = "LEAF_" + std::to_string(state.leaf_counter++);
+
             state.leaf_nodes.push_back(node);
             state.leaf_names.push_back(param_name);
-            
+
             std::string var_name = "val_" + param_name;
             state.visited[node.get()] = var_name;
+
             return var_name;
         }
 
-        // Internal node
-        std::vector<std::string> operand_vars;
-        for (auto& parent : node->parents) {
-            operand_vars.push_back(build_ir(parent, state));
-        }
+        std::string build_ir(const std::shared_ptr<Node>& node, CompilerState& state) {
+            auto visited_it = state.visited.find(node.get());
 
-        if (node->op == ops::OpEnum::MATMUL) {
-            throw std::runtime_error("FATAL: MATMUL cannot be fused into a 1D element-wise kernel.");
-        }
+            if (visited_it != state.visited.end()) {
+                return visited_it->second;
+            }
 
-        std::string var_name = "v" + std::to_string(state.var_counter++);
-        state.tape.push_back({var_name, node->op, operand_vars});
-        state.visited[node.get()] = var_name;
-        
-        return var_name;
+            const bool is_leaf_node = node->op == ops::OpEnum::LEAF;
+            const bool is_fusible = is_fusible_op(node->op);
+            if (is_leaf_node || !is_fusible) {
+                return register_leaf(node, state);
+            }
+
+            std::vector<std::string> operand_vars;
+            for (auto& parent : node->parents) {
+                operand_vars.push_back(build_ir(parent, state));
+            }
+
+            std::string var_name = "v" + std::to_string(state.var_counter++);
+            state.tape.push_back({
+                var_name,
+                node->op,
+                operand_vars
+            });
+
+            state.visited[node.get()] = var_name;
+            return var_name;
+        }
     }
 
-    CompilationResult compile(std::shared_ptr<Node> root) {
+
+    CompilationResult compile(const std::shared_ptr<Node>& root) {
         CompilerState state;
         state.out_shape = root->view.shape;
         state.tensor_size = 1;
@@ -76,7 +110,7 @@ namespace ormi::cuda {
         for (size_t i = 0; i < state.leaf_names.size(); ++i) {
             const auto& leaf_view = state.leaf_nodes[i]->view;
             bool is_scalar = leaf_view.shape.empty() || (state.leaf_nodes[i]->data->bytes / sizeof(float) == 1);
-            
+
             if (is_scalar) {
                 src << "    float val_" << state.leaf_names[i] << " = " << state.leaf_names[i] << "[0];\n";
             } else {
@@ -89,7 +123,7 @@ namespace ormi::cuda {
                         leaf_strides[d] = leaf_view.strides[orig_d];
                     }
                 }
-                
+
                 src << "    int leaf_idx_" << i << " = 0;\n";
                 src << "    int remaining_" << i << " = idx;\n";
                 for (int d = 0; d < ndim; ++d) {
@@ -100,7 +134,7 @@ namespace ormi::cuda {
             }
         }
         src << "\n";
-        
+
         for (const auto& node : state.tape) {
             src << "    float " << node.var << " = ";
             auto lowering_func = CUDALoweringRegistry::get(node.op);

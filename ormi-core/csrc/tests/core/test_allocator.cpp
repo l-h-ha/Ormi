@@ -12,7 +12,7 @@ class AllocatorTest : public ormi::testing::HardwareTestSuite {};
 TEST_F(AllocatorTest, MemoryPoolRecyclesCorrectly) {
     for (auto dev : available_devices) {
         IAllocator* alloc = get_allocator(dev);
-        
+
         size_t size_A = 1024;
         size_t size_B = 2048;
 
@@ -31,7 +31,7 @@ TEST_F(AllocatorTest, MemoryPoolRecyclesCorrectly) {
         void* ptr3 = alloc->allocate(size_A);
 
         // The pool MUST return the exact same pointer to avoid reallocation overhead
-        EXPECT_EQ(ptr1, ptr3) << "Memory pool failed to recycle pointer on device: " << static_cast<int>(dev);
+        EXPECT_EQ(ptr1, ptr3) << "Memory pool failed to recycle pointer on device: " << to_string(dev);
 
         // Request a block of a DIFFERENT SIZE
         void* ptr4 = alloc->allocate(size_B);
@@ -69,10 +69,10 @@ TEST_F(AllocatorTest, FillAndHostTransfers) {
         // Test Host to Device explicitly
         h_data[0] = 99.9f;
         alloc->copy_host_to_device(d_ptr, h_data.data(), bytes);
-        
+
         std::vector<float> h_verify(elements, 0.0f);
         alloc->copy_device_to_host(h_verify.data(), d_ptr, bytes);
-        
+
         EXPECT_FLOAT_EQ(h_verify[0], 99.9f);
         EXPECT_FLOAT_EQ(h_verify[1], fill_val); // Rest should be unchanged
 
@@ -112,11 +112,83 @@ TEST_F(AllocatorTest, DeviceToDeviceCopy) {
 TEST_F(AllocatorTest, HostVisibilityFlags) {
     for (auto dev : available_devices) {
         IAllocator* alloc = get_allocator(dev);
-        
-        if (dev == DeviceEnum::CPU) {
+
+        if (dev.type == DeviceEnum::CPU) {
             EXPECT_TRUE(alloc->is_host_visible());
-        } else if (dev == DeviceEnum::CUDA) {
+        } else if (dev.type == DeviceEnum::CUDA) {
             EXPECT_FALSE(alloc->is_host_visible());
         }
+    }
+}
+
+TEST_F(AllocatorTest, Float16FillAndValidation) {
+    for (auto dev : available_devices) {
+        IAllocator* alloc = get_allocator(dev);
+        size_t elements = 4;
+        size_t bytes = elements * sizeof(uint16_t);
+
+        void* d_ptr = alloc->allocate(bytes);
+
+        // Seed value (representable in FP16)
+        float input_val = -2.0f;
+        alloc->fill_n(d_ptr, &input_val, elements, DType::Float16);
+
+        // Download to the host
+        std::vector<uint16_t> h_bits(elements, 0);
+        alloc->copy_device_to_host(h_bits.data(), d_ptr, bytes);
+
+        // -2.0f in IEEE 754 Half-Precision is exactly 0xC000
+        for (size_t i = 0; i < elements; ++i) {
+            EXPECT_EQ(h_bits[i], 0xC000)
+                << "FP16 bit pattern mismatch on device: " << to_string(dev);
+        }
+
+        alloc->free(d_ptr, bytes);
+    }
+}
+
+TEST_F(AllocatorTest, MultiTypeFillN) {
+    for (auto dev : available_devices) {
+        IAllocator* alloc = get_allocator(dev);
+        size_t elements = 10;
+
+        // test Int32 Flow
+        void* d_int = alloc->allocate(elements * sizeof(int32_t));
+        int32_t int_seed = -999;
+        alloc->fill_n(d_int, &int_seed, elements, DType::Int32);
+
+        std::vector<int32_t> h_int(elements);
+        alloc->copy_device_to_host(h_int.data(), d_int, elements * sizeof(int32_t));
+        for (auto val : h_int) EXPECT_EQ(val, int_seed);
+        alloc->free(d_int, elements * sizeof(int32_t));
+
+        // test Bool Flow
+        void* d_bool = alloc->allocate(elements * sizeof(bool));
+        bool bool_seed = true;
+        alloc->fill_n(d_bool, &bool_seed, elements, DType::Bool);
+
+        std::unique_ptr<bool[]> h_bool(new bool[elements]);
+        alloc->copy_device_to_host(h_bool.get(), d_bool, elements * sizeof(bool));
+
+        for (size_t i = 0; i < elements; ++i) {
+            EXPECT_TRUE(h_bool[i]);
+        }
+        alloc->free(d_bool, elements * sizeof(bool));
+    }
+}
+
+TEST_F(AllocatorTest, UnrecognizedDTypeThrows) {
+    for (auto dev : available_devices) {
+        IAllocator* alloc = get_allocator(dev);
+        void* d_ptr = alloc->allocate(4);
+        float dummy = 0.0f;
+
+        // DType 999 is invalid/unregistered
+        EXPECT_THROW(
+            alloc->fill_n(d_ptr, &dummy, 1, static_cast<DType>(999)),
+            ormi::DTypeError
+        );
+
+        alloc->free(d_ptr, 4);
     }
 }

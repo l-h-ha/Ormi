@@ -5,7 +5,7 @@
 
 #include "tests/test_utils.h"
 #include "core/node.h"
-#include "core/memory.h"
+#include "core/buffer.h"
 #include "core/ops.h"
 #include "backend/cpu/jit.h"
 #include "core/ops/pointwise/add.h"
@@ -18,8 +18,8 @@ class CPUJitTest : public ::testing::Test {
 protected:
     std::shared_ptr<Node> make_leaf(const std::vector<int>& shape, float val) {
         auto dev = Device(DeviceEnum::CPU);
-        auto buf = full(shape, val, dev.type);
-        return std::make_shared<Node>(buf, false, dev);
+        auto buf = full(shape, val, dev, DType::Float32);
+        return std::make_shared<Node>(buf, false);
     }
 };
 

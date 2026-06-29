@@ -1,12 +1,15 @@
 #include <gtest/gtest.h>
 #include <vector>
+#include <cuda_runtime.h>
 #include <memory>
+#include <cstring>
+#include <half.hpp>
 
 #include "tests/test_utils.h"
-#include "core/memory.h"
+#include "core/buffer.h"
 #include "core/node.h"
 #include "core/shape.h"
-#include "backend/cuda/kernels/blas/cuda_matmul.cuh"
+#include "backend/cuda/kernels/blas/matmul.cuh"
 
 using namespace ormi;
 
@@ -16,15 +19,15 @@ protected:
         HardwareTestSuite::SetUp();
         bool has_cuda = false;
         for (auto dev : available_devices) {
-            if (dev == DeviceEnum::CUDA) has_cuda = true;
+            if (dev.type == DeviceEnum::CUDA) has_cuda = true;
         }
         if (!has_cuda) GTEST_SKIP() << "Skipping CUDA MatMul tests: CUDA device unavailable.";
     }
 
     std::shared_ptr<Buffer> make_buffer(const std::vector<float>& data) {
         auto dev = Device(DeviceEnum::CUDA);
-        auto buf = empty({(int)data.size()}, dev.type);
-        get_allocator(dev.type)->copy_host_to_device(buf->ptr, data.data(), data.size() * sizeof(float));
+        auto buf = empty({(int)data.size()}, dev, DType::Float32);
+        get_allocator(dev)->copy_host_to_device(buf->ptr, data.data(), data.size() * sizeof(float));
         return buf;
     }
 
@@ -48,7 +51,7 @@ TEST_F(CUDAMatMulKernelTest, Basic2D) {
     auto c_buf = cuda::matmul(a_buf, a_view, b_buf, b_view, c_view);
 
     std::vector<float> out(4);
-    get_allocator(Device(DeviceEnum::CUDA).type)->copy_device_to_host(out.data(), c_buf->ptr, 4 * sizeof(float));
+    get_allocator(Device::cuda(0))->copy_device_to_host(out.data(), c_buf->ptr, 4 * sizeof(float));
 
     EXPECT_FLOAT_EQ(out[0], 58.0f);
     EXPECT_FLOAT_EQ(out[1], 64.0f);
@@ -60,7 +63,7 @@ TEST_F(CUDAMatMulKernelTest, Transposed) {
     auto a_buf = make_buffer({1, 2, 3, 4, 5, 6});
     TensorView a_view;
     a_view.shape = {3, 2};
-    a_view.strides = {1, 3}; 
+    a_view.strides = {1, 3};
 
     auto b_buf = make_buffer({1, 2, 3, 4});
     auto b_view = make_view({2, 2});
@@ -70,7 +73,7 @@ TEST_F(CUDAMatMulKernelTest, Transposed) {
     auto c_buf = cuda::matmul(a_buf, a_view, b_buf, b_view, c_view);
 
     std::vector<float> out(6);
-    get_allocator(Device(DeviceEnum::CUDA).type)->copy_device_to_host(out.data(), c_buf->ptr, 6 * sizeof(float));
+    get_allocator(Device::cuda(0))->copy_device_to_host(out.data(), c_buf->ptr, 6 * sizeof(float));
 
     EXPECT_FLOAT_EQ(out[0], 13.0f);
     EXPECT_FLOAT_EQ(out[1], 18.0f);
@@ -87,14 +90,14 @@ TEST_F(CUDAMatMulKernelTest, BatchedBroadcasting) {
     auto b_buf = make_buffer({1, 2, 3, 4, 5, 6});
     TensorView b_view;
     b_view.shape = {2, 3, 2};
-    b_view.strides = {0, 2, 1}; 
+    b_view.strides = {0, 2, 1};
 
     auto c_view = make_view({2, 2, 2});
 
     auto c_buf = cuda::matmul(a_buf, a_view, b_buf, b_view, c_view);
 
     std::vector<float> out(8);
-    get_allocator(Device(DeviceEnum::CUDA).type)->copy_device_to_host(out.data(), c_buf->ptr, 8 * sizeof(float));
+    get_allocator(Device::cuda(0))->copy_device_to_host(out.data(), c_buf->ptr, 8 * sizeof(float));
 
     EXPECT_FLOAT_EQ(out[0], 22.0f);
     EXPECT_FLOAT_EQ(out[1], 28.0f);
@@ -105,4 +108,42 @@ TEST_F(CUDAMatMulKernelTest, BatchedBroadcasting) {
     EXPECT_FLOAT_EQ(out[5], 100.0f);
     EXPECT_FLOAT_EQ(out[6], 103.0f);
     EXPECT_FLOAT_EQ(out[7], 136.0f);
+}
+
+TEST_F(CUDAMatMulKernelTest, Float16Execution) {
+    auto dev = Device(DeviceEnum::CUDA);
+    auto alloc = get_allocator(dev);
+
+    // 2x2 identity matrix @ 2x2 matrix
+    std::vector<float> a_data = {1.0f, 0.0f, 0.0f, 1.0f};
+    std::vector<float> b_data = {2.0f, 3.0f, 4.0f, 5.0f};
+
+    auto make_fp16_buf = [&](const std::vector<float>& host_floats) {
+        auto buf = empty({(int)host_floats.size()}, dev, DType::Float16);
+        std::vector<unsigned short> fp16_bits(host_floats.size());
+        for (size_t i = 0; i < host_floats.size(); ++i) {
+            half_float::half h(host_floats[i]);
+            std::memcpy(&fp16_bits[i], &h, sizeof(unsigned short));
+        }
+        alloc->copy_host_to_device(buf->ptr, fp16_bits.data(), fp16_bits.size() * sizeof(unsigned short));
+        return buf;
+    };
+
+    auto a_buf = make_fp16_buf(a_data);
+    auto b_buf = make_fp16_buf(b_data);
+
+    auto view = make_view({2, 2});
+    auto c_buf = cuda::matmul(a_buf, view, b_buf, view, view);
+
+    // Read back bits
+    std::vector<unsigned short> out_bits(4);
+    alloc->copy_device_to_host(out_bits.data(), c_buf->ptr, 4 * sizeof(unsigned short));
+
+    // identical to b_data since A is the identity matrix
+    std::vector<float> expected = {2.0f, 3.0f, 4.0f, 5.0f};
+    for (size_t i = 0; i < 4; ++i) {
+        half_float::half h;
+        std::memcpy(&h, &out_bits[i], sizeof(unsigned short));
+        EXPECT_FLOAT_EQ(static_cast<float>(h), expected[i]);
+    }
 }

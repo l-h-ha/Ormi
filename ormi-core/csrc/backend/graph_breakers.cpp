@@ -10,7 +10,7 @@ namespace ormi {
         get_breaker_registry()[{dev, op}] = handler;
     }
 
-    bool try_execute_graph_break(std::shared_ptr<Node> root) {
+    bool try_execute_graph_break(const std::shared_ptr<Node>& root) {
         auto& reg = get_breaker_registry();
         auto it = reg.find({root->device.type, root->op});
         

@@ -3,5 +3,5 @@
 #include "core/node.h"
 
 namespace ormi::ops {
-    std::shared_ptr<Node> add(std::shared_ptr<Node> a, std::shared_ptr<Node> b);
+    std::shared_ptr<Node> add(const std::shared_ptr<Node>& a, const std::shared_ptr<Node>& b);
 }

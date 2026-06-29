@@ -4,5 +4,5 @@
 #include "core/node.h"
 
 namespace ormi {
-    std::shared_ptr<Node> unbroadcast(std::shared_ptr<Node> grad, const std::vector<int>& target_shape);
+    std::shared_ptr<Node> unbroadcast(const std::shared_ptr<Node>& grad, const std::vector<int>& target_shape);
 }

@@ -1,0 +1,29 @@
+classes:
+  - name: TensorView
+    cpp_type: ormi::TensorView
+    include: core/shape.h
+
+    properties_readonly:
+      - { name: shape, expr: self.shape }
+      - { name: strides, expr: self.strides }
+
+    methods:
+      - { name: is_contiguous, cpp: is_contiguous }
+
+functions:
+  - name: calc_contiguous_strides
+    include: core/shape.h
+    namespace: ormi
+    cpp: calc_contiguous_strides
+    python: calc_contiguous_strides
+    args:
+      - { name: shape }
+
+  - name: broadcast_shapes
+    include: core/shape.h
+    namespace: ormi
+    cpp: broadcast_shapes
+    python: broadcast_shapes
+    args:
+      - { name: shape_a }
+      - { name: shape_b }

@@ -1,13 +1,24 @@
 #include <stdexcept>
 #include "allocator.h"
+#include "core/error.h"
 
 namespace ormi {
-    IAllocator* get_allocator(DeviceEnum type) {
-        if (type == DeviceEnum::CPU) {
+    IAllocator* get_allocator(Device dev) {
+        if (dev.type == DeviceEnum::CPU) {
             return get_cpu_allocator();
-        } else if (type == DeviceEnum::CUDA) {
+        }
+
+        #ifdef ORMI_USE_CUDA
+        else if (dev.type == DeviceEnum::CUDA) {
             return get_cuda_allocator();
         }
-        throw std::runtime_error("Unsupported DeviceEnum.");
+        #endif
+
+        else {
+            ORMI_THROW(
+                DeviceError,
+                "Unrecognized DeviceEnum (" + to_string(dev) + ")"
+            );
+        }
     }
 }
