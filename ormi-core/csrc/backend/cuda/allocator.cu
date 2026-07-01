@@ -96,15 +96,7 @@ namespace ormi {
                 return;
             }
 
-            CUmemLocation location{};
-            location.type = CU_MEM_LOCATION_TYPE_DEVICE;
-            location.id = static_cast<int>(cuDevice);
-
-            CUDA_SAFE_CALL(cuMemGetDefaultMemPool(
-                &mempool,
-                &location,
-                CU_MEM_ALLOCATION_TYPE_PINNED
-            ));
+            CUDA_SAFE_CALL(cuDeviceGetDefaultMemPool(&mempool, cuDevice));
 
             /*
             * CUDA's default memory-pool release threshold is usually conservative.
