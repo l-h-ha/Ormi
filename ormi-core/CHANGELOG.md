@@ -87,6 +87,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Fixed CPU-only optimizer builds so CPU optimizer code no longer includes CUDA headers unless `ORMI_USE_CUDA` is enabled.
 - Fixed clean CI wheel builds by replacing the external `half.hpp` requirement with internal Float16 conversion helpers.
 - Fixed CUDA 12.4 wheel builds by using the CUDA Driver API default memory pool call available in the release workflow toolkit.
+- Fixed isolated wheel builds by declaring `PyYAML` as a build-system dependency for generated bindings.
 
 ### Removed
 
