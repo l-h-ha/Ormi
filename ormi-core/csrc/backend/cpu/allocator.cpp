@@ -15,6 +15,7 @@
 #include "core/allocator.h"
 #include "core/dtype.h"
 #include "core/error.h"
+#include "core/float16.h"
 
 namespace ormi {
     namespace {
@@ -51,13 +52,6 @@ namespace ormi {
             return bytes / item_size;
         }
 
-        template <typename T>
-        inline T load_scalar(const void* ptr) {
-            T out;
-            std::memcpy(&out, ptr, sizeof(T));
-            return out;
-        }
-
         inline void* aligned_malloc(size_t bytes, size_t alignment) {
             if (bytes == 0) return nullptr;
 
@@ -80,62 +74,6 @@ namespace ormi {
         #else
             std::free(ptr);
         #endif
-        }
-
-        // FP32 -> IEEE FP16 bits, round-to-nearest-even.
-        inline uint16_t float_to_fp16_bits(float value) {
-            uint32_t bits = load_scalar<uint32_t>(&value);
-
-            uint32_t sign = (bits >> 16) & 0x8000u;
-            uint32_t exp  = (bits >> 23) & 0xffu;
-            uint32_t mant = bits & 0x007fffffu;
-
-            if (exp == 0xffu) {
-                if (mant == 0) {
-                    return static_cast<uint16_t>(sign | 0x7c00u); // infinity
-                }
-
-                return static_cast<uint16_t>(sign | 0x7e00u); // quiet NaN
-            }
-
-            int32_t new_exp = static_cast<int32_t>(exp) - 127 + 15;
-
-            if (new_exp >= 31) {
-                return static_cast<uint16_t>(sign | 0x7c00u); // overflow -> infinity
-            }
-
-            if (new_exp <= 0) {
-                if (new_exp < -10) {
-                    return static_cast<uint16_t>(sign); // underflow -> signed zero
-                }
-
-                mant |= 0x00800000u;
-
-                int32_t shift = 14 - new_exp;
-                uint32_t half_mant = mant >> shift;
-
-                uint32_t remainder_mask = (1u << shift) - 1u;
-                uint32_t remainder = mant & remainder_mask;
-                uint32_t halfway = 1u << (shift - 1);
-
-                if (remainder > halfway ||
-                    (remainder == halfway && (half_mant & 1u))) {
-                    half_mant++;
-                }
-
-                return static_cast<uint16_t>(sign | half_mant);
-            }
-
-            uint32_t half = sign | (static_cast<uint32_t>(new_exp) << 10) | (mant >> 13);
-            uint32_t remainder = mant & 0x1fffu;
-            uint32_t halfway = 0x1000u;
-
-            if (remainder > halfway ||
-                (remainder == halfway && (half & 1u))) {
-                half++;
-            }
-
-            return static_cast<uint16_t>(half);
         }
 
     }
@@ -281,7 +219,7 @@ namespace ormi {
                     float val;
                     std::memcpy(&val, val_ptr, sizeof(float));
 
-                    uint16_t fp16_val = float_to_fp16_bits(val);
+                    uint16_t fp16_val = fp16::float_to_bits(val);
                     std::fill_n(static_cast<uint16_t*>(dst), elements, fp16_val);
                     break;
                 }

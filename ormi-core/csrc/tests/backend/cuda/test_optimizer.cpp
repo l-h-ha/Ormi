@@ -1,13 +1,13 @@
 #include <gtest/gtest.h>
+#include <cstdint>
 #include <vector>
 #include <memory>
-#include <cstring>
 #include <cuda_runtime.h>
-#include <half.hpp>
 
 #include "tests/test_utils.h"
 #include "core/buffer.h"
 #include "core/dtype.h"
+#include "core/float16.h"
 #include "core/allocator.h"
 #include "backend/cuda/optimizer.cuh"
 #include "backend/cuda/utils.cuh"
@@ -65,16 +65,13 @@ TEST_F(CUDAOptimizerTest, SGDFloat16Execution) {
     cuda::sgd_step(grad, weight, lr);
     cudaStreamSynchronize(cuda::get_stream());
 
-    std::vector<unsigned short> h_weight_bits(size);
+    std::vector<std::uint16_t> h_weight_bits(size);
     IAllocator* allocator = get_allocator(Device::cuda(0));
     allocator->copy_device_to_host(h_weight_bits.data(), weight->ptr, weight->bytes);
 
     // 4.0 - (2.0 * 0.5) = 3.0
     for (int i = 0; i < size; ++i) {
-        unsigned short raw_bits = h_weight_bits[i];
-        half_float::half h;
-        std::memcpy(&h, &raw_bits, sizeof(unsigned short));
-        float result = static_cast<float>(h);
+        float result = fp16::bits_to_float(h_weight_bits[i]);
         
         EXPECT_FLOAT_EQ(result, 3.0f);
     }

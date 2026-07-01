@@ -2,12 +2,11 @@
 #include <memory>
 #include <vector>
 
-#include <half.hpp>
-
 #include "backend/graph_breakers.h"
 #include "core/allocator.h"
 #include "core/dtype.h"
 #include "core/error.h"
+#include "core/float16.h"
 #include "core/buffer.h"
 #include "core/node.h"
 #include "core/shape.h"
@@ -110,7 +109,7 @@ namespace ormi::cpu {
         }
 
         template <>
-        void sum_impl<half_float::half>(
+        void sum_impl<uint16_t>(
             const std::shared_ptr<Buffer>& in_buf,
             const TensorView& in_view,
             const std::vector<int>& axes,
@@ -123,8 +122,8 @@ namespace ormi::cpu {
 
             const auto reduced = make_reduced_mask(axes, ndim);
 
-            const auto* in_ptr = static_cast<const half_float::half*>(in_buf->ptr);
-            auto* out_ptr = static_cast<half_float::half*>(out_buffer->ptr);
+            const auto* in_ptr = static_cast<const uint16_t*>(in_buf->ptr);
+            auto* out_ptr = static_cast<uint16_t*>(out_buffer->ptr);
 
             std::vector<int> coords(static_cast<size_t>(ndim), 0);
 
@@ -162,10 +161,10 @@ namespace ormi::cpu {
                 }
 
                 const float acc =
-                    static_cast<float>(out_ptr[out_flat]) +
-                    static_cast<float>(in_ptr[in_offset]);
+                    fp16::bits_to_float(out_ptr[out_flat]) +
+                    fp16::bits_to_float(in_ptr[in_offset]);
 
-                out_ptr[out_flat] = half_float::half(acc);
+                out_ptr[out_flat] = fp16::float_to_bits(acc);
             }
         }
 
@@ -211,11 +210,11 @@ namespace ormi::cpu {
 
             case DType::Float16:
                 static_assert(
-                    sizeof(half_float::half) == 2,
-                    "half_float::half must be 16 bits."
+                    sizeof(uint16_t) == 2,
+                    "Float16 storage must be 16 bits."
                 );
 
-                sum_impl<half_float::half>(
+                sum_impl<uint16_t>(
                     in_buf,
                     in_view,
                     axes,

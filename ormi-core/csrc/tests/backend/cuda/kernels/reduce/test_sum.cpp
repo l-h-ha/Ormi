@@ -1,11 +1,11 @@
 #include <gtest/gtest.h>
+#include <cstdint>
 #include <vector>
 #include <memory>
-#include <cstring>
-#include <half.hpp>
 
 #include "tests/test_utils.h"
 #include "core/buffer.h"
+#include "core/float16.h"
 #include "core/node.h"
 #include "core/shape.h"
 #include "core/ops/reduce/sum.h"
@@ -110,26 +110,22 @@ TEST_F(CUDASumKernelTest, Float16GlobalReduction) {
     auto in_buf = empty({4}, dev, DType::Float16);
 
     // Pack float to __half bits
-    std::vector<unsigned short> fp16_bits(4);
+    std::vector<std::uint16_t> fp16_bits(4);
     for (size_t i = 0; i < 4; ++i) {
-        half_float::half h(in_data[i]);
-        std::memcpy(&fp16_bits[i], &h, sizeof(unsigned short));
+        fp16_bits[i] = fp16::float_to_bits(in_data[i]);
     }
-    alloc->copy_host_to_device(in_buf->ptr, fp16_bits.data(), 4 * sizeof(unsigned short));
+    alloc->copy_host_to_device(in_buf->ptr, fp16_bits.data(), 4 * sizeof(std::uint16_t));
 
     auto in_view = make_view({4});
     auto out_view = make_view({});
 
     auto out_buf = cuda::sum(in_buf, in_view, {}, out_view, false);
 
-    unsigned short out_bit = 0;
-    alloc->copy_device_to_host(&out_bit, out_buf->ptr, sizeof(unsigned short));
-
-    half_float::half h_out;
-    std::memcpy(&h_out, &out_bit, sizeof(unsigned short));
+    std::uint16_t out_bit = 0;
+    alloc->copy_device_to_host(&out_bit, out_buf->ptr, sizeof(std::uint16_t));
 
     // 1 + 2 + 3 + 4 = 10.0
-    EXPECT_FLOAT_EQ(static_cast<float>(h_out), 10.0f);
+    EXPECT_FLOAT_EQ(fp16::bits_to_float(out_bit), 10.0f);
 }
 
 TEST_F(CUDASumKernelTest, GraphBreakerAndBufferZeroing) {

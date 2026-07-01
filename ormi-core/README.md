@@ -36,7 +36,6 @@ Build from source if you are developing ORMI, building for a platform without a 
 - A C++23 compiler.
 - Python build helpers: `scikit-build-core`, `pybind11`, and `build`. `pip` installs these automatically for normal package builds, but direct CMake builds still need `pybind11` importable from Python.
 - OpenBLAS and `cblas.h`.
-- `half.hpp`.
 - Internet access the first time CMake fetches `magic_enum`, and the first time native tests fetch GoogleTest.
 - `g++` on `PATH` if you want to use the CPU JIT at runtime.
 - Optional CUDA support: NVIDIA CUDA Toolkit, NVRTC, cuBLAS, and a compatible NVIDIA driver.

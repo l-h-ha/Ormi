@@ -188,11 +188,6 @@ target_link_libraries(ormi_engine PUBLIC
     magic_enum::magic_enum
 )
 
-find_path(HALF_INCLUDE_DIRS "half.hpp")
-target_include_directories(ormi_engine PUBLIC
-    ${HALF_INCLUDE_DIRS}
-)
-
 if(WIN32)
     target_link_libraries(ormi_engine PUBLIC
         OpenBLAS::OpenBLAS

@@ -184,7 +184,7 @@ TEST_F(MemoryTest, Float16RetrievalAndPrecision) {
         for (float val : test_values) {
             auto buf = full({1}, val, dev, DType::Float16);
 
-            // item() calls the path with the half_float::half conversion
+            // item() calls the path with the internal Float16 conversion.
             EXPECT_FLOAT_EQ(buf->item(0), val)
                 << "Failed precision check for value: " << val;
         }

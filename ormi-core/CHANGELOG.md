@@ -40,7 +40,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Added public Python `Tensor` APIs for device normalization, lazy realization, NumPy conversion, arithmetic, matmul, reshape, transpose, `sum`, axis reductions, and explicit gradient queries.
 - Added MIT license files for the workspace and Python packages.
 - Added C++ examples and benchmark programs for CPU training, CUDA training, SGD, compute tapes, and CUDA graph replay.
-- Added new CMake wiring for `ormi_engine`, generated pybind sources, conditional CUDA source inclusion, CUDA runtime DLL copying on Windows, OpenBLAS linking, `magic_enum`, `half.hpp`, GTest, and examples.
+- Added new CMake wiring for `ormi_engine`, generated pybind sources, conditional CUDA source inclusion, CUDA runtime DLL copying on Windows, OpenBLAS linking, `magic_enum`, GTest, and examples.
 - Added CMake generation steps for native binding source, `_C` stubs, `_C.ops` stubs, and `py.typed`.
 - Added backend and core tests for lowerings, optimizers, tapes, CUDA graph tape, matmul kernels, sum kernels, runtime graph breakers, view ops, shape logic, allocator behavior, autograd, and pointwise operations.
 
@@ -85,6 +85,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Fixed CUDA and CPU output buffer reuse paths to clear reduction outputs before accumulation.
 - Fixed core runtime error paths to use ORMI-specific exception types instead of raw `std::runtime_error` paths.
 - Fixed CPU-only optimizer builds so CPU optimizer code no longer includes CUDA headers unless `ORMI_USE_CUDA` is enabled.
+- Fixed clean CI wheel builds by replacing the external `half.hpp` requirement with internal Float16 conversion helpers.
 
 ### Removed
 

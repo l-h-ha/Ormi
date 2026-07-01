@@ -2,11 +2,12 @@
 #include <sstream>
 #include <iomanip>
 #include <utility>
-#include <half.hpp>
+#include <cstdint>
 
 #include "buffer.h"
 #include "allocator.h"
 #include "dtype.h"
+#include "float16.h"
 
 namespace ormi {
     Buffer::Buffer(void* p, size_t b, std::vector<int> s, Device d, DType dt) 
@@ -33,13 +34,10 @@ namespace ormi {
             allocator->copy_device_to_host(&val, src_ptr, sizeof(float));
             return val;
         } else if (this->dtype == DType::Float16) {
-            unsigned short raw_bits = 0;
-            const void* src_ptr = static_cast<const unsigned short*>(this->ptr) + index;
-            allocator->copy_device_to_host(&raw_bits, src_ptr, sizeof(unsigned short));
-            
-            half_float::half h;
-            std::memcpy(&h, &raw_bits, sizeof(unsigned short));
-            return static_cast<float>(h);
+            std::uint16_t raw_bits = 0;
+            const void* src_ptr = static_cast<const std::uint16_t*>(this->ptr) + index;
+            allocator->copy_device_to_host(&raw_bits, src_ptr, sizeof(std::uint16_t));
+            return fp16::bits_to_float(raw_bits);
         } else {
             ORMI_THROW(DTypeError, "item() does not support " + to_string(this->dtype) + ".");
         }

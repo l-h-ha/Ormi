@@ -1,12 +1,12 @@
 #include <gtest/gtest.h>
+#include <cstdint>
 #include <vector>
 #include <cuda_runtime.h>
 #include <memory>
-#include <cstring>
-#include <half.hpp>
 
 #include "tests/test_utils.h"
 #include "core/buffer.h"
+#include "core/float16.h"
 #include "core/node.h"
 #include "core/shape.h"
 #include "backend/cuda/kernels/blas/matmul.cuh"
@@ -120,12 +120,11 @@ TEST_F(CUDAMatMulKernelTest, Float16Execution) {
 
     auto make_fp16_buf = [&](const std::vector<float>& host_floats) {
         auto buf = empty({(int)host_floats.size()}, dev, DType::Float16);
-        std::vector<unsigned short> fp16_bits(host_floats.size());
+        std::vector<std::uint16_t> fp16_bits(host_floats.size());
         for (size_t i = 0; i < host_floats.size(); ++i) {
-            half_float::half h(host_floats[i]);
-            std::memcpy(&fp16_bits[i], &h, sizeof(unsigned short));
+            fp16_bits[i] = fp16::float_to_bits(host_floats[i]);
         }
-        alloc->copy_host_to_device(buf->ptr, fp16_bits.data(), fp16_bits.size() * sizeof(unsigned short));
+        alloc->copy_host_to_device(buf->ptr, fp16_bits.data(), fp16_bits.size() * sizeof(std::uint16_t));
         return buf;
     };
 
@@ -136,14 +135,12 @@ TEST_F(CUDAMatMulKernelTest, Float16Execution) {
     auto c_buf = cuda::matmul(a_buf, view, b_buf, view, view);
 
     // Read back bits
-    std::vector<unsigned short> out_bits(4);
-    alloc->copy_device_to_host(out_bits.data(), c_buf->ptr, 4 * sizeof(unsigned short));
+    std::vector<std::uint16_t> out_bits(4);
+    alloc->copy_device_to_host(out_bits.data(), c_buf->ptr, 4 * sizeof(std::uint16_t));
 
     // identical to b_data since A is the identity matrix
     std::vector<float> expected = {2.0f, 3.0f, 4.0f, 5.0f};
     for (size_t i = 0; i < 4; ++i) {
-        half_float::half h;
-        std::memcpy(&h, &out_bits[i], sizeof(unsigned short));
-        EXPECT_FLOAT_EQ(static_cast<float>(h), expected[i]);
+        EXPECT_FLOAT_EQ(fp16::bits_to_float(out_bits[i]), expected[i]);
     }
 }
