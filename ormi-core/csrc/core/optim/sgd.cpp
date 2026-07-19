@@ -1,70 +1,128 @@
-#include "sgd.h"
+#include <cmath>
+#include <memory>
+#include <vector>
 
-#include "backend/cpu/optimizer.h"
-#include "core/error.h"
+#include <ormi/core/attrs.h>
+#include <ormi/core/dtype.h>
+#include <ormi/core/error.h>
+#include <ormi/core/op.h>
+#include <ormi/core/optim/sgd.h>
+#include <ormi/core/runtime/dispatch/optimizer.h>
+#include <ormi/core/tensor.h>
 
-#ifdef ORMI_USE_CUDA
-    #include "backend/cuda/optimizer.cuh"
-#endif
+#include "core/optim/sgd_detail.h"
 
-namespace ormi::optim {
-    SGD::SGD(
-        const std::vector<std::pair<std::shared_ptr<Node>, 
-        std::shared_ptr<Node>>>& parameter_grads, 
-        float learning_rate
-    ) : lr(learning_rate) {
-        params.reserve(parameter_grads.size());
+namespace ormi::core::optim {
+    namespace {
+        void compute_sgd(Tensor& out) {
+            runtime::optimizer::sgd(
+                out,
+                *out.parents()[0],
+                *out.parents()[1],
+                std::get<SGD>(out.attrs()).step_size
+            );
+        }
 
-        for (const auto& pair : parameter_grads) {
-            params.push_back({
-                pair.first,
-                pair.second
-            });
+        void adjoint_sgd(
+            const std::shared_ptr<Tensor>&,
+            const std::shared_ptr<Tensor>&,
+            Grads&
+        ) {}
+
+        const Op sgd_op{
+            .name = "sgd",
+            .output = Output::allocate,
+            .parents = 2,
+            .compute = compute_sgd,
+            .adjoint = adjoint_sgd,
+            .scalar = std::monostate{}
+        };
+    }
+
+    namespace detail {
+        double check_sgd(
+            const std::shared_ptr<Tensor>& parameter,
+            const std::shared_ptr<Tensor>& gradient,
+            double learning_rate,
+            double gradient_scale
+        ) {
+            if (!parameter || !gradient) {
+                ORMI_THROW(OperationError, "SGD requires a parameter and gradient.");
+            }
+
+            if (!std::isfinite(learning_rate) || learning_rate < 0.0) {
+                ORMI_THROW(OperationError, "SGD learning rate must be finite and non-negative.");
+            }
+
+            if (!std::isfinite(gradient_scale) || gradient_scale <= 0.0) {
+                ORMI_THROW(OperationError, "SGD gradient scale must be finite and positive.");
+            }
+
+            if (parameter->shape() != gradient->shape()) {
+                ORMI_THROW(ShapeError, "SGD parameter and gradient shapes must match.");
+            }
+
+            if (parameter->dtype() != gradient->dtype()) {
+                ORMI_THROW(DTypeError, "SGD parameter and gradient dtypes must match.");
+            }
+
+            const auto parameter_device = parameter->device();
+            const auto gradient_device = gradient->device();
+            if (
+                parameter_device.backend_id() != gradient_device.backend_id() ||
+                parameter_device.index() != gradient_device.index()
+            ) {
+                ORMI_THROW(DeviceError, "SGD parameter and gradient devices must match.");
+            }
+
+            if (!is_floating(parameter->dtype())) {
+                ORMI_THROW(DTypeError, "SGD supports floating-point tensors only.");
+            }
+
+            if (learning_rate == 0.0) {
+                return 0.0;
+            }
+
+            const auto step_size = learning_rate / gradient_scale;
+            if (!std::isfinite(step_size) || step_size <= 0.0) {
+                ORMI_THROW(OperationError, "SGD effective step size must be finite and positive.");
+            }
+
+            return step_size;
+        }
+
+        std::shared_ptr<Tensor> create_sgd(
+            const std::shared_ptr<Tensor>& parameter,
+            const std::shared_ptr<Tensor>& gradient,
+            double step_size
+        ) {
+            if (step_size == 0.0) {
+                return parameter;
+            }
+
+            return std::make_shared<Tensor>(
+                sgd_op,
+                SGD{step_size},
+                std::vector<std::shared_ptr<Tensor>>{parameter, gradient},
+                parameter->device(),
+                parameter->shape(),
+                parameter->dtype()
+            );
         }
     }
 
-    void SGD::step() {
-        if (lr == 0.0f) {
-            return;
-        }
-
-        for (auto& item : params) {
-            const auto& param = item.param;
-            const auto& grad = item.grad;
-
-            if (!param || !param->data) {
-                continue;
-            }
-
-            if (!grad || !grad->data) {
-                continue;
-            }
-
-            if (param->device != grad->device) {
-                ORMI_THROW(DeviceError, "SGD parameter and gradient device mismatch.");
-            }
-
-            if (param->dtype != grad->dtype) {
-                ORMI_THROW(DTypeError, "SGD parameter and gradient dtype mismatch.");
-            }
-
-            if (param->data->bytes != grad->data->bytes) {
-                ORMI_THROW(ShapeError, "SGD parameter and gradient size mismatch.");
-            }
-
-            if (param->device.type == DeviceEnum::CPU) {
-                cpu::sgd_step(grad->data, param->data, lr);
-            }
-
-    #ifdef ORMI_USE_CUDA
-            else if (param->device.type == DeviceEnum::CUDA) {
-                cuda::sgd_step(grad->data, param->data, lr);
-            }
-    #endif
-
-            else {
-                ORMI_THROW(DeviceError, "Unsupported device for SGD.");
-            }
-        }
+    std::shared_ptr<Tensor> sgd(
+        const std::shared_ptr<Tensor>& parameter,
+        const std::shared_ptr<Tensor>& gradient,
+        double learning_rate,
+        double gradient_scale
+    ) {
+        const auto step_size = detail::check_sgd(
+            parameter,
+            gradient,
+            learning_rate,
+            gradient_scale
+        );
+        return detail::create_sgd(parameter, gradient, step_size);
     }
 }

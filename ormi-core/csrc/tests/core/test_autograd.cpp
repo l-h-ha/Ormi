@@ -1,320 +1,183 @@
-#include <gtest/gtest.h>
-
+#include <cmath>
 #include <memory>
 #include <vector>
 
-#include "tests/test_utils.h"
+#include <gtest/gtest.h>
 
-#include "core/autograd.h"
-#include "core/dtype.h"
-#include "core/buffer.h"
-#include "core/node.h"
-#include "core/ops.h"
-#include "core/ops/pointwise/mul.h"
-#include "core/ops/reduce/sum.h"
-#include "core/tapes/compute_tape.h"
+#include <ormi/core/autograd.h>
+#include <ormi/core/device.h>
+#include <ormi/core/dtype.h>
+#include <ormi/core/error.h>
+#include <ormi/core/float16.h>
+#include <ormi/core/ops/creation.h>
+#include <ormi/core/ops/pointwise.h>
+#include <ormi/core/shape.h>
+#include <ormi/core/tensor.h>
 
-#include "core/ops/pointwise/add.h"
-#include "core/ops/pointwise/sub.h"
-#include "core/ops/pointwise/mul.h"
-#include "core/ops/reduce/sum.h"
-#include "core/tapes/compute_tape.h"
-
-using namespace ormi;
-
-class AutogradTest : public ormi::testing::HardwareTestSuite {};
-
-TEST_F(AutogradTest, GradReturnsInputGradients) {
-    for (auto dev : available_devices) {
-        auto buf_a = full({2, 2}, 2.0f, dev, DType::Float32);
-        auto buf_b = full({2, 2}, 3.0f, dev, DType::Float32);
-
-        auto a = std::make_shared<Node>(buf_a, true);
-        auto b = std::make_shared<Node>(buf_b, true);
-
-        auto c = std::make_shared<Node>(
-            ops::OpEnum::ADD,
-            std::vector<std::shared_ptr<Node>>{a, b}
+namespace {
+    std::shared_ptr<ormi::core::Tensor> floatTensor(ormi::core::Shape shape) {
+        return std::make_shared<ormi::core::Tensor>(
+            ormi::core::Device::cpu(),
+            std::move(shape),
+            ormi::core::DType::float32
         );
-
-        auto grads = grad(c, {a, b});
-
-        ASSERT_EQ(grads.size(), 2);
-
-        ASSERT_NE(grads[0], nullptr);
-        EXPECT_EQ(grads[0]->view.shape, (std::vector<int>{2, 2}));
-
-        ASSERT_NE(grads[1], nullptr);
-        EXPECT_EQ(grads[1]->view.shape, (std::vector<int>{2, 2}));
     }
-}
 
-TEST_F(AutogradTest, GradReturnsNullForUnusedInput) {
-    for (auto dev : available_devices) {
-        auto buf_a = full({2, 2}, 2.0f, dev, DType::Float32);
-        auto buf_b = full({2, 2}, 3.0f, dev, DType::Float32);
-        auto buf_unused = full({2, 2}, 4.0f, dev, DType::Float32);
-
-        auto a = std::make_shared<Node>(buf_a, true);
-        auto b = std::make_shared<Node>(buf_b, true);
-        auto unused = std::make_shared<Node>(buf_unused, true);
-
-        auto c = std::make_shared<Node>(
-            ops::OpEnum::ADD,
-            std::vector<std::shared_ptr<Node>>{a, b}
+    std::shared_ptr<ormi::core::Tensor> doubleTensor(ormi::core::Shape shape) {
+        return std::make_shared<ormi::core::Tensor>(
+            ormi::core::Device::cpu(),
+            std::move(shape),
+            ormi::core::DType::float64
         );
-
-        auto grads = grad(c, {a, unused});
-
-        ASSERT_EQ(grads.size(), 2);
-
-        ASSERT_NE(grads[0], nullptr);
-        EXPECT_EQ(grads[0]->view.shape, (std::vector<int>{2, 2}));
-
-        EXPECT_EQ(grads[1], nullptr);
     }
-}
 
-TEST_F(AutogradTest, SecondDerivativeOfCubic) {
-    for (auto dev : available_devices) {
-        auto x_buf = full({4}, 2.0f, dev, DType::Float32);
-        auto x = std::make_shared<Node>(x_buf, true, "x");
+    TEST(AutogradTest, differentiatesSquareLazily) {
+        const auto x = floatTensor({});
+        *static_cast<float*>(x->data()) = 3.0f;
+        const auto y = ormi::core::ops::mul(x, x);
+        const auto dx = ormi::core::grad(y, x);
 
-        // y = sum(x * x * x)
-        auto x2 = ops::mul(x, x);
-        auto x3 = ops::mul(x2, x);
-        auto y = ops::sum(x3);
-
-        auto dy_dx = grad(y, {x})[0];
-
-        // d/dx sum(3x^2) = 6x
-        // x = 2 => 12
-        auto d2y_dx2 = grad(dy_dx, {x})[0];
-
-        ComputeTape tape;
-        tape.capture({y, dy_dx, d2y_dx2});
-        tape.execute();
-
-        synchronize(dev.type);
-
-        std::vector<float> h1(4);
-        std::vector<float> h2(4);
-
-        auto* allocator = get_allocator(dev);
-
-        allocator->copy_device_to_host(
-            h1.data(),
-            dy_dx->data->ptr,
-            dy_dx->data->bytes
-        );
-
-        allocator->copy_device_to_host(
-            h2.data(),
-            d2y_dx2->data->ptr,
-            d2y_dx2->data->bytes
-        );
-
-        for (float v : h1) {
-            EXPECT_NEAR(v, 12.0f, 1e-4f);
-        }
-
-        for (float v : h2) {
-            EXPECT_NEAR(v, 12.0f, 1e-4f);
-        }
+        EXPECT_FALSE(dx->realized());
+        EXPECT_FLOAT_EQ(*static_cast<const float*>(dx->data()), 6.0f);
     }
-}
 
-TEST_F(AutogradTest, GradWithExplicitSeedScalesGradient) {
-    for (auto dev : available_devices) {
-        auto x_buf = full({4}, 2.0f, dev, DType::Float32);
-        auto x = std::make_shared<Node>(x_buf, true, "x");
-
-        // y = x * x
-        auto y = ops::mul(x, x);
-
-        // seed = 3, so VJP = 3 * dy/dx = 3 * 2x = 12
-        auto seed_buf = full({4}, 3.0f, dev, DType::Float32);
-        auto seed = std::make_shared<Node>(seed_buf, false, "seed");
-
-        auto dx = grad(y, {x}, seed)[0];
-
-        ComputeTape tape;
-        tape.capture({dx});
-        tape.execute();
-
-        synchronize(dev.type);
-
-        std::vector<float> host(4);
-        auto* allocator = get_allocator(dev);
-
-        allocator->copy_device_to_host(
-            host.data(),
-            dx->data->ptr,
-            dx->data->bytes
+    TEST(CPUAutogradTest, differentiatesFloat16SquareTwiceLazily) {
+        const auto x = std::make_shared<ormi::core::Tensor>(
+            ormi::core::Device::cpu(),
+            ormi::core::Shape{},
+            ormi::core::DType::float16
         );
+        *static_cast<ormi::core::Float16*>(x->data()) = ormi::core::Float16(3.0f);
+        const auto y = ormi::core::ops::mul(x, x);
+        const auto dx = ormi::core::grad(y, x);
+        const auto ddx = ormi::core::grad(dx, x);
 
-        for (float v : host) {
-            EXPECT_NEAR(v, 12.0f, 1e-4f);
-        }
+        EXPECT_FALSE(dx->realized());
+        EXPECT_FALSE(ddx->realized());
+        EXPECT_FLOAT_EQ(
+            static_cast<float>(*static_cast<const ormi::core::Float16*>(dx->data())),
+            6.0f
+        );
+        EXPECT_FLOAT_EQ(
+            static_cast<float>(*static_cast<const ormi::core::Float16*>(ddx->data())),
+            2.0f
+        );
     }
-}
 
-TEST_F(AutogradTest, DiffComputesHigherOrderDerivative) {
-    for (auto dev : available_devices) {
-        auto x = std::make_shared<Node>(
-            full({4}, 2.0f, dev, DType::Float32),
-            true,
-            "x"
+    TEST(AutogradTest, reversesBroadcasting) {
+        const auto lhs = floatTensor({2, 1});
+        const auto rhs = floatTensor({1, 3});
+        const auto output = ormi::core::ops::add(lhs, rhs);
+        const auto seed = ormi::core::ops::ones_like(output);
+        const auto gradients = ormi::core::grad(
+            output,
+            std::vector<std::shared_ptr<ormi::core::Tensor>>{lhs, rhs},
+            seed
         );
+        const auto* lhs_gradient = static_cast<const float*>(gradients[0]->data());
+        const auto* rhs_gradient = static_cast<const float*>(gradients[1]->data());
 
-        // y = sum(x^3)
-        auto x2 = ops::mul(x, x);
-        auto x3 = ops::mul(x2, x);
-        auto y = ops::sum(x3);
-
-        auto y_x = diff(y, x, 1);
-        auto y_xx = diff(y, x, 2);
-
-        ComputeTape tape;
-        tape.capture({y, y_x, y_xx});
-        tape.execute();
-
-        synchronize(dev.type);
-
-        std::vector<float> h1(4);
-        std::vector<float> h2(4);
-
-        auto* allocator = get_allocator(dev);
-
-        allocator->copy_device_to_host(
-            h1.data(),
-            y_x->data->ptr,
-            y_x->data->bytes
-        );
-
-        allocator->copy_device_to_host(
-            h2.data(),
-            y_xx->data->ptr,
-            y_xx->data->bytes
-        );
-
-        for (float v : h1) {
-            EXPECT_NEAR(v, 12.0f, 1e-4f);
-        }
-
-        for (float v : h2) {
-            EXPECT_NEAR(v, 12.0f, 1e-4f);
-        }
+        EXPECT_FLOAT_EQ(lhs_gradient[0], 3.0f);
+        EXPECT_FLOAT_EQ(lhs_gradient[1], 3.0f);
+        EXPECT_FLOAT_EQ(rhs_gradient[0], 2.0f);
+        EXPECT_FLOAT_EQ(rhs_gradient[1], 2.0f);
+        EXPECT_FLOAT_EQ(rhs_gradient[2], 2.0f);
     }
-}
 
-TEST_F(AutogradTest, PINNResidualHeatEquationStyle) {
-    for (auto dev : available_devices) {
-        auto x = std::make_shared<Node>(
-            full({4}, 2.0f, dev, DType::Float32),
-            true,
-            "x"
+    TEST(AutogradTest, differentiatesDivision) {
+        const auto lhs = floatTensor({});
+        const auto rhs = floatTensor({});
+        *static_cast<float*>(lhs->data()) = 6.0f;
+        *static_cast<float*>(rhs->data()) = 2.0f;
+        const auto output = ormi::core::ops::div(lhs, rhs);
+        const auto gradients = ormi::core::grad(
+            output,
+            std::vector<std::shared_ptr<ormi::core::Tensor>>{lhs, rhs}
         );
 
-        auto t = std::make_shared<Node>(
-            full({4}, 3.0f, dev, DType::Float32),
-            true,
-            "t"
-        );
-
-        // u(x,t) = x^2 + t^2
-        auto x2 = ops::mul(x, x);
-        auto t2 = ops::mul(t, t);
-        auto u = ops::add(x2, t2);
-
-        // u_t = 2t = 6
-        auto u_t = diff(u, t, 1);
-
-        // u_xx = 2
-        auto u_xx = diff(u, x, 2);
-
-        // alpha = 0.5
-        auto alpha = scalar_like(x, 0.5f);
-
-        // residual r = u_t - alpha * u_xx
-        // r = 6 - 0.5 * 2 = 5
-        auto residual = ops::sub(
-            u_t,
-            ops::mul(alpha, u_xx)
-        );
-
-        // loss = sum(r^2) = 4 elements * 25 = 100
-        auto loss = ops::sum(
-            ops::mul(residual, residual)
-        );
-
-        ComputeTape tape;
-        tape.capture({u, u_t, u_xx, alpha, residual, loss});
-        tape.execute();
-
-        synchronize(dev.type);
-
-        auto* allocator = get_allocator(dev);
-
-        std::vector<float> host_residual(4);
-
-        allocator->copy_device_to_host(
-            host_residual.data(),
-            residual->data->ptr,
-            residual->data->bytes
-        );
-
-        for (float v : host_residual) {
-            EXPECT_NEAR(v, 5.0f, 1e-4f);
-        }
-
-        float host_loss = 0.0f;
-
-        allocator->copy_device_to_host(
-            &host_loss,
-            loss->data->ptr,
-            loss->data->bytes
-        );
-
-        EXPECT_NEAR(host_loss, 100.0f, 1e-4f);
+        EXPECT_FLOAT_EQ(*static_cast<const float*>(gradients[0]->data()), 0.5f);
+        EXPECT_FLOAT_EQ(*static_cast<const float*>(gradients[1]->data()), -1.5f);
     }
-}
 
-TEST_F(AutogradTest, OnesLikeWorksForUnrealizedNode) {
-    for (auto dev : available_devices) {
-        auto x = std::make_shared<Node>(
-            full({2, 3}, 2.0f, dev, DType::Float32),
-            true,
-            "x"
+    TEST(AutogradTest, differentiatesNeg) {
+        const auto x = floatTensor({});
+        *static_cast<float*>(x->data()) = 4.0f;
+        const auto y = ormi::core::ops::neg(x);
+        const auto dx = ormi::core::grad(y, x);
+
+        EXPECT_FALSE(dx->realized());
+        EXPECT_FLOAT_EQ(*static_cast<const float*>(dx->data()), -1.0f);
+    }
+
+    TEST(AutogradTest, differentiatesExpByReusingItsForwardNode) {
+        const auto x = floatTensor({});
+        *static_cast<float*>(x->data()) = 1.0f;
+        const auto y = ormi::core::ops::exp(x);
+        const auto dx = ormi::core::grad(y, x);
+        const auto ddx = ormi::core::grad(dx, x);
+
+        EXPECT_EQ(dx, y);
+        EXPECT_EQ(ddx, y);
+        EXPECT_FLOAT_EQ(*static_cast<const float*>(ddx->data()), std::exp(1.0f));
+    }
+
+    TEST(AutogradTest, differentiatesLogSinAndCos) {
+        const auto x = floatTensor({});
+        *static_cast<float*>(x->data()) = 0.5f;
+        const auto log_gradient = ormi::core::grad(ormi::core::ops::log(x), x);
+        const auto sin_gradient = ormi::core::grad(ormi::core::ops::sin(x), x);
+        const auto cos_gradient = ormi::core::grad(ormi::core::ops::cos(x), x);
+
+        EXPECT_FLOAT_EQ(*static_cast<const float*>(log_gradient->data()), 2.0f);
+        EXPECT_FLOAT_EQ(*static_cast<const float*>(sin_gradient->data()), std::cos(0.5f));
+        EXPECT_FLOAT_EQ(*static_cast<const float*>(cos_gradient->data()), -std::sin(0.5f));
+    }
+
+    TEST(AutogradTest, supportsFifthOrderDifferentiation) {
+        const auto x = floatTensor({});
+        *static_cast<float*>(x->data()) = 2.0f;
+        const auto x2 = ormi::core::ops::mul(x, x);
+        const auto x3 = ormi::core::ops::mul(x2, x);
+        const auto x4 = ormi::core::ops::mul(x3, x);
+        const auto x5 = ormi::core::ops::mul(x4, x);
+        const auto fifth = ormi::core::diff(x5, x, 5);
+        const auto sixth = ormi::core::diff(x5, x, 6);
+
+        EXPECT_FLOAT_EQ(*static_cast<const float*>(fifth->data()), 120.0f);
+        EXPECT_FLOAT_EQ(*static_cast<const float*>(sixth->data()), 0.0f);
+    }
+
+    TEST(AutogradTest, supportsFloat64HigherOrderDifferentiation) {
+        const auto x = doubleTensor({});
+        *static_cast<double*>(x->data()) = 2.0;
+        const auto y = ormi::core::ops::mul(x, x);
+        const auto first = ormi::core::grad(y, x);
+        const auto second = ormi::core::grad(first, x);
+
+        EXPECT_DOUBLE_EQ(*static_cast<const double*>(first->data()), 4.0);
+        EXPECT_DOUBLE_EQ(*static_cast<const double*>(second->data()), 2.0);
+    }
+
+    TEST(AutogradTest, requiresSeedForNonScalarOutput) {
+        const auto x = floatTensor({2});
+        const auto y = ormi::core::ops::mul(x, x);
+
+        EXPECT_THROW((void)ormi::core::grad(y, x), ormi::ShapeError);
+    }
+
+    TEST(AutogradTest, rejectsNonFloatingTensors) {
+        const auto integer = std::make_shared<ormi::core::Tensor>(
+            ormi::core::Device::cpu(),
+            ormi::core::Shape{},
+            ormi::core::DType::int32
+        );
+        const auto boolean = std::make_shared<ormi::core::Tensor>(
+            ormi::core::Device::cpu(),
+            ormi::core::Shape{},
+            ormi::core::DType::boolean
         );
 
-        auto y = ops::mul(x, x); // unrealized internal node
-
-        auto seed = ones_like(y, y->dtype, false);
-
-        ASSERT_TRUE(seed);
-        ASSERT_TRUE(seed->data);
-        EXPECT_EQ(seed->view.shape, (std::vector<int>{2, 3}));
-        EXPECT_EQ(seed->device, dev);
-        EXPECT_EQ(seed->dtype, DType::Float32);
-
-        ComputeTape tape;
-        tape.capture({seed});
-        tape.execute();
-
-        synchronize(dev.type);
-
-        std::vector<float> host(6);
-        auto* allocator = get_allocator(dev);
-
-        allocator->copy_device_to_host(
-            host.data(),
-            seed->data->ptr,
-            seed->data->bytes
-        );
-
-        for (float v : host) {
-            EXPECT_FLOAT_EQ(v, 1.0f);
-        }
+        EXPECT_THROW((void)ormi::core::grad(integer, integer), ormi::DTypeError);
+        EXPECT_THROW((void)ormi::core::grad(boolean, boolean), ormi::DTypeError);
     }
 }

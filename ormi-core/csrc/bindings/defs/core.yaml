@@ -1,0 +1,347 @@
+includes:
+  - bindings/glue.h
+  - ormi/core/autocast.h
+  - ormi/core/autograd.h
+  - ormi/core/device.h
+  - ormi/core/dtype.h
+  - ormi/core/error.h
+  - ormi/core/ops/cast.h
+  - ormi/core/ops/linalg.h
+  - ormi/core/ops/pointwise.h
+  - ormi/core/tensor.h
+
+exceptions:
+  - name: OrmiError
+    cpp_type: ormi::OrmiError
+    base: RuntimeError
+  - name: DeviceError
+    cpp_type: ormi::DeviceError
+    base: OrmiError
+  - name: DTypeError
+    cpp_type: ormi::DTypeError
+    base: OrmiError
+  - name: ShapeError
+    cpp_type: ormi::ShapeError
+    base: OrmiError
+  - name: OperationError
+    cpp_type: ormi::OperationError
+    base: OrmiError
+  - name: BufferError
+    cpp_type: ormi::BufferError
+    base: OrmiError
+  - name: MemoryError
+    cpp_type: ormi::MemoryError
+    base: OrmiError
+  - name: jitError
+    cpp_type: ormi::jitError
+    base: OrmiError
+  - name: cudaError
+    cpp_type: ormi::cudaError
+    base: DeviceError
+
+enums:
+  - name: DType
+    cpp_type: ormi::core::DType
+    values:
+      - name: float64
+        cpp: float64
+        aliases: [float64]
+      - name: float32
+        cpp: float32
+        aliases: [float32]
+      - name: float16
+        cpp: float16
+        aliases: [float16]
+      - name: int32
+        cpp: int32
+        aliases: [int32]
+      - name: bool
+        cpp: boolean
+        aliases: [bool_]
+
+classes:
+  - name: Device
+    cpp_type: ormi::core::Device
+    constructors:
+      - signature: ""
+      - factory: ormi::bindings::device_from_string
+        args:
+          - name: value
+            py_type: str
+    properties_readonly:
+      - name: index
+        cpp: index
+        py_type: int
+      - name: is_cpu
+        cpp: is_cpu
+        py_type: bool
+      - name: is_cuda
+        cpp: is_cuda
+        py_type: bool
+    methods:
+      - name: __str__
+        binding: ormi::bindings::device_string
+        returns: str
+      - name: __repr__
+        binding: ormi::bindings::device_repr
+        returns: str
+      - name: __eq__
+        binding: ormi::bindings::device_equal
+        args:
+          - name: other
+            py_type: Device
+        returns: bool
+        is_operator: true
+
+  - name: Tensor
+    cpp_type: ormi::core::Tensor
+    holder: std::shared_ptr<ormi::core::Tensor>
+    constructors:
+      - factory: ormi::bindings::tensor_from_python
+        args:
+          - name: data
+            py_type: Any
+          - name: dtype
+            py_type: DType
+            default: ormi::core::DType::float32
+            py_default: DType.float32
+          - name: device
+            py_type: Device | str | None
+            default: py::str("cpu")
+            py_default: "'cpu'"
+    properties_readonly:
+      - name: device
+        cpp: device
+        py_type: Device
+      - name: dtype
+        cpp: dtype
+        py_type: DType
+      - name: shape
+        binding: ormi::bindings::tensor_shape
+        py_type: tuple[int, ...]
+      - name: strides
+        binding: ormi::bindings::tensor_strides
+        py_type: tuple[int, ...]
+      - name: op
+        binding: ormi::bindings::tensor_op
+        py_type: str
+      - name: parents
+        cpp: parents
+        py_type: list[Tensor]
+      - name: realized
+        cpp: realized
+        py_type: bool
+      - name: numel
+        cpp: numel
+        py_type: int
+      - name: ndim
+        cpp: rank
+        py_type: int
+    methods:
+      - name: realize
+        binding: ormi::bindings::tensor_realize
+        returns: Tensor
+      - name: numpy
+        binding: ormi::bindings::tensor_numpy
+        returns: Any
+      - name: item
+        binding: ormi::bindings::tensor_item
+        returns: Any
+      - name: is_contiguous
+        cpp: is_contiguous
+        returns: bool
+      - name: astype
+        binding: ormi::core::ops::cast
+        args:
+          - name: dtype
+            py_type: DType
+        returns: Tensor
+      - name: reshape
+        binding: ormi::bindings::tensor_reshape
+        args:
+          - name: shape
+            py_type: Sequence[int]
+        returns: Tensor
+      - name: transpose
+        binding: ormi::bindings::tensor_transpose
+        args:
+          - name: axes
+            py_type: Sequence[int] | None
+            default: py::none()
+            py_default: None
+        returns: Tensor
+      - name: expand
+        binding: ormi::bindings::tensor_expand
+        args:
+          - name: shape
+            py_type: Sequence[int]
+        returns: Tensor
+      - name: sum
+        binding: ormi::bindings::tensor_sum
+        args:
+          - name: axes
+            py_type: Sequence[int] | None
+            default: py::none()
+            py_default: None
+          - name: keepdims
+            py_type: bool
+            default: false
+        returns: Tensor
+      - name: exp
+        binding: ormi::core::ops::exp
+        returns: Tensor
+      - name: log
+        binding: ormi::core::ops::log
+        returns: Tensor
+      - name: sin
+        binding: ormi::core::ops::sin
+        returns: Tensor
+      - name: cos
+        binding: ormi::core::ops::cos
+        returns: Tensor
+      - name: grad
+        expr: >-
+          static_cast<std::vector<std::shared_ptr<ormi::core::Tensor>> (*)(const std::shared_ptr<ormi::core::Tensor>&, const std::vector<std::shared_ptr<ormi::core::Tensor>>&, std::shared_ptr<ormi::core::Tensor>)>(&ormi::core::grad)
+        args:
+          - name: inputs
+            py_type: Sequence[Tensor]
+          - name: seed
+            py_type: Tensor | None
+            default: null
+        returns: list[Tensor]
+      - name: diff
+        binding: ormi::core::diff
+        args:
+          - name: input
+            py_type: Tensor
+          - name: order
+            py_type: int
+            default: 1
+        returns: Tensor
+      - name: __add__
+        binding: ormi::bindings::tensor_add
+        args: [{name: other, py_type: Any}]
+        returns: Tensor
+        is_operator: true
+      - name: __radd__
+        binding: ormi::bindings::tensor_radd
+        args: [{name: other, py_type: Any}]
+        returns: Tensor
+        is_operator: true
+      - name: __sub__
+        binding: ormi::bindings::tensor_sub
+        args: [{name: other, py_type: Any}]
+        returns: Tensor
+        is_operator: true
+      - name: __rsub__
+        binding: ormi::bindings::tensor_rsub
+        args: [{name: other, py_type: Any}]
+        returns: Tensor
+        is_operator: true
+      - name: __mul__
+        binding: ormi::bindings::tensor_mul
+        args: [{name: other, py_type: Any}]
+        returns: Tensor
+        is_operator: true
+      - name: __rmul__
+        binding: ormi::bindings::tensor_rmul
+        args: [{name: other, py_type: Any}]
+        returns: Tensor
+        is_operator: true
+      - name: __truediv__
+        binding: ormi::bindings::tensor_div
+        args: [{name: other, py_type: Any}]
+        returns: Tensor
+        is_operator: true
+      - name: __rtruediv__
+        binding: ormi::bindings::tensor_rdiv
+        args: [{name: other, py_type: Any}]
+        returns: Tensor
+        is_operator: true
+      - name: __matmul__
+        binding: ormi::core::ops::matmul
+        args: [{name: other, py_type: Tensor}]
+        returns: Tensor
+        is_operator: true
+      - name: __neg__
+        binding: ormi::core::ops::neg
+        returns: Tensor
+        is_operator: true
+      - name: __repr__
+        binding: ormi::bindings::tensor_repr
+        returns: str
+
+  - name: Autocast
+    cpp_type: ormi::core::Autocast
+    constructors:
+      - signature: ormi::core::DType
+        args:
+          - name: dtype
+            py_type: DType
+            default: ormi::core::DType::float16
+            py_default: DType.float16
+
+functions:
+  - python: tensor
+    binding: ormi::bindings::tensor_from_python
+    args:
+      - name: data
+        py_type: Any
+      - name: dtype
+        py_type: DType
+        default: ormi::core::DType::float32
+        py_default: DType.float32
+      - name: device
+        py_type: Device | str | None
+        default: py::str("cpu")
+        py_default: "'cpu'"
+    returns: Tensor
+  - python: cpu
+    namespace: ormi::core::Device
+    cpp: cpu
+    returns: Device
+  - python: cuda
+    namespace: ormi::core::Device
+    cpp: cuda
+    args:
+      - name: index
+        py_type: int
+        default: 0
+    returns: Device
+  - python: synchronize
+    binding: ormi::bindings::synchronize
+    args: [{name: device, py_type: Device}]
+    returns: None
+  - python: dtype_size
+    namespace: ormi::core
+    cpp: dtype_size
+    args: [{name: dtype, py_type: DType}]
+    returns: int
+  - python: dtype_name
+    namespace: ormi::core
+    cpp: to_string
+    args: [{name: dtype, py_type: DType}]
+    returns: str
+  - python: grad
+    expr: >-
+      static_cast<std::vector<std::shared_ptr<ormi::core::Tensor>> (*)(const std::shared_ptr<ormi::core::Tensor>&, const std::vector<std::shared_ptr<ormi::core::Tensor>>&, std::shared_ptr<ormi::core::Tensor>)>(&ormi::core::grad)
+    args:
+      - name: output
+        py_type: Tensor
+      - name: inputs
+        py_type: Sequence[Tensor]
+      - name: seed
+        py_type: Tensor | None
+        default: null
+    returns: list[Tensor]
+  - python: diff
+    binding: ormi::core::diff
+    args:
+      - name: output
+        py_type: Tensor
+      - name: input
+        py_type: Tensor
+      - name: order
+        py_type: int
+        default: 1
+    returns: Tensor

@@ -1,0 +1,194 @@
+name: C++ Runtime
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/runtime.yml"
+      - "ormi-core/CMakeLists.txt"
+      - "ormi-core/CMakePresets.json"
+      - "ormi-core/csrc/**"
+  pull_request:
+    paths:
+      - ".github/workflows/runtime.yml"
+      - "ormi-core/CMakeLists.txt"
+      - "ormi-core/CMakePresets.json"
+      - "ormi-core/csrc/**"
+  workflow_dispatch:
+
+concurrency:
+  group: runtime-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: GCC 13
+            package: g++-13
+            cxx: g++-13
+            jit_id: gcc
+          - name: Clang 18
+            package: clang-18
+            cxx: clang++-18
+            jit_id: clang
+    defaults:
+      run:
+        working-directory: ormi-core
+    env:
+      ORMI_CPU_JIT_CXX: ${{ matrix.cxx }}
+      ORMI_CPU_JIT_CXX_ID: ${{ matrix.jit_id }}
+      ORMI_CPU_JIT_CACHE_DIR: ${{ github.workspace }}/ormi-core/build-ci/jit-cache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ninja-build ${{ matrix.package }}
+
+      - name: Report toolchain
+        run: |
+          cmake --version
+          ninja --version
+          ${{ matrix.cxx }} --version
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build-ci -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+          -DORMI_ENABLE_CUDA=OFF
+          -DORMI_ENABLE_OPENBLAS=OFF
+          -DORMI_BUILD_TESTS=ON
+          -DORMI_BUILD_BENCHMARKS=OFF
+          -DORMI_BUILD_EXAMPLES=ON
+
+      - name: Build
+        run: cmake --build build-ci --parallel
+
+      - name: Test
+        run: |
+          ulimit -c 0
+          ctest --test-dir build-ci --output-on-failure --no-tests=error
+
+  windows-msvc:
+    name: Windows ${{ matrix.name }}
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: MSVC
+            cxx: cl
+            jit_id: msvc
+          - name: clang-cl
+            cxx: clang-cl
+            jit_id: clang-cl
+    defaults:
+      run:
+        working-directory: ormi-core
+    env:
+      ORMI_CPU_JIT_CXX: ${{ matrix.cxx }}
+      ORMI_CPU_JIT_CXX_ID: ${{ matrix.jit_id }}
+      ORMI_CPU_JIT_CACHE_DIR: ${{ github.workspace }}/ormi-core/build-ci/jit-cache
+      VSCMD_SKIP_SENDTELEMETRY: 1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Visual Studio environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Add LLVM to PATH
+        if: matrix.jit_id == 'clang-cl'
+        shell: pwsh
+        run: '"C:\Program Files\LLVM\bin" | Out-File $env:GITHUB_PATH -Append'
+
+      - name: Report toolchain
+        shell: pwsh
+        run: |
+          cmake --version
+          ninja --version
+          $compiler = Get-Command ${{ matrix.cxx }} -ErrorAction Stop
+          $compiler.Source
+          if ('${{ matrix.jit_id }}' -eq 'clang-cl') {
+            & $compiler.Source --version
+          } else {
+            Get-Item $compiler.Source | Select-Object -ExpandProperty VersionInfo |
+              Select-Object ProductVersion, FileVersion
+          }
+
+      - name: Configure
+        shell: pwsh
+        run: >-
+          cmake -S . -B build-ci -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+          -DORMI_ENABLE_CUDA=OFF
+          -DORMI_ENABLE_OPENBLAS=OFF
+          -DORMI_BUILD_TESTS=ON
+          -DORMI_BUILD_BENCHMARKS=OFF
+          -DORMI_BUILD_EXAMPLES=ON
+
+      - name: Build
+        run: cmake --build build-ci --parallel
+
+      - name: Test
+        run: ctest --test-dir build-ci --output-on-failure --no-tests=error
+
+  windows-gcc:
+    name: Windows GCC UCRT64
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: msys2 {0}
+        working-directory: ormi-core
+    env:
+      ORMI_CPU_JIT_CXX: g++.exe
+      ORMI_CPU_JIT_CXX_ID: gcc
+      ORMI_CPU_JIT_CACHE_DIR: ${{ github.workspace }}/ormi-core/build-ci/jit-cache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup UCRT64 toolchain
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-ninja
+
+      - name: Report toolchain
+        run: |
+          cmake --version
+          ninja --version
+          g++ --version
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build-ci -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_COMPILER=g++
+          -DORMI_ENABLE_CUDA=OFF
+          -DORMI_ENABLE_OPENBLAS=OFF
+          -DORMI_BUILD_TESTS=ON
+          -DORMI_BUILD_BENCHMARKS=OFF
+          -DORMI_BUILD_EXAMPLES=ON
+
+      - name: Build
+        run: cmake --build build-ci --parallel
+
+      - name: Test
+        run: ctest --test-dir build-ci --output-on-failure --no-tests=error

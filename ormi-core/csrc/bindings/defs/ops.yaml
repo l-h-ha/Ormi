@@ -1,0 +1,84 @@
+includes:
+  - bindings/glue.h
+  - ormi/core/ops/cast.h
+  - ormi/core/ops/creation.h
+  - ormi/core/ops/linalg.h
+  - ormi/core/ops/pointwise.h
+  - ormi/core/ops/reduction.h
+  - ormi/core/tensor.h
+
+functions:
+  - python: full
+    module: ops
+    binding: ormi::bindings::full
+    args:
+      - {name: shape, py_type: "Sequence[int]"}
+      - {name: value, py_type: Any}
+      - name: dtype
+        py_type: DType
+        default: ormi::core::DType::float32
+        py_default: DType.float32
+      - name: device
+        py_type: Device | str | None
+        default: py::str("cpu")
+        py_default: "'cpu'"
+    returns: Tensor
+  - python: zeros
+    module: ops
+    binding: ormi::bindings::zeros
+    args:
+      - {name: shape, py_type: "Sequence[int]"}
+      - name: dtype
+        py_type: DType
+        default: ormi::core::DType::float32
+        py_default: DType.float32
+      - name: device
+        py_type: Device | str | None
+        default: py::str("cpu")
+        py_default: "'cpu'"
+    returns: Tensor
+  - python: ones
+    module: ops
+    binding: ormi::bindings::ones
+    args:
+      - {name: shape, py_type: "Sequence[int]"}
+      - name: dtype
+        py_type: DType
+        default: ormi::core::DType::float32
+        py_default: DType.float32
+      - name: device
+        py_type: Device | str | None
+        default: py::str("cpu")
+        py_default: "'cpu'"
+    returns: Tensor
+  - {python: zeros_like, module: ops, namespace: ormi::core::ops, cpp: zeros_like, args: [{name: input, py_type: Tensor}], returns: Tensor}
+  - {python: ones_like, module: ops, namespace: ormi::core::ops, cpp: ones_like, args: [{name: input, py_type: Tensor}], returns: Tensor}
+  - {python: add, module: ops, binding: ormi::bindings::tensor_add, args: [{name: lhs, py_type: Tensor}, {name: rhs, py_type: Any}], returns: Tensor}
+  - {python: sub, module: ops, binding: ormi::bindings::tensor_sub, args: [{name: lhs, py_type: Tensor}, {name: rhs, py_type: Any}], returns: Tensor}
+  - {python: mul, module: ops, binding: ormi::bindings::tensor_mul, args: [{name: lhs, py_type: Tensor}, {name: rhs, py_type: Any}], returns: Tensor}
+  - {python: div, module: ops, binding: ormi::bindings::tensor_div, args: [{name: lhs, py_type: Tensor}, {name: rhs, py_type: Any}], returns: Tensor}
+  - {python: neg, module: ops, namespace: ormi::core::ops, cpp: neg, args: [{name: input, py_type: Tensor}], returns: Tensor}
+  - {python: exp, module: ops, namespace: ormi::core::ops, cpp: exp, args: [{name: input, py_type: Tensor}], returns: Tensor}
+  - {python: log, module: ops, namespace: ormi::core::ops, cpp: log, args: [{name: input, py_type: Tensor}], returns: Tensor}
+  - {python: sin, module: ops, namespace: ormi::core::ops, cpp: sin, args: [{name: input, py_type: Tensor}], returns: Tensor}
+  - {python: cos, module: ops, namespace: ormi::core::ops, cpp: cos, args: [{name: input, py_type: Tensor}], returns: Tensor}
+  - {python: matmul, module: ops, namespace: ormi::core::ops, cpp: matmul, args: [{name: lhs, py_type: Tensor}, {name: rhs, py_type: Tensor}], returns: Tensor}
+  - python: sum
+    module: ops
+    binding: ormi::bindings::tensor_sum
+    args:
+      - {name: input, py_type: Tensor}
+      - {name: axes, py_type: "Sequence[int] | None", default: py::none(), py_default: None}
+      - {name: keepdims, py_type: bool, default: false}
+    returns: Tensor
+  - {python: all_finite, module: ops, namespace: ormi::core::ops, cpp: all_finite, args: [{name: input, py_type: Tensor}], returns: Tensor}
+  - {python: reshape, module: ops, binding: ormi::bindings::tensor_reshape, args: [{name: input, py_type: Tensor}, {name: shape, py_type: "Sequence[int]"}], returns: Tensor}
+  - python: transpose
+    module: ops
+    binding: ormi::bindings::tensor_transpose
+    args:
+      - {name: input, py_type: Tensor}
+      - {name: axes, py_type: "Sequence[int] | None", default: py::none(), py_default: None}
+    returns: Tensor
+  - {python: expand, module: ops, binding: ormi::bindings::tensor_expand, args: [{name: input, py_type: Tensor}, {name: shape, py_type: "Sequence[int]"}], returns: Tensor}
+  - {python: cast, module: ops, namespace: ormi::core::ops, cpp: cast, args: [{name: input, py_type: Tensor}, {name: dtype, py_type: DType}], returns: Tensor}

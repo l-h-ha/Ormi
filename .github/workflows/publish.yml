@@ -6,8 +6,25 @@ on:
       - 'ormi-core-v*'
 
 jobs:
+  validate_release:
+    name: Validate release tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Match tag to package version
+        shell: bash
+        run: |
+          version="$(python -c 'import tomllib; print(tomllib.load(open("ormi-core/pyproject.toml", "rb"))["project"]["version"])')"
+          expected="ormi-core-v${version}"
+          if [[ "${GITHUB_REF_NAME}" != "${expected}" ]]; then
+            echo "::error::Release tag ${GITHUB_REF_NAME} does not match ${expected}."
+            exit 1
+          fi
+
   build_wheels:
     name: Build wheels on ${{ matrix.os }}
+    needs: validate_release
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -28,11 +45,19 @@ jobs:
         uses: Jimver/cuda-toolkit@v0.2.16
         with:
           cuda: '12.4.0'
+
+      - name: Install pinned C++ dependencies (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: >-
+          C:\vcpkg\vcpkg.exe install
+          --x-manifest-root=${{ github.workspace }}\ormi-core
+          --triplet=x64-windows
           
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.22.0
         env:
-          CIBW_PROJECT_REQUIRES_PYTHON: ">=3.10"
+          CIBW_PROJECT_REQUIRES_PYTHON: ">=3.10,<3.14"
         with:
           package-dir: ormi-core
 
@@ -43,6 +68,7 @@ jobs:
 
   build_sdist:
     name: Build source distribution
+    needs: validate_release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -81,6 +107,7 @@ jobs:
         with:
           files: dist/*
           fail_on_unmatched_files: true
+          prerelease: true
 
       - name: Generate Index
         env:
@@ -94,7 +121,7 @@ jobs:
           
           echo "<!DOCTYPE html><html><body>" > pypi_server/whl/ormi-core/index.html
           
-          gh release list --repo ${{ github.repository }} --limit 100 | awk '{print $1}' | while read tag; do
+          gh release list --repo ${{ github.repository }} --limit 100 --json tagName --jq '.[].tagName' | while read tag; do
             if [ -n "$tag" ]; then
               gh release view "$tag" --repo ${{ github.repository }} --json assets --jq '.assets[] | "<a href=\"" + .url + "\">" + .name + "</a><br>"' >> pypi_server/whl/ormi-core/index.html
             fi

@@ -1,36 +1,66 @@
-#include <algorithm>
-#include <cctype>
-#include <magic_enum.hpp>
+#include <ormi/core/dtype.h>
 
-#include "core/dtype.h"
-#include "core/error.h"
+#include <ormi/core/error.h>
 
-namespace ormi {
-    std::string to_string(DType type) {
-        auto name = magic_enum::enum_name(type);
-        if (name.empty()) {
-            ORMI_THROW(DTypeError, "Unrecognized DType");
+namespace ormi::core {
+    std::string_view to_string(DType dtype) {
+        switch (dtype) {
+            case DType::float64:
+                return "float64";
+            case DType::float32:
+                return "float32";
+            case DType::float16:
+                return "float16";
+            case DType::int32:
+                return "int32";
+            case DType::boolean:
+                return "bool";
         }
 
-        // ex. "Float32" -> "float32"
-        std::string t(name);
-        std::transform(t.begin(), t.end(), t.begin(), 
-                       [](unsigned char c){ return std::tolower(c); });
-        
-        return t;
-    }
-    
-    size_t dtype_size(DType type) {
-        switch (type) {
-            case DType::Float32: return 4;
-            case DType::Float16: return 2;
-            case DType::Int32:   return 4;
-            case DType::Bool:    return 1;
-            default: ORMI_THROW(DTypeError, "Unknown DType size mapping requested.");
-        }
+        ORMI_THROW(DTypeError, "Unknown dtype.");
     }
 
-    std::ostream& operator<<(std::ostream& os, DType type) {
-        return os << to_string(type);
+    std::size_t dtype_size(DType dtype) {
+        switch (dtype) {
+            case DType::float64:
+                return 8;
+            case DType::float32:
+                return 4;
+            case DType::float16:
+                return 2;
+            case DType::int32:
+                return 4;
+            case DType::boolean:
+                return 1;
+        }
+
+        ORMI_THROW(DTypeError, "Unknown dtype size.");
+    }
+
+    DType promote(DType lhs, DType rhs) {
+        if (!is_numeric(lhs) || !is_numeric(rhs)) {
+            ORMI_THROW(DTypeError, "Dtype promotion requires numeric dtypes.");
+        }
+
+        if (lhs == rhs) {
+            return lhs;
+        }
+
+        if (is_integer(lhs) || is_integer(rhs)) {
+            ORMI_THROW(
+                DTypeError,
+                "Implicit promotion between integer and floating-point dtypes is not supported."
+            );
+        }
+
+        if (lhs == DType::float64 || rhs == DType::float64) {
+            return DType::float64;
+        }
+
+        return DType::float32;
+    }
+
+    std::ostream& operator<<(std::ostream& os, DType dtype) {
+        return os << to_string(dtype);
     }
 }

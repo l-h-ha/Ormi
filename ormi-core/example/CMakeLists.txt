@@ -1,7 +1,3 @@
-add_executable(example
-    benchmark.cpp
-    example_1.cpp
-    benchmark_2.cpp
-)
-
-target_link_libraries(example PRIVATE ormi_engine)
+add_executable(ormi_example example.cpp)
+target_link_libraries(ormi_example PRIVATE ormi::core)
+ormi_stage_runtime(ormi_example)

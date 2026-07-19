@@ -1,0 +1,17 @@
+includes:
+  - pybind11/stl/filesystem.h
+  - ormi/core/jit.h
+
+classes:
+  - name: CacheInfo
+    module: jit
+    cpp_type: ormi::core::jit::CacheInfo
+    fields_readonly:
+      - {name: path, cpp: path, py_type: Any}
+      - {name: entries, cpp: entries, py_type: int}
+      - {name: bytes, cpp: bytes, py_type: int}
+      - {name: limit, cpp: limit, py_type: int}
+
+functions:
+  - {python: info, module: jit, namespace: ormi::core::jit, cpp: info, returns: CacheInfo}
+  - {python: clear, module: jit, namespace: ormi::core::jit, cpp: clear, returns: CacheInfo}

@@ -1,110 +1,185 @@
+#include <cmath>
+#include <memory>
+
 #include <gtest/gtest.h>
 
-#include <memory>
-#include <vector>
+#include <ormi/core/attrs.h>
+#include <ormi/core/autograd.h>
+#include <ormi/core/device.h>
+#include <ormi/core/dtype.h>
+#include <ormi/core/error.h>
+#include <ormi/core/float16.h>
+#include <ormi/core/ops/cast.h>
+#include <ormi/core/ops/pointwise.h>
+#include <ormi/core/ops/view.h>
+#include <ormi/core/optim/sgd.h>
+#include <ormi/core/shape.h>
+#include <ormi/core/tensor.h>
 
-#include "tests/test_utils.h"
-
-#include "core/allocator.h"
-#include "core/buffer.h"
-#include "core/node.h"
-#include "core/optim/sgd.h"
-#include "core/ops/pointwise/add.h"
-
-using namespace ormi;
-using namespace ormi::optim;
-
-class SGDTest : public ormi::testing::HardwareTestSuite {
-protected:
-    std::shared_ptr<Node> make_node(
-        const std::vector<int>& shape,
-        float value,
-        Device dev,
-        bool requires_grad
-    ) {
-        auto buf = full(shape, value, dev, DType::Float32);
-        return std::make_shared<Node>(buf, requires_grad);
+namespace {
+    std::shared_ptr<ormi::core::Tensor> floatTensor(ormi::core::Shape shape) {
+        return std::make_shared<ormi::core::Tensor>(
+            ormi::core::Device::cpu(),
+            std::move(shape),
+            ormi::core::DType::float32
+        );
     }
 
-    void expect_all_value(const std::shared_ptr<Node>& node, float expected) {
-        ASSERT_TRUE(node);
-        ASSERT_TRUE(node->data);
+    TEST(OptimizerTest, constructsOneLazySGDNode) {
+        const auto parameter = floatTensor({3});
+        const auto gradient = floatTensor({3});
+        const auto next = ormi::core::optim::sgd(parameter, gradient, 0.1);
 
-        std::vector<float> host(node->data->numel());
-        auto* allocator = get_allocator(node->data->device);
+        EXPECT_FALSE(next->realized());
+        EXPECT_EQ(next->shape(), parameter->shape());
+        EXPECT_EQ(next->dtype(), parameter->dtype());
+        ASSERT_NE(next->op(), nullptr);
+        EXPECT_EQ(next->op()->name, "sgd");
+        ASSERT_EQ(next->parents().size(), 2u);
+        EXPECT_EQ(next->parents()[0], parameter);
+        EXPECT_EQ(next->parents()[1], gradient);
+        EXPECT_DOUBLE_EQ(std::get<ormi::core::SGD>(next->attrs()).step_size, 0.1);
+    }
 
-        allocator->copy_device_to_host(
-            host.data(),
-            node->data->ptr,
-            node->data->bytes
+    TEST(OptimizerTest, zeroLearningRateReturnsParameter) {
+        const auto parameter = floatTensor({1});
+        const auto gradient = floatTensor({1});
+
+        EXPECT_EQ(ormi::core::optim::sgd(parameter, gradient, 0.0), parameter);
+    }
+
+    TEST(CPUOptimizerTest, realizesWithoutMutatingParameter) {
+        const auto parameter = floatTensor({3});
+        const auto gradient = floatTensor({3});
+        auto* parameter_data = static_cast<float*>(parameter->data());
+        auto* gradient_data = static_cast<float*>(gradient->data());
+        parameter_data[0] = 1.0f;
+        parameter_data[1] = 2.0f;
+        parameter_data[2] = 3.0f;
+        gradient_data[0] = 0.5f;
+        gradient_data[1] = 1.0f;
+        gradient_data[2] = -2.0f;
+
+        const auto next = ormi::core::optim::sgd(parameter, gradient, 0.1);
+        const auto* next_data = static_cast<const float*>(next->data());
+
+        EXPECT_FLOAT_EQ(next_data[0], 0.95f);
+        EXPECT_FLOAT_EQ(next_data[1], 1.9f);
+        EXPECT_FLOAT_EQ(next_data[2], 3.2f);
+        EXPECT_FLOAT_EQ(parameter_data[0], 1.0f);
+        EXPECT_FLOAT_EQ(parameter_data[1], 2.0f);
+        EXPECT_FLOAT_EQ(parameter_data[2], 3.0f);
+    }
+
+    TEST(CPUOptimizerTest, supportsFloat64AndFloat16) {
+        const auto parameter64 = std::make_shared<ormi::core::Tensor>(
+            ormi::core::Device::cpu(), ormi::core::Shape{1}, ormi::core::DType::float64
+        );
+        const auto gradient64 = std::make_shared<ormi::core::Tensor>(
+            ormi::core::Device::cpu(), ormi::core::Shape{1}, ormi::core::DType::float64
+        );
+        *static_cast<double*>(parameter64->data()) = 2.0;
+        *static_cast<double*>(gradient64->data()) = 0.25;
+
+        const auto parameter16 = std::make_shared<ormi::core::Tensor>(
+            ormi::core::Device::cpu(), ormi::core::Shape{1}, ormi::core::DType::float16
+        );
+        const auto gradient16 = std::make_shared<ormi::core::Tensor>(
+            ormi::core::Device::cpu(), ormi::core::Shape{1}, ormi::core::DType::float16
+        );
+        *static_cast<ormi::core::Float16*>(parameter16->data()) = ormi::core::Float16(2.0f);
+        *static_cast<ormi::core::Float16*>(gradient16->data()) = ormi::core::Float16(0.25f);
+
+        const auto next64 = ormi::core::optim::sgd(parameter64, gradient64, 0.5);
+        const auto next16 = ormi::core::optim::sgd(parameter16, gradient16, 0.5);
+
+        EXPECT_DOUBLE_EQ(*static_cast<const double*>(next64->data()), 1.875);
+        EXPECT_FLOAT_EQ(
+            static_cast<float>(*static_cast<const ormi::core::Float16*>(next16->data())),
+            1.875f
+        );
+    }
+
+    TEST(CPUOptimizerTest, readsTransposedParameterAndGradient) {
+        const auto parameter = floatTensor({2, 2});
+        const auto gradient = floatTensor({2, 2});
+        auto* parameter_data = static_cast<float*>(parameter->data());
+        auto* gradient_data = static_cast<float*>(gradient->data());
+
+        for (std::size_t i = 0; i < 4; ++i) {
+            parameter_data[i] = static_cast<float>(i + 1);
+            gradient_data[i] = static_cast<float>((i + 1) * 10);
+        }
+
+        const auto parameter_view = ormi::core::ops::transpose(parameter, {1, 0});
+        const auto gradient_view = ormi::core::ops::transpose(gradient, {1, 0});
+        const auto next = ormi::core::optim::sgd(parameter_view, gradient_view, 0.01);
+        const auto* data = static_cast<const float*>(next->data());
+
+        EXPECT_FLOAT_EQ(data[0], 0.9f);
+        EXPECT_FLOAT_EQ(data[1], 2.7f);
+        EXPECT_FLOAT_EQ(data[2], 1.8f);
+        EXPECT_FLOAT_EQ(data[3], 3.6f);
+    }
+
+    TEST(CPUOptimizerTest, updatesFloat32MasterFromFloat16Computation) {
+        const auto parameter = floatTensor({});
+        *static_cast<float*>(parameter->data()) = 3.0f;
+        const auto half = ormi::core::ops::cast(parameter, ormi::core::DType::float16);
+        const auto output = ormi::core::ops::mul(half, half);
+        const auto gradient = ormi::core::grad(output, parameter);
+        const auto next = ormi::core::optim::sgd(parameter, gradient, 0.1);
+
+        EXPECT_EQ(gradient->dtype(), ormi::core::DType::float32);
+        EXPECT_FLOAT_EQ(*static_cast<const float*>(next->data()), 2.4f);
+        EXPECT_FLOAT_EQ(*static_cast<const float*>(parameter->data()), 3.0f);
+    }
+
+    TEST(OptimizerTest, rejectsInvalidInputs) {
+        const auto parameter = floatTensor({2});
+        const auto wrong_shape = floatTensor({3});
+        const auto wrong_dtype = std::make_shared<ormi::core::Tensor>(
+            ormi::core::Device::cpu(), ormi::core::Shape{2}, ormi::core::DType::float64
+        );
+        const auto integers = std::make_shared<ormi::core::Tensor>(
+            ormi::core::Device::cpu(), ormi::core::Shape{2}, ormi::core::DType::int32
         );
 
-        for (float value : host) {
-            EXPECT_FLOAT_EQ(value, expected);
-        }
+        EXPECT_THROW((void)ormi::core::optim::sgd(nullptr, parameter, 0.1), ormi::OperationError);
+        EXPECT_THROW((void)ormi::core::optim::sgd(parameter, nullptr, 0.1), ormi::OperationError);
+        EXPECT_THROW((void)ormi::core::optim::sgd(parameter, parameter, -0.1), ormi::OperationError);
+        EXPECT_THROW(
+            (void)ormi::core::optim::sgd(parameter, parameter, std::nan("")),
+            ormi::OperationError
+        );
+        EXPECT_THROW(
+            (void)ormi::core::optim::sgd(parameter, parameter, 0.1, 0.0),
+            ormi::OperationError
+        );
+        EXPECT_THROW(
+            (void)ormi::core::optim::sgd(parameter, parameter, 0.1, std::nan("")),
+            ormi::OperationError
+        );
+        EXPECT_THROW(
+            (void)ormi::core::optim::sgd(parameter, parameter, 1.0, 1e-320),
+            ormi::OperationError
+        );
+        EXPECT_THROW((void)ormi::core::optim::sgd(parameter, wrong_shape, 0.1), ormi::ShapeError);
+        EXPECT_THROW((void)ormi::core::optim::sgd(parameter, wrong_dtype, 0.1), ormi::DTypeError);
+        EXPECT_THROW((void)ormi::core::optim::sgd(integers, integers, 0.1), ormi::DTypeError);
     }
-};
 
-TEST_F(SGDTest, MathematicalStepExecution) {
-    float initial_weight = 2.0f;
-    float gradient_value = 0.5f;
-    float learning_rate = 0.1f;
+    TEST(OptimizerTest, startsANewDifferentiableIteration) {
+        const auto parameter = floatTensor({});
+        const auto gradient = floatTensor({});
+        *static_cast<float*>(parameter->data()) = 2.0f;
+        *static_cast<float*>(gradient->data()) = 1.0f;
+        const auto next = ormi::core::optim::sgd(parameter, gradient, 0.1);
+        const auto next_loss = ormi::core::ops::mul(next, next);
+        const auto next_gradient = ormi::core::grad(next_loss, next);
+        const auto old_gradient = ormi::core::grad(next, parameter);
 
-    float expected_weight = 1.95f;
-
-    for (auto dev : available_devices) {
-        auto p1 = make_node({2, 2}, initial_weight, dev, true);
-        auto p2 = make_node({4}, initial_weight, dev, true);
-
-        auto g1 = make_node({2, 2}, gradient_value, dev, false);
-        auto g2 = make_node({4}, gradient_value, dev, false);
-
-        SGD optimizer({
-            {p1, g1},
-            {p2, g2}
-        }, learning_rate);
-
-        optimizer.step();
-
-        expect_all_value(p1, expected_weight);
-        expect_all_value(p2, expected_weight);
+        EXPECT_FLOAT_EQ(*static_cast<const float*>(next_gradient->data()), 3.8f);
+        EXPECT_FLOAT_EQ(*static_cast<const float*>(old_gradient->data()), 0.0f);
     }
-}
-
-TEST_F(SGDTest, SkipMissingOrUnrealizedGradients) {
-    float initial_weight = 3.14f;
-
-    for (auto dev : available_devices) {
-        auto p_no_grad = make_node({2}, initial_weight, dev, true);
-
-        auto p_unrealized_grad = make_node({2}, initial_weight, dev, true);
-        auto grad_input = make_node({2}, 1.0f, dev, false);
-        auto unrealized_grad = ops::add(grad_input, grad_input);
-
-        SGD optimizer({
-            {p_no_grad, nullptr},
-            {p_unrealized_grad, unrealized_grad}
-        }, 0.1f);
-
-        EXPECT_NO_THROW(optimizer.step());
-
-        expect_all_value(p_no_grad, initial_weight);
-        expect_all_value(p_unrealized_grad, initial_weight);
-    }
-}
-
-TEST_F(SGDTest, UnsupportedDeviceThrowsDeviceError) {
-    auto p = make_node({1}, 1.0f, Device::cpu(), true);
-    auto g = make_node({1}, 1.0f, Device::cpu(), false);
-
-    Device corrupted_device = Device::cpu();
-    corrupted_device.type = static_cast<DeviceEnum>(999);
-
-    p->device = corrupted_device;
-
-    SGD optimizer({
-        {p, g}
-    }, 0.01f);
-
-    EXPECT_THROW(optimizer.step(), ormi::DeviceError);
 }

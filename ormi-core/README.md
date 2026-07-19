@@ -1,148 +1,122 @@
 # ormi-core
 
-A C++ accelerated tensor and autograd engine for Python.
+`ormi-core` is ORMI's lazy tensor, automatic-differentiation, and C++ execution runtime for Python and C++.
 
-`ormi-core` gives you a small Python `Tensor` API backed by native CPU kernels and optional NVIDIA CUDA kernels.
+Version `0.1.0a3` is an alpha release for 64-bit Windows and Linux. CPU is always available. CUDA is an optional backend plugin: importing ORMI and running CPU work do not load CUDA.
 
-## Installation
-
-Most users should install the published wheel:
+## Install
 
 ```bash
 pip install ormi-core --extra-index-url https://l-h-ha.github.io/Ormi/whl/
 ```
 
-## What Works
+Published `0.1.0a3` wheels contain the Python extension, `ormi_core`, OpenBLAS `0.3.33`, and the CUDA `12.4` backend and redistributable runtime libraries. The CUDA plugin is loaded only when a CUDA device is requested.
 
-| Platform | Status |
+## Python API
+
+```python
+import ormi_core as oc
+
+x = oc.Tensor([1.0, 2.0, 3.0])
+y = (x * x + 1.0).sum()
+dx = oc.grad(y, [x])[0]
+
+print(y.numpy())
+print(dx.numpy())
+```
+
+The alpha surface includes:
+
+- `Tensor`, `Device`, and `DType` with Float64, Float32, Float16, Int32, and Bool storage.
+- Lazy creation, pointwise arithmetic, elementary unary operations, casts, views, multi-axis reduction, and all-rank broadcasted matmul.
+- Lazy reverse-mode `grad`, repeated `diff`, and higher-order differentiation.
+- Autocast, functional SGD, and dynamic `GradScaler` support.
+- CPU JIT cache inspection and clearing through `ormi_core.jit`.
+- Generated type stubs for the root module and `ops`, `optim`, and `jit` submodules.
+
+Fractional differentiation is planned but is not part of `0.1.0a3`.
+
+## User Requirements
+
+| Capability | Requirement |
 | --- | --- |
-| Python | Python `>=3.10`; wheels are configured for CPython `3.10`, `3.11`, `3.12`, and `3.13`. |
-| Linux | Published wheels target `x86_64` manylinux `2_28`. |
-| Windows | Published wheels target 64-bit Windows. |
-| macOS / MacBook | No published wheel or CI job yet. CPU source builds may work, but macOS is currently unverified. NVIDIA CUDA is not available on modern macOS. |
-| CPU | Works without CUDA. CPU matmul currently uses OpenBLAS and supports `Float32`. |
-| CUDA | Optional. Release wheels are built with CUDA Toolkit `12.4`; source builds use the CUDA Toolkit found on your machine. CUDA matmul and sum currently support `Float32` and `Float16`. |
+| Python | CPython `3.10`, `3.11`, `3.12`, or `3.13`; NumPy `>=1.24`. |
+| Windows wheel | 64-bit Windows and the Microsoft Visual C++ runtime supplied by supported Windows installations. |
+| Linux wheel | x86-64 Linux with glibc `>=2.28` (`manylinux_2_28`). |
+| CPU execution | No CUDA Toolkit, OpenBLAS installation, or compiler is required for ordinary kernels. OpenBLAS `0.3.33` is bundled in release wheels. |
+| CPU JIT fusion | A supported C++20 compiler is required only when realizing an eligible fused graph that is not already in the persistent cache. Absence is reported at that realization, not at import. |
+| CUDA execution | An NVIDIA CUDA-capable GPU and NVIDIA driver `>=550.54.14` on Linux or `>=551.61` on Windows. The CUDA Toolkit is not required for release wheels. |
 
-Use `device="cpu"`, `device="cuda"`, or `device="cuda:<id>"` in Python. If you leave the device as `None`, ORMI uses CPU.
+The CUDA driver floors above are the CUDA `12.4` GA toolkit-driver versions, not the lower CUDA 12.x minor-compatibility floors. This release uses the conservative full-compatibility requirement.
+
+The release build emits CUDA code for compute capabilities `5.0`, `5.2`, `6.0`, `6.1`, `7.0`, `7.5`, `8.0`, `8.6`, `8.9`, and `9.0`, with forward-compatible PTX for `9.0`. CUDA failures are lazy: a machine without a usable NVIDIA driver can import ORMI and run CPU tensors, but requesting `cuda` raises `DeviceError` or `cudaError`.
+
+### CPU JIT Compiler Resolution
+
+ORMI resolves a compiler once, on the first uncached eligible CPU fusion:
+
+1. If `ORMI_CPU_JIT_CXX` is nonempty, ORMI resolves that executable or path and uses it.
+2. Otherwise Windows probes `cl.exe`, `clang-cl.exe`, `g++.exe`, then `clang++.exe`, followed by Visual Studio discovery outside a developer shell.
+3. Otherwise Linux probes `g++`, `clang++`, then `c++`.
+4. If no usable compiler is found, ORMI raises `jitError` at fused realization. Non-JIT CPU operations remain usable.
+
+`ORMI_CPU_JIT_CXX_ID` optionally declares how ORMI should invoke an override or filters autodetection. Values are case-insensitive: `gcc`, `clang`, `clang-cl`, and `msvc` (`cl` is an alias). This supports compiler launchers and wrappers whose executable names do not identify their command-line syntax.
+
+## Builder Requirements
+
+| Build | Requirement |
+| --- | --- |
+| C++ core | CMake `>=3.18` and a C++20 compiler. |
+| Verified Linux toolchains | GCC `13` and Clang `18` on Ubuntu `24.04`. |
+| Verified Windows toolchains | MSVC from Visual Studio 2022, `clang-cl`, and GCC in MSYS2 UCRT64. |
+| Python extension | CPython `>=3.10`, scikit-build-core `>=0.8`, pybind11 `>=2.11`, and PyYAML `>=6.0`. Isolated `pip` builds install these build dependencies. |
+| Tests | GoogleTest is fetched by CMake when `ORMI_BUILD_TESTS=ON`. |
+| Benchmarks | Google Benchmark is fetched by CMake when `ORMI_BUILD_BENCHMARKS=ON`. |
+| OpenBLAS | Optional. `ORMI_ENABLE_OPENBLAS=ON` requires the exact OpenBLAS `0.3.33` CMake package. Windows release builds pin it through `vcpkg.json`. |
+| CUDA | Optional. `ORMI_ENABLE_CUDA=ON` requires the CUDA Toolkit, NVCC with C++20 support, cuBLAS, CUDA Runtime, CUDA Driver import library, and NVRTC. Published wheels use Toolkit `12.4`. |
+| Network | Required on the first dependency-fetching configure, and for isolated Python build dependencies. |
+
+Windows and Linux are the only implemented platform adapters. Core tensors and operations contain no operating-system branches; a new platform requires one process/filesystem/shared-library adapter and one CMake platform selection branch.
 
 ## Build From Source
 
-Build from source if you are developing ORMI, building for a platform without a wheel, or changing the native C++/CUDA code.
-
-### Prerequisites
-
-- Python `>=3.10`.
-- CMake `>=3.18`.
-- A C++23 compiler.
-- Python build helpers: `scikit-build-core`, `pybind11`, and `build`. `pip` installs these automatically for normal package builds, but direct CMake builds still need `pybind11` importable from Python.
-- OpenBLAS and `cblas.h`.
-- Internet access the first time CMake fetches `magic_enum`, and the first time native tests fetch GoogleTest.
-- `g++` on `PATH` if you want to use the CPU JIT at runtime.
-- Optional CUDA support: NVIDIA CUDA Toolkit, NVRTC, cuBLAS, and a compatible NVIDIA driver.
-
-On Windows, the current CI setup uses MSVC, Ninja, and OpenBLAS from vcpkg:
-
-```powershell
-vcpkg install openblas:x64-windows
-```
-
-### Editable Python Build
-
-From the repository root:
+The default C++ build is CPU-only, uses ORMI's direct CPU matmul, and does not build Python:
 
 ```bash
-cd ormi-core
-python -m pip install -U pip
-python -m pip install -e .
+cmake --preset cpu-debug
+cmake --build --preset cpu-debug
+ctest --preset cpu-debug
 ```
 
-On Windows with vcpkg OpenBLAS, set the vcpkg toolchain before installing:
-
-```powershell
-cd ormi-core
-$env:CMAKE_GENERATOR = "Ninja"
-$env:SKBUILD_CMAKE_ARGS = "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
-python -m pip install -U pip ninja
-python -m pip install -e .
-```
-
-### Build A Wheel
+Build the Python package through its isolated PEP 517 configuration:
 
 ```bash
-cd ormi-core
-python -m pip install -U pip build
-python -m build --wheel
-python -m pip install dist/*.whl
+python -m pip install .
 ```
 
-On Windows, use the same `CMAKE_GENERATOR` and `SKBUILD_CMAKE_ARGS` settings shown above before running `python -m build --wheel`.
-
-### Build C++ Tests And Examples
-
-Use this path when you want to run the native test suite:
+Enable optional backends explicitly:
 
 ```bash
-cd ormi-core
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --config Release
-ctest --test-dir build --output-on-failure -C Release
+cmake -S . -B build -DORMI_ENABLE_OPENBLAS=ON -DORMI_ENABLE_CUDA=ON
+cmake --build build --parallel
 ```
 
-On Windows with vcpkg:
+Normal C++ consumers link `ormi::core`. Code that directly consumes the optional CUDA plugin can additionally link `ormi::cuda` when `ORMI_ENABLE_CUDA=ON`.
 
-```powershell
-cd ormi-core
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
-cmake --build build
-ctest --test-dir build --output-on-failure
-```
+## Binding Generation
 
-## CUDA Builds
+The Python API is declared in `csrc/bindings/defs/*.yaml`. CMake runs `csrc/bindings/generate.py` to produce the pybind11 registration unit and `.pyi` files from the same declarations. `glue.cpp` contains only Python/NumPy conversion and ergonomic argument handling that cannot be expressed as direct pybind11 bindings.
 
-If CUDA is not installed, ORMI builds the CPU backend only.
+## Runtime Configuration
 
-If CUDA is installed and CMake can find it, ORMI automatically enables the CUDA backend. The release workflow builds with CUDA Toolkit `12.4`.
-
-CUDA support is implemented in the native C++/CUDA extension.
-
-To point the build at a specific CUDA Toolkit, set `CUDACXX` before building:
-
-```bash
-export CUDACXX=/usr/local/cuda-12.4/bin/nvcc
-python -m pip install -e .
-```
-
-On Windows:
-
-```powershell
-$env:CUDACXX = "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.4/bin/nvcc.exe"
-python -m pip install -e .
-```
-
-`CUDA_PATH` is also used by the runtime CUDA JIT to find CUDA headers. If it is not set, ORMI falls back to `/usr/local/cuda/include`.
-
-## Advanced Configuration
-
-Most users do not need these variables.
-
-| Name | Used for | Default / behavior |
+| Name | Default | Meaning |
 | --- | --- | --- |
-| `ORMI_CPU_JIT_OPT` | CPU JIT optimization | `-O3`; valid values are `-O0`, `-O1`, `-O2`, `-O3`, and `-Ofast`. |
-| `ORMI_CPU_JIT_CACHE_DIR` | CPU JIT cache location | System temp directory under `ormi/cpu_jit`. |
-| `ORMI_CUDA_MEMPOOL_RELEASE_THRESHOLD` | CUDA memory-pool release threshold | `8589934592` bytes, or 8 GiB. Use `0` to release memory aggressively. |
-| `CUDA_PATH` | CUDA runtime JIT header lookup | Falls back to `/usr/local/cuda/include`. |
-| `CUDACXX` | CUDA compiler path | Lets you choose the `nvcc` used by CMake. |
-| `SKBUILD_CMAKE_ARGS` | scikit-build CMake arguments | Useful for passing a vcpkg toolchain file on Windows. |
-| `CMAKE_GENERATOR` | CMake generator selection | Windows wheel builds use `Ninja`. |
-
-## Release Workflow
-
-Release builds run when a tag matching `ormi-core-v*` is pushed. The workflow builds wheels on `ubuntu-latest` and `windows-2022`, builds a source distribution on Ubuntu, creates a GitHub Release, and publishes a simple package index at:
-
-```text
-https://l-h-ha.github.io/Ormi/whl/
-```
+| `ORMI_CPU_JIT_CXX` | unset | Compiler executable name or path override. |
+| `ORMI_CPU_JIT_CXX_ID` | auto | Override syntax: `gcc`, `clang`, `clang-cl`, or `msvc`. |
+| `ORMI_CPU_JIT_TIMEOUT_MS` | `120000` | Compiler deadline in milliseconds; `0` disables the deadline. |
+| `ORMI_CPU_JIT_CACHE_DIR` | platform user cache | Persistent compiled-kernel cache directory. |
+| `ORMI_CPU_JIT_CACHE_MAX_BYTES` | `268435456` | Persistent cache budget; `0` disables automatic eviction. |
 
 ## License
 
-MIT
+MIT. Bundled third-party runtime libraries retain their own licenses.

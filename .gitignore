@@ -9,9 +9,11 @@ __pycache__/
 # Build dir
 /build/
 /ormi-core/build/
+/ormi-core/build-*/
 /ormi/build/
 _skbuild/
 .skbuild-info.json
+_deps/
 
 # CMake build
 CMakeCache.txt
@@ -42,3 +44,10 @@ x64/
 
 # Ormi cache
 .ormi_jit_cache/
+
+# Local runtime notes
+/ormi-core/DEVELOPMENT.md
+/ormi-core/requirements.txt
+
+# Misc
+csrc_old/

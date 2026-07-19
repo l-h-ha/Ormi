@@ -1,0 +1,202 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 18,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "cpu-debug",
+      "displayName": "CPU Debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-csrc-cpu",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "ORMI_ENABLE_CUDA": "OFF",
+        "ORMI_ENABLE_OPENBLAS": "OFF",
+        "ORMI_BUILD_BENCHMARKS": "OFF"
+      }
+    },
+    {
+      "name": "cpu-bench",
+      "displayName": "CPU Release Benchmarks",
+      "inherits": "cpu-debug",
+      "binaryDir": "${sourceDir}/build-csrc-bench",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "ORMI_BUILD_TESTS": "OFF",
+        "ORMI_BUILD_BENCHMARKS": "ON"
+      }
+    },
+    {
+      "name": "cpu-gcc-debug",
+      "displayName": "CPU GCC Debug",
+      "inherits": "cpu-debug",
+      "binaryDir": "${sourceDir}/build-csrc-cpu-gcc",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "g++"
+      }
+    },
+    {
+      "name": "cpu-clang-debug",
+      "displayName": "CPU Clang Debug",
+      "inherits": "cpu-debug",
+      "binaryDir": "${sourceDir}/build-csrc-cpu-clang",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "clang++"
+      }
+    },
+    {
+      "name": "cpu-msvc-debug",
+      "displayName": "CPU MSVC Debug",
+      "generator": "Visual Studio 17 2022",
+      "binaryDir": "${sourceDir}/build-csrc-cpu-msvc",
+      "architecture": "x64",
+      "cacheVariables": {
+        "ORMI_ENABLE_CUDA": "OFF",
+        "ORMI_ENABLE_OPENBLAS": "OFF",
+        "ORMI_BUILD_BENCHMARKS": "OFF"
+      },
+      "environment": {
+        "VSCMD_SKIP_SENDTELEMETRY": "1"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "cpu-clang-cl-debug",
+      "displayName": "CPU clang-cl Debug",
+      "inherits": "cpu-debug",
+      "binaryDir": "${sourceDir}/build-csrc-cpu-clang-cl",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "clang-cl"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "cuda-debug",
+      "displayName": "CUDA Debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-csrc-cuda-proto",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "ORMI_ENABLE_CUDA": "ON",
+        "ORMI_ENABLE_OPENBLAS": "OFF",
+        "ORMI_BUILD_BENCHMARKS": "OFF"
+      }
+    },
+    {
+      "name": "cuda-bench",
+      "displayName": "CUDA Release Benchmarks",
+      "inherits": "cuda-debug",
+      "binaryDir": "${sourceDir}/build-csrc-cuda-bench",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "ORMI_BUILD_TESTS": "OFF",
+        "ORMI_BUILD_BENCHMARKS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "cpu-debug",
+      "displayName": "Build CPU Debug",
+      "configurePreset": "cpu-debug"
+    },
+    {
+      "name": "cpu-bench",
+      "displayName": "Build CPU Release Benchmarks",
+      "configurePreset": "cpu-bench"
+    },
+    {
+      "name": "cpu-gcc-debug",
+      "displayName": "Build CPU GCC Debug",
+      "configurePreset": "cpu-gcc-debug"
+    },
+    {
+      "name": "cpu-clang-debug",
+      "displayName": "Build CPU Clang Debug",
+      "configurePreset": "cpu-clang-debug"
+    },
+    {
+      "name": "cpu-msvc-debug",
+      "displayName": "Build CPU MSVC Debug",
+      "configurePreset": "cpu-msvc-debug",
+      "configuration": "Debug"
+    },
+    {
+      "name": "cpu-clang-cl-debug",
+      "displayName": "Build CPU clang-cl Debug",
+      "configurePreset": "cpu-clang-cl-debug"
+    },
+    {
+      "name": "cuda-debug",
+      "displayName": "Build CUDA Debug",
+      "configurePreset": "cuda-debug"
+    },
+    {
+      "name": "cuda-bench",
+      "displayName": "Build CUDA Release Benchmarks",
+      "configurePreset": "cuda-bench"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "cpu-debug",
+      "displayName": "Test CPU Debug",
+      "configurePreset": "cpu-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "cpu-gcc-debug",
+      "displayName": "Test CPU GCC Debug",
+      "configurePreset": "cpu-gcc-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "cpu-clang-debug",
+      "displayName": "Test CPU Clang Debug",
+      "configurePreset": "cpu-clang-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "cpu-msvc-debug",
+      "displayName": "Test CPU MSVC Debug",
+      "configurePreset": "cpu-msvc-debug",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "cpu-clang-cl-debug",
+      "displayName": "Test CPU clang-cl Debug",
+      "configurePreset": "cpu-clang-cl-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "cuda-debug",
+      "displayName": "Test CUDA Debug",
+      "configurePreset": "cuda-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

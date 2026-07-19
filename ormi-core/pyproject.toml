@@ -1,11 +1,11 @@
 [project]
 name = "ormi-core"
-version = "0.1.0a2"
+version = "0.1.0a3"
 description = "A C++ lazily accelerated tensor/autograd engine."
 readme = "README.md"
 authors = [{ name = "Ha H. Le" }]
 license = { text = "MIT" }
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.14"
 dependencies = [
     "numpy>=1.24.0",
 ]
@@ -16,27 +16,80 @@ build-backend = "scikit_build_core.build"
 
 [tool.scikit-build]
 wheel.packages = ["src/ormi_core"]
+wheel.license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 cmake.build-type = "Release"
+sdist.inclusion-mode = "explicit"
+sdist.include = [
+    "CHANGELOG.md",
+    "CMakeLists.txt",
+    "CMakePresets.json",
+    "LICENSE",
+    "README.md",
+    "THIRD_PARTY_NOTICES.md",
+    "pyproject.toml",
+    "vcpkg.json",
+    "csrc/",
+    "example/",
+    "python-examples/",
+    "src/",
+    "tests/",
+]
+sdist.exclude = [
+    "**/.cmake/",
+    "**/.pytest_cache/",
+    "**/CMakeFiles/",
+    "**/__pycache__/",
+    "**/*.dir/",
+    "**/*.egg-info/",
+    "**/Debug/",
+    "**/Release/",
+    "**/RelWithDebInfo/",
+    "**/MinSizeRel/",
+    "**/CMakeCache.txt",
+    "**/cmake_install.cmake",
+    "**/*.sln",
+    "**/*.vcxproj",
+    "**/*.vcxproj.filters",
+    "**/*.pyd",
+    "**/*.dll",
+    "**/*.lib",
+    "**/*.exp",
+    "**/*.pdb",
+    "**/*.obj",
+    "**/*.pyc",
+]
 
-build-dir = "build"
-editable.mode = "inplace"
+[tool.scikit-build.cmake.define]
+ORMI_BUILD_PYTHON = "ON"
+ORMI_BUILD_TESTS = "OFF"
+ORMI_BUILD_BENCHMARKS = "OFF"
 
 [tool.cibuildwheel]
 build = "cp310-* cp311-* cp312-* cp313-*"
 skip = "*-win32 *-manylinux_i686 *-musllinux*"
 manylinux-x86_64-image = "manylinux_2_28"
+test-requires = ["pytest", "PyYAML>=6.0"]
+test-command = "pytest {package}/tests -q"
+
+[tool.cibuildwheel.config-settings]
+"cmake.define.ORMI_ENABLE_CUDA" = "ON"
+"cmake.define.ORMI_ENABLE_OPENBLAS" = "ON"
+"cmake.define.CMAKE_CUDA_ARCHITECTURES" = "50-real;52-real;60-real;61-real;70-real;75-real;80-real;86-real;89-real;90"
 
 [tool.cibuildwheel.linux]
 before-all = [
-    "dnf install -y dnf-plugins-core epel-release",
+    "dnf install -y dnf-plugins-core epel-release git make perl gcc-toolset-13-gcc gcc-toolset-13-gcc-c++ gcc-toolset-13-gcc-gfortran",
     "dnf config-manager --set-enabled powertools",
     "dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/cuda-rhel8.repo",
     "dnf clean all",
-    "dnf -y install cuda-toolkit-12-4 openblas-devel"
+    "dnf -y install cuda-toolkit-12-4",
+    "git clone --branch v0.3.33 --depth 1 https://github.com/OpenMathLib/OpenBLAS.git /tmp/openblas",
+    "make -C /tmp/openblas -j2 DYNAMIC_ARCH=1 NO_STATIC=1 USE_OPENMP=0",
+    "make -C /tmp/openblas PREFIX=/opt/openblas install"
 ]
-environment = { PATH="/usr/local/cuda-12.4/bin:$PATH", CUDACXX="/usr/local/cuda-12.4/bin/nvcc" }
+environment = { PATH="/opt/rh/gcc-toolset-13/root/usr/bin:/usr/local/cuda-12.4/bin:$PATH", CC="/opt/rh/gcc-toolset-13/root/usr/bin/gcc", CXX="/opt/rh/gcc-toolset-13/root/usr/bin/g++", CUDAHOSTCXX="/opt/rh/gcc-toolset-13/root/usr/bin/g++", CUDACXX="/usr/local/cuda-12.4/bin/nvcc", CMAKE_PREFIX_PATH="/opt/openblas", ORMI_WHEEL_EXPECT_CUDA="1" }
 repair-wheel-command = "auditwheel repair --exclude libcuda.so.1 -w {dest_dir} {wheel}"
 
 [tool.cibuildwheel.windows]
-before-all = "vcpkg install openblas:x64-windows"
-environment = { CMAKE_GENERATOR="Ninja", CUDACXX="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.4/bin/nvcc.exe", SKBUILD_CMAKE_ARGS="-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" }
+environment = { CMAKE_GENERATOR="Ninja", CUDACXX="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.4/bin/nvcc.exe", SKBUILD_CMAKE_ARGS="-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake", ORMI_WHEEL_EXPECT_CUDA="1" }
+repair-wheel-command = "delvewheel repair --ignore-existing --analyze-existing --no-mangle-all --exclude nvcuda.dll --add-path \"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.4/bin;C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.4/bin/x64\" -w {dest_dir} {wheel}"

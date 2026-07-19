@@ -1,0 +1,60 @@
+includes:
+  - ormi/core/optim/grad_scaler.h
+  - ormi/core/optim/sgd.h
+  - ormi/core/tensor.h
+
+classes:
+  - name: ScalePolicy
+    module: optim
+    cpp_type: ormi::core::optim::ScalePolicy
+    constructors:
+      - signature: ""
+    fields_readwrite:
+      - {name: growth, cpp: growth, py_type: float}
+      - {name: backoff, cpp: backoff, py_type: float}
+      - {name: interval, cpp: interval, py_type: int}
+      - {name: limit, cpp: limit, py_type: float}
+
+  - name: GradScaler
+    module: optim
+    cpp_type: ormi::core::optim::GradScaler
+    constructors:
+      - signature: double
+        args: [{name: scale, py_type: float}]
+      - signature: double, ormi::core::optim::ScalePolicy
+        args: [{name: scale, py_type: float}, {name: policy, py_type: ScalePolicy}]
+    properties_readonly:
+      - {name: value, cpp: value, py_type: float}
+    methods:
+      - name: scale
+        cpp: scale
+        args: [{name: loss, py_type: Tensor}]
+        returns: Tensor
+      - name: step
+        cpp: step
+        overload: std::optional<std::shared_ptr<ormi::core::Tensor>> (ormi::core::optim::GradScaler::*)(const std::shared_ptr<ormi::core::Tensor>&, const std::shared_ptr<ormi::core::Tensor>&, double)
+        args:
+          - {name: parameter, py_type: Tensor}
+          - {name: scaled_gradient, py_type: Tensor}
+          - {name: learning_rate, py_type: float}
+        returns: Tensor | None
+      - name: step
+        cpp: step
+        overload: std::optional<std::vector<std::shared_ptr<ormi::core::Tensor>>> (ormi::core::optim::GradScaler::*)(const std::vector<std::shared_ptr<ormi::core::Tensor>>&, const std::vector<std::shared_ptr<ormi::core::Tensor>>&, double)
+        args:
+          - {name: parameters, py_type: "Sequence[Tensor]"}
+          - {name: scaled_gradients, py_type: "Sequence[Tensor]"}
+          - {name: learning_rate, py_type: float}
+        returns: list[Tensor] | None
+
+functions:
+  - python: sgd
+    module: optim
+    namespace: ormi::core::optim
+    cpp: sgd
+    args:
+      - {name: parameter, py_type: Tensor}
+      - {name: gradient, py_type: Tensor}
+      - {name: learning_rate, py_type: float}
+      - {name: gradient_scale, py_type: float, default: 1.0}
+    returns: Tensor

@@ -1,90 +1,137 @@
-#include <stdexcept>
 #include <algorithm>
+#include <limits>
+#include <sstream>
 
-#include "core/shape.h"
-#include "core/node.h"
-#include "core/attributes.h"
-#include "core/registry.h"
+#include <ormi/core/error.h>
+#include <ormi/core/shape.h>
 
-namespace ormi {
-    bool TensorView::is_contiguous() const {
-        int expected_stride = 1;
-        for (int i = shape.size() - 1; i >= 0; --i) {
-            if (strides[i] != expected_stride) return false;
-            expected_stride *= shape[i];
+namespace ormi::core {
+    namespace {
+        void dims_not_neg(std::span<const std::int64_t> dims) {
+            for (const auto dim : dims) {
+                if (dim < 0) {
+                    ORMI_THROW(ShapeError, "Shape dimensions must be non-negative.");
+                }
+            }
         }
-        return true;
     }
 
-    std::vector<int> calc_contiguous_strides(const std::vector<int>& shape) {
-        std::vector<int> strides(shape.size(), 1);
-        for (int i = (int)shape.size() - 2; i >= 0; --i) {
-            strides[i] = strides[i+1] * shape[i+1];
+    Shape::Shape(std::initializer_list<std::int64_t> dims)
+        : dims_(dims) {
+        dims_not_neg(dims_);
+    }
+
+    Shape::Shape(std::vector<std::int64_t> dims)
+        : dims_(std::move(dims)) {
+        dims_not_neg(dims_);
+    }
+
+    std::size_t Shape::rank() const {
+        return dims_.size();
+    }
+
+    std::size_t Shape::numel() const {
+        std::size_t result = 1;
+
+        for (const auto dim : dims_) {
+            const auto unsigned_dim = static_cast<std::size_t>(dim);
+
+            if (unsigned_dim != 0 && result > std::numeric_limits<std::size_t>::max() / unsigned_dim) {
+                ORMI_THROW(ShapeError, "Shape element count overflow.");
+            }
+
+            result *= unsigned_dim;
         }
+
+        return result;
+    }
+
+    bool Shape::scalar() const {
+        return dims_.empty();
+    }
+
+    bool Shape::empty() const {
+        return numel() == 0;
+    }
+
+    std::int64_t Shape::operator[](std::size_t index) const {
+        return dims_.at(index);
+    }
+
+    const std::vector<std::int64_t>& Shape::dims() const {
+        return dims_;
+    }
+
+    std::span<const std::int64_t> Shape::span() const {
+        return dims_;
+    }
+
+    std::vector<std::int64_t> contiguous_strides(const Shape& shape) {
+        std::vector<std::int64_t> strides(shape.rank(), 1);
+
+        for (std::size_t i = shape.rank(); i > 1; --i) {
+            const auto current = i - 2;
+            const auto next = i - 1;
+
+            strides[current] = strides[next] * shape[next];
+        }
+
         return strides;
     }
 
-    std::vector<int> broadcast_shapes(const std::vector<int>& shape_a, const std::vector<int>& shape_b) {
-        std::vector<int> out_shape;
-        int ndim_a = shape_a.size();
-        int ndim_b = shape_b.size();
-        int out_ndim = std::max(ndim_a, ndim_b);
-        out_shape.resize(out_ndim);
+    bool is_contiguous(const Shape& shape, std::span<const std::int64_t> strides) {
+        if (shape.rank() != strides.size()) {
+            return false;
+        }
 
-        for (int i = 0; i < out_ndim; ++i) {
-            int dim_a = (i < out_ndim - ndim_a) ? 1 : shape_a[i - (out_ndim - ndim_a)];
-            int dim_b = (i < out_ndim - ndim_b) ? 1 : shape_b[i - (out_ndim - ndim_b)];
+        std::int64_t expected = 1;
 
-            if (dim_a != dim_b && dim_a != 1 && dim_b != 1) {
-                using ormi::detail::operator<<;
+        for (std::size_t i = shape.rank(); i > 0; --i) {
+            const auto index = i - 1;
 
-                std::ostringstream oss;
-                oss << "Operands could not be broadcast together.\n"
-                    << "  Shape A: " << shape_a << "\n"
-                    << "  Shape B: " << shape_b << "\n"
-                    << "  Mismatch at aligned dimension " << i << " (" << dim_a << " != " << dim_b << ").";
-
-                ORMI_THROW(ormi::ShapeError, oss.str());
+            if (strides[index] != expected) {
+                return false;
             }
-            out_shape[i] = std::max(dim_a, dim_b);
+
+            expected *= shape[index];
         }
-        return out_shape;
+
+        return true;
     }
 
-    std::vector<int> infer_shape(ops::OpEnum op, const std::vector<std::shared_ptr<Node>>& parents, const OpAttributes& attrs) {
-        if (op == ops::OpEnum::LEAF || op == ops::OpEnum::CONST || parents.empty()) {
-            return {};
-        }
-        auto func = Registry<ShapeInferFunc>::get(op);
-        if (!func) {
-            ORMI_THROW(
-              RegistryError,
-              "Unrecognized shape inference registry."
-            );
+    Shape broadcast(const Shape& lhs, const Shape& rhs) {
+        const auto rank = std::max(lhs.rank(), rhs.rank());
+        std::vector<std::int64_t> dims(rank, 1);
+
+        for (std::size_t out = 0; out < rank; ++out) {
+            const auto lhs_offset = rank - lhs.rank();
+            const auto rhs_offset = rank - rhs.rank();
+            const auto lhs_dim = out < lhs_offset ? 1 : lhs[out - lhs_offset];
+            const auto rhs_dim = out < rhs_offset ? 1 : rhs[out - rhs_offset];
+
+            if (lhs_dim != rhs_dim && lhs_dim != 1 && rhs_dim != 1) {
+                std::ostringstream oss;
+                oss << "Shapes cannot broadcast: " << lhs << " and " << rhs << ".";
+                ORMI_THROW(ShapeError, oss.str());
+            }
+
+            dims[out] = lhs_dim == 1 ? rhs_dim : lhs_dim;
         }
 
-        return func(parents, attrs);
+        return Shape(std::move(dims));
     }
 
-    // Generic shape inference
-    std::vector<int> infer_unary_shape(const std::vector<std::shared_ptr<Node>>& parents, const OpAttributes&) {
-        if (parents.size() != 1) {
-            ORMI_THROW(
-                ShapeError,
-                "Expected 1 parent node but got " + std::to_string(parents.size()) + " instead."
-            );
+    std::ostream& operator<<(std::ostream& os, const Shape& shape) {
+        os << "[";
+
+        for (std::size_t i = 0; i < shape.rank(); ++i) {
+            os << shape[i];
+
+            if (i + 1 != shape.rank()) {
+                os << ", ";
+            }
         }
 
-        return parents[0]->view.shape;
-    }
-
-    std::vector<int> infer_binary_shape(const std::vector<std::shared_ptr<Node>>& parents, const OpAttributes&) {
-        if (parents.size() != 2) {
-            ORMI_THROW(
-                ShapeError,
-                "Expected 2 parent nodes but got " + std::to_string(parents.size()) + " instead."
-            );
-        }
-        return broadcast_shapes(parents[0]->view.shape, parents[1]->view.shape);
+        return os << "]";
     }
 }

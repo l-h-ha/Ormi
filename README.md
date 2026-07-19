@@ -4,13 +4,13 @@ ORMI is an early-stage Python tensor and autograd project. It is designed around
 that can be executed, optimized, and accelerated by the backend.
 
 This repository is a `uv` workspace. For now, the only implemented package is
-`ormi-core`: a Python backend library powered by a native C++/CUDA backend.
+`ormi-core`: a Python backend library powered by a C++/CUDA backend.
 The top-level `ormi` package exists in the workspace, but it has not started
 development yet.
 
 ## Packages
 
-- `ormi-core`: 
+- `ormi-core`:
 C++/CUDA tensor and autograd engine with Python bindings.
 - `ormi`: Placeholder package for the future user-facing ORMI API.
 
@@ -24,13 +24,12 @@ This repository is a real `uv` workspace. The root project depends on the
 workspace packages through `[tool.uv.sources]`, so `uv sync` installs `ormi`
 and `ormi-core` from the local checkout.
 
-Because `ormi-core` is a C++/CUDA extension, syncing the full workspace
-may compile `ormi-core`. Install the native prerequisites first:
+Because `ormi-core` contains a compiled extension, syncing the full workspace may
+compile it. The default source build is CPU-only and requires:
 
-- CMake.
-- A C++ compiler.
-- OpenBLAS and `cblas.h`.
-- Optional: NVIDIA CUDA Toolkit for CUDA support.
+- CMake `>=3.18`.
+- A C++20 compiler.
+- CPython `>=3.10`.
 
 Then install the workspace dependencies from the repository root:
 
@@ -41,12 +40,12 @@ uv sync
 This installs the workspace packages in editable mode and prepares the local
 development environment.
 
-On Windows with vcpkg OpenBLAS, use the same build settings as `ormi-core`:
+OpenBLAS and CUDA are explicit optional source-build features. On Windows,
+enable exact OpenBLAS `0.3.33` through the pinned vcpkg manifest with:
 
 ```powershell
-vcpkg install openblas:x64-windows
 $env:CMAKE_GENERATOR = "Ninja"
-$env:SKBUILD_CMAKE_ARGS = "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
+$env:SKBUILD_CMAKE_ARGS = "-DORMI_ENABLE_OPENBLAS=ON;-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
 uv sync
 ```
 
@@ -86,17 +85,17 @@ Right now, `ormi-core` is the package that matters for contributors. The
 
 ## Development
 
-If you wish to contribute, start with:
+If you wish to contribute, start with the checked CPU preset:
 
 ```bash
-cmake -S ormi-core -B ormi-core/build
-cmake --build ormi-core/build
-ctest --test-dir ormi-core/build --output-on-failure
+cd ormi-core
+cmake --preset cpu-debug
+cmake --build --preset cpu-debug
+ctest --preset cpu-debug
 ```
 
-On Windows, run the commands from the Visual Studio Developer PowerShell or
-Developer Command Prompt. CUDA support is enabled when a compatible CUDA toolkit
-is available during CMake configuration.
+CUDA is never enabled just because a GPU or toolkit is present. Configure it
+explicitly with `-DORMI_ENABLE_CUDA=ON` or use the `cuda-debug` preset.
 
 For the full build guide, including CUDA and OpenBLAS details, read:
 
