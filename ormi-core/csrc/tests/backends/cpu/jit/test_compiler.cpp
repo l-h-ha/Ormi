@@ -2,6 +2,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -24,6 +25,26 @@ namespace {
         }
 #endif
     }
+
+    class EnvironmentGuard {
+    public:
+        explicit EnvironmentGuard(const char* name) : name_(name) {
+            if (const char* value = std::getenv(name)) {
+                value_ = value;
+            }
+        }
+
+        ~EnvironmentGuard() {
+            environment(name_, value_ ? value_->c_str() : "");
+        }
+
+        EnvironmentGuard(const EnvironmentGuard&) = delete;
+        EnvironmentGuard& operator=(const EnvironmentGuard&) = delete;
+
+    private:
+        const char* name_;
+        std::optional<std::string> value_;
+    };
 
     TEST(CPUJITCompilerTest, autoDetectsBuilderCompiler) {
         environment("ORMI_CPU_JIT_CXX", "");
@@ -137,6 +158,10 @@ namespace {
 
 #if defined(_WIN32)
     TEST(CPUJITCompilerTest, discoversConfiguredMSVCOutsideDeveloperShell) {
+        const EnvironmentGuard include("INCLUDE");
+        const EnvironmentGuard lib("LIB");
+        environment("INCLUDE", "");
+        environment("LIB", "");
         environment("ORMI_CPU_JIT_CXX", "");
         environment("ORMI_CPU_JIT_CXX_ID", "msvc");
 

@@ -33,10 +33,12 @@ jobs:
         include:
           - name: GCC 13
             package: g++-13
+            cc: gcc-13
             cxx: g++-13
             jit_id: gcc
           - name: Clang 18
             package: clang-18
+            cc: clang-18
             cxx: clang++-18
             jit_id: clang
     defaults:
@@ -65,6 +67,7 @@ jobs:
         run: >-
           cmake -S . -B build-ci -G Ninja
           -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_COMPILER=${{ matrix.cc }}
           -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
           -DORMI_ENABLE_CUDA=OFF
           -DORMI_ENABLE_OPENBLAS=OFF
@@ -88,16 +91,17 @@ jobs:
       matrix:
         include:
           - name: MSVC
+            cc: cl
             cxx: cl
             jit_id: msvc
           - name: clang-cl
+            cc: clang-cl
             cxx: clang-cl
             jit_id: clang-cl
     defaults:
       run:
         working-directory: ormi-core
     env:
-      ORMI_CPU_JIT_CXX: ${{ matrix.cxx }}
       ORMI_CPU_JIT_CXX_ID: ${{ matrix.jit_id }}
       ORMI_CPU_JIT_CACHE_DIR: ${{ github.workspace }}/ormi-core/build-ci/jit-cache
       VSCMD_SKIP_SENDTELEMETRY: 1
@@ -126,12 +130,14 @@ jobs:
             Get-Item $compiler.Source | Select-Object -ExpandProperty VersionInfo |
               Select-Object ProductVersion, FileVersion
           }
+          "ORMI_CPU_JIT_CXX=$($compiler.Source)" | Out-File $env:GITHUB_ENV -Append
 
       - name: Configure
         shell: pwsh
         run: >-
           cmake -S . -B build-ci -G Ninja
           -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_COMPILER=${{ matrix.cc }}
           -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
           -DORMI_ENABLE_CUDA=OFF
           -DORMI_ENABLE_OPENBLAS=OFF
@@ -180,6 +186,7 @@ jobs:
         run: >-
           cmake -S . -B build-ci -G Ninja
           -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_COMPILER=gcc
           -DCMAKE_CXX_COMPILER=g++
           -DORMI_ENABLE_CUDA=OFF
           -DORMI_ENABLE_OPENBLAS=OFF

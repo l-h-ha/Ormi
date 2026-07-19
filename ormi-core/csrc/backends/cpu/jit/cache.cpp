@@ -220,6 +220,21 @@ namespace ormi::backends::cpu::jit::cache {
             std::filesystem::remove(path, ignored);
         }
 
+        void cleanup_staged(const std::filesystem::path& source) {
+            const auto prefix = source.stem().string() + ".";
+            std::error_code error;
+            std::filesystem::directory_iterator iterator(source.parent_path(), error);
+            const std::filesystem::directory_iterator end;
+
+            while (!error && iterator != end) {
+                const auto path = iterator->path();
+                if (path.filename().string().starts_with(prefix)) {
+                    cleanup(path);
+                }
+                iterator.increment(error);
+            }
+        }
+
         std::vector<Entry> scan(std::error_code& error) {
             std::vector<Entry> result;
             std::filesystem::directory_iterator iterator(directory(), error);
@@ -482,8 +497,7 @@ namespace ormi::backends::cpu::jit::cache {
                     (staged_stem + ".cpp");
                 const auto staged_library = paths.library.parent_path() /
                     (staged_stem + std::string(platform::shared_extension()));
-                cleanup(staged_source);
-                cleanup(staged_library);
+                cleanup_staged(staged_source);
 
                 try {
                     write(staged_source, generated);
@@ -496,9 +510,9 @@ namespace ormi::backends::cpu::jit::cache {
                     }
                     replace(staged_library, paths.library);
                     replace(staged_source, paths.source);
+                    cleanup_staged(staged_source);
                 } catch (...) {
-                    cleanup(staged_source);
-                    cleanup(staged_library);
+                    cleanup_staged(staged_source);
                     throw;
                 }
             }
