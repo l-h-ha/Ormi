@@ -78,16 +78,16 @@ test-command = "pytest {package}/tests -q"
 
 [tool.cibuildwheel.linux]
 before-all = [
-    "dnf install -y dnf-plugins-core epel-release git make perl gcc-toolset-13-gcc gcc-toolset-13-gcc-c++ gcc-toolset-13-gcc-gfortran",
+    "dnf install -y dnf-plugins-core epel-release git make perl gcc-toolset-13-gcc gcc-toolset-13-gcc-c++",
     "dnf config-manager --set-enabled powertools",
     "dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/cuda-rhel8.repo",
     "dnf clean all",
     "dnf -y install cuda-toolkit-12-4",
     "git clone --branch v0.3.33 --depth 1 https://github.com/OpenMathLib/OpenBLAS.git /tmp/openblas",
-    "make -C /tmp/openblas -j2 DYNAMIC_ARCH=1 NO_STATIC=1 USE_OPENMP=0 > /tmp/openblas-build.log 2>&1 || { tail -n 200 /tmp/openblas-build.log; exit 1; }",
+    "make -C /tmp/openblas -j\"$(nproc)\" DYNAMIC_ARCH=1 NO_STATIC=1 NO_LAPACK=1 NOFORTRAN=1 USE_OPENMP=0 shared > /tmp/openblas-build.log 2>&1 || { tail -n 200 /tmp/openblas-build.log; exit 1; }",
     "make -C /tmp/openblas PREFIX=/opt/openblas install > /tmp/openblas-install.log 2>&1 || { tail -n 200 /tmp/openblas-install.log; exit 1; }"
 ]
-environment = { PATH="/opt/rh/gcc-toolset-13/root/usr/bin:/usr/local/cuda-12.4/bin:$PATH", CC="/opt/rh/gcc-toolset-13/root/usr/bin/gcc", CXX="/opt/rh/gcc-toolset-13/root/usr/bin/g++", CUDAHOSTCXX="/opt/rh/gcc-toolset-13/root/usr/bin/g++", CUDACXX="/usr/local/cuda-12.4/bin/nvcc", CMAKE_PREFIX_PATH="/opt/openblas", ORMI_WHEEL_EXPECT_CUDA="1" }
+environment = { PATH="/opt/rh/gcc-toolset-13/root/usr/bin:/usr/local/cuda-12.4/bin:$PATH", LD_LIBRARY_PATH="/opt/openblas/lib:$LD_LIBRARY_PATH", CC="/opt/rh/gcc-toolset-13/root/usr/bin/gcc", CXX="/opt/rh/gcc-toolset-13/root/usr/bin/g++", CUDAHOSTCXX="/opt/rh/gcc-toolset-13/root/usr/bin/g++", CUDACXX="/usr/local/cuda-12.4/bin/nvcc", CMAKE_PREFIX_PATH="/opt/openblas", ORMI_WHEEL_EXPECT_CUDA="1" }
 repair-wheel-command = "auditwheel repair --exclude libcuda.so.1 -w {dest_dir} {wheel}"
 
 [tool.cibuildwheel.windows]
