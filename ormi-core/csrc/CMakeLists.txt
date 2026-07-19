@@ -161,6 +161,8 @@ if(ORMI_ENABLE_CUDA)
 
     if(WIN32)
         set_target_properties(ormi_cuda_backend PROPERTIES PREFIX "")
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        set_target_properties(ormi_cuda_backend PROPERTIES INSTALL_RPATH "$ORIGIN")
     endif()
 
     target_compile_features(ormi_cuda_backend PRIVATE cxx_std_20)
