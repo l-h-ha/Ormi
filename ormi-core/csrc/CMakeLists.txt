@@ -63,6 +63,27 @@ option(ORMI_ENABLE_OPENBLAS "Use OpenBLAS for compatible CPU matmul operations."
 
 if(ORMI_ENABLE_OPENBLAS)
     find_package(OpenBLAS 0.3.33 EXACT CONFIG REQUIRED)
+
+    if(TARGET OpenBLAS::OpenBLAS)
+        get_target_property(ORMI_OPENBLAS_IMPORTED OpenBLAS::OpenBLAS IMPORTED)
+        if(ORMI_OPENBLAS_IMPORTED)
+            set_property(TARGET OpenBLAS::OpenBLAS PROPERTY IMPORTED_GLOBAL TRUE)
+        endif()
+        set(ORMI_OPENBLAS_TARGET OpenBLAS::OpenBLAS)
+    elseif(OpenBLAS_LIBRARY OR OpenBLAS_LIBRARIES)
+        set(ORMI_OPENBLAS_LIBRARIES ${OpenBLAS_LIBRARY} ${OpenBLAS_LIBRARIES})
+        list(REMOVE_DUPLICATES ORMI_OPENBLAS_LIBRARIES)
+        add_library(ormi_openblas INTERFACE)
+        target_link_libraries(ormi_openblas INTERFACE ${ORMI_OPENBLAS_LIBRARIES})
+        if(OpenBLAS_INCLUDE_DIRS)
+            target_include_directories(ormi_openblas INTERFACE ${OpenBLAS_INCLUDE_DIRS})
+        elseif(OpenBLAS_INCLUDE_DIR)
+            target_include_directories(ormi_openblas INTERFACE ${OpenBLAS_INCLUDE_DIR})
+        endif()
+        set(ORMI_OPENBLAS_TARGET ormi_openblas)
+    else()
+        message(FATAL_ERROR "The OpenBLAS package did not provide a library target or path.")
+    endif()
 endif()
 
 add_library(ormi_core SHARED ${ORMI_CORE_SRCS})
@@ -86,8 +107,11 @@ target_include_directories(ormi_core PRIVATE
 
 if(ORMI_ENABLE_OPENBLAS)
     target_compile_definitions(ormi_core PRIVATE ORMI_ENABLE_OPENBLAS)
-    target_link_libraries(ormi_core PRIVATE OpenBLAS::OpenBLAS)
+    target_link_libraries(ormi_core PRIVATE ${ORMI_OPENBLAS_TARGET})
     if(WIN32)
+        if(NOT TARGET OpenBLAS::OpenBLAS)
+            message(FATAL_ERROR "The Windows OpenBLAS package must provide OpenBLAS::OpenBLAS.")
+        endif()
         add_custom_command(
             TARGET ormi_core
             POST_BUILD

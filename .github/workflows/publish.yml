@@ -10,7 +10,7 @@ jobs:
     name: Validate release tag
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Match tag to package version
         shell: bash
@@ -32,7 +32,7 @@ jobs:
         os: [ubuntu-latest, windows-2022]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
@@ -55,7 +55,7 @@ jobs:
           --triplet=x64-windows
           
       - name: Build wheels
-        uses: pypa/cibuildwheel@v2.22.0
+        uses: pypa/cibuildwheel@v3.4.1
         env:
           CIBW_PROJECT_REQUIRES_PYTHON: ">=3.10,<3.14"
         with:
@@ -71,7 +71,7 @@ jobs:
     needs: validate_release
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
