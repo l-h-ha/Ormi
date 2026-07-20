@@ -76,6 +76,7 @@ test-requires = ["pytest", "PyYAML>=6.0"]
 test-command = "pytest {package}/tests -q"
 
 [tool.cibuildwheel.config-settings]
+"build-dir" = "build/{wheel_tag}"
 "cmake.define.ORMI_ENABLE_CUDA" = "OFF"
 "cmake.define.ORMI_ENABLE_OPENBLAS" = "ON"
 
