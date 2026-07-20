@@ -1,6 +1,6 @@
 [project]
 name = "ormi-core"
-version = "0.1.0a3"
+version = "0.1.0a4"
 description = "A C++ lazily accelerated tensor/autograd engine."
 readme = "README.md"
 authors = [{ name = "Ha H. Le" }]

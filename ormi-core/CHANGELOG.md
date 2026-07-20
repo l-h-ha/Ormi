@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.0a4 - 2026-07-20
+
+### Added
+
+- Post-release wheel checks for clean CPU execution and uncached CPU JIT across
+  CPython 3.10-3.13 on Windows and Linux.
+- Real-GPU verification covering CUDA fusion, generalized matmul, reductions,
+  copies, and lazy autograd.
+
+### Fixed
+
+- Windows backend loading now resolves dependencies from registered DLL
+  directories and reports the Windows loader error code on failure.
+- Windows wheels keep their private CUDA library directory available for lazy
+  backend loading and NVRTC builtins discovery.
+
 ## 0.1.0a3 - 2026-07-19
 
 First alpha of the current ORMI Core runtime.

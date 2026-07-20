@@ -4,9 +4,16 @@ from pathlib import Path
 _dll_directories = []
 
 if os.name == "nt":
-    _dll_directories.append(
-        os.add_dll_directory(str(Path(__file__).resolve().parent))
-    )
+    extension_dir = Path(__file__).resolve().parent
+    _dll_directories.append(os.add_dll_directory(str(extension_dir)))
+
+    libraries_dir = extension_dir.parent.parent / "ormi_core.libs"
+    if libraries_dir.is_dir():
+        _dll_directories.append(os.add_dll_directory(str(libraries_dir)))
+        # NVRTC locates its builtins DLL through PATH when compilation begins.
+        os.environ["PATH"] = (
+            str(libraries_dir) + os.pathsep + os.environ.get("PATH", "")
+        )
 
 try:
     from . import _C

@@ -182,7 +182,7 @@ requires-dist = [{ name = "ormi-core", editable = "ormi-core" }]
 
 [[package]]
 name = "ormi-core"
-version = "0.1.0a3"
+version = "0.1.0a4"
 source = { editable = "ormi-core" }
 dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },

@@ -2,7 +2,7 @@
 
 `ormi-core` is ORMI's lazy tensor, automatic-differentiation, and C++ execution runtime for Python and C++.
 
-Version `0.1.0a3` is an alpha release for 64-bit Windows and Linux. CPU is always available. CUDA is an optional backend plugin: importing ORMI and running CPU work do not load CUDA.
+Version `0.1.0a4` is an alpha release for 64-bit Windows and Linux. CPU is always available. CUDA is an optional backend plugin: importing ORMI and running CPU work do not load CUDA.
 
 ## Install
 
@@ -10,7 +10,7 @@ Version `0.1.0a3` is an alpha release for 64-bit Windows and Linux. CPU is alway
 pip install ormi-core --extra-index-url https://l-h-ha.github.io/Ormi/whl/
 ```
 
-Published `0.1.0a3` wheels contain the Python extension, `ormi_core`, OpenBLAS `0.3.33`, and the CUDA `12.4` backend and redistributable runtime libraries. The CUDA plugin is loaded only when a CUDA device is requested.
+Published `0.1.0a4` wheels contain the Python extension, `ormi_core`, OpenBLAS `0.3.33`, and the CUDA `12.4` backend and redistributable runtime libraries. The CUDA plugin is loaded only when a CUDA device is requested.
 
 ## Python API
 
@@ -34,7 +34,7 @@ The alpha surface includes:
 - CPU JIT cache inspection and clearing through `ormi_core.jit`.
 - Generated type stubs for the root module and `ops`, `optim`, and `jit` submodules.
 
-Fractional differentiation is planned but is not part of `0.1.0a3`.
+Fractional differentiation is planned but is not part of `0.1.0a4`.
 
 ## User Requirements
 

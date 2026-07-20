@@ -565,10 +565,19 @@ namespace ormi::platform {
     }
 
     Library::Library(const std::filesystem::path& path)
-        : handle_(reinterpret_cast<void*>(LoadLibraryW(path.c_str())))
+        : handle_(reinterpret_cast<void*>(LoadLibraryExW(
+            path.c_str(),
+            nullptr,
+            LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS
+        )))
     {
         if (!handle_) {
-            ORMI_THROW(jitError, "Cannot load shared library: " + path.string());
+            const auto code = GetLastError();
+            ORMI_THROW(
+                jitError,
+                "Cannot load shared library: " + path.string() +
+                    " (Windows error " + std::to_string(code) + ")."
+            );
         }
     }
 

@@ -10,7 +10,7 @@ import ormi_core as oc
 
 
 def test_alpha_version_and_generated_submodules():
-    assert oc.__version__ == "0.1.0a3"
+    assert oc.__version__ == "0.1.0a4"
     assert callable(oc.ops.matmul)
     assert callable(oc.optim.sgd)
     assert callable(oc.jit.info)
