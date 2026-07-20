@@ -114,7 +114,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p pypi_server/whl/ormi-core
-          
+
+          echo '<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0; url=whl/"><title>ORMI packages</title></head><body><a href="whl/">ORMI packages</a></body></html>' > pypi_server/index.html
+
           echo "<!DOCTYPE html><html><body>" > pypi_server/whl/index.html
           echo "<a href=\"ormi-core/\">ormi-core</a>" >> pypi_server/whl/index.html
           echo "</body></html>" >> pypi_server/whl/index.html
