@@ -3,20 +3,21 @@
 ORMI is an early-stage Python tensor and autograd project. It is designed around lazy computation: tensor operations build computation graphs
 that can be executed, optimized, and accelerated by the backend.
 
-This repository is a `uv` workspace. For now, the only implemented package is
-`ormi-core`: a Python backend library powered by a C++/CUDA backend.
+This repository is a `uv` workspace. The implemented runtime is split into
+`ormi-core` for CPU execution and `ormi-cuda` for optional CUDA execution.
 The top-level `ormi` package exists in the workspace, but it has not started
 development yet.
 
 ## Packages
 
-- `ormi-core`:
-C++/CUDA tensor and autograd engine with Python bindings.
+- `ormi-core`: C++ tensor and autograd engine with Python bindings.
+- `ormi-cuda`: Optional CUDA backend for `ormi-core`.
 - `ormi`: Placeholder package for the future user-facing ORMI API.
 
 For package-specific documentation, see:
 
 - [ormi-core/README.md](ormi-core/README.md)
+- [ormi-cuda/README.md](ormi-cuda/README.md)
 
 ## Set Up The Workspace
 
@@ -66,7 +67,7 @@ full CMake, C++ test, CUDA, OpenBLAS, and platform-specific build notes.
 
 ## Build Packages
 
-To build the implemented backend package:
+To build the CPU package:
 
 ```bash
 uv build --package ormi-core
@@ -74,14 +75,20 @@ uv build --package ormi-core
 
 This command uses the same build prerequisites as `uv sync`.
 
+Building `ormi-cuda` requires the CUDA Toolkit:
+
+```bash
+uv build --package ormi-cuda
+```
+
 To build all workspace packages:
 
 ```bash
 uv build --all-packages
 ```
 
-Right now, `ormi-core` is the package that matters for contributors. The
-`ormi` package is present so the workspace shape is ready in the future.
+The `ormi` package is present so the workspace shape is ready for the future
+user-facing API.
 
 ## Development
 
@@ -106,6 +113,7 @@ For the full build guide, including CUDA and OpenBLAS details, read:
 ```text
 ormi-workspace/
   ormi-core/      Implemented Python backend library
+  ormi-cuda/      Optional CUDA backend package
   ormi/           Future user-facing package; not developed yet
   pyproject.toml  uv workspace configuration
   uv.lock         Locked workspace dependencies

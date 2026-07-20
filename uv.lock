@@ -10,6 +10,7 @@ resolution-markers = [
 members = [
     "ormi",
     "ormi-core",
+    "ormi-cuda",
     "ormi-workspace",
 ]
 
@@ -182,15 +183,35 @@ requires-dist = [{ name = "ormi-core", editable = "ormi-core" }]
 
 [[package]]
 name = "ormi-core"
-version = "0.1.0a4"
+version = "0.1.0a5"
 source = { editable = "ormi-core" }
 dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
 
+[package.optional-dependencies]
+cuda = [
+    { name = "ormi-cuda" },
+]
+
 [package.metadata]
-requires-dist = [{ name = "numpy", specifier = ">=1.24.0" }]
+requires-dist = [
+    { name = "numpy", specifier = ">=1.24.0" },
+    { name = "ormi-cuda", marker = "extra == 'cuda'", editable = "ormi-cuda" },
+]
+provides-extras = ["cuda"]
+
+[[package]]
+name = "ormi-cuda"
+version = "0.1.0a5"
+source = { editable = "ormi-cuda" }
+dependencies = [
+    { name = "ormi-core" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "ormi-core", editable = "ormi-core" }]
 
 [[package]]
 name = "ormi-workspace"

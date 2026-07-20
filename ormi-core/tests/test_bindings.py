@@ -10,7 +10,7 @@ import ormi_core as oc
 
 
 def test_alpha_version_and_generated_submodules():
-    assert oc.__version__ == "0.1.0a4"
+    assert oc.__version__ == "0.1.0a5"
     assert callable(oc.ops.matmul)
     assert callable(oc.optim.sgd)
     assert callable(oc.jit.info)
@@ -42,9 +42,11 @@ def test_empty_jit_cache_is_inspectable():
 
 
 def test_release_wheel_contains_cuda_plugin_when_requested():
-    if os.environ.get("ORMI_WHEEL_EXPECT_CUDA") != "1":
+    expected = os.environ.get("ORMI_WHEEL_EXPECT_CUDA")
+    if expected not in {"0", "1"}:
         pytest.skip("CUDA plugin is optional outside release-wheel builds")
 
     extension_dir = Path(oc.__file__).parent / "_ext"
     names = {path.name for path in extension_dir.iterdir()}
-    assert names & {"ormi_cuda_backend.dll", "libormi_cuda_backend.so"}
+    plugin = names & {"ormi_cuda_backend.dll", "libormi_cuda_backend.so"}
+    assert bool(plugin) == (expected == "1")

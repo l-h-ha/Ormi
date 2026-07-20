@@ -40,7 +40,7 @@ sgd = optim.sgd
 GradScaler = optim.GradScaler
 ScalePolicy = optim.ScalePolicy
 
-__version__ = "0.1.0a4"
+__version__ = "0.1.0a5"
 
 __all__ = [
     "Autocast",

@@ -7,12 +7,15 @@ if os.name == "nt":
     extension_dir = Path(__file__).resolve().parent
     _dll_directories.append(os.add_dll_directory(str(extension_dir)))
 
-    libraries_dir = extension_dir.parent.parent / "ormi_core.libs"
-    if libraries_dir.is_dir():
+    libraries_dirs = sorted(extension_dir.parent.parent.glob("ormi_*.libs"))
+    for libraries_dir in libraries_dirs:
         _dll_directories.append(os.add_dll_directory(str(libraries_dir)))
+
+    if libraries_dirs:
         # NVRTC locates its builtins DLL through PATH when compilation begins.
         os.environ["PATH"] = (
-            str(libraries_dir) + os.pathsep + os.environ.get("PATH", "")
+            os.pathsep.join(str(directory) for directory in libraries_dirs) +
+            os.pathsep + os.environ.get("PATH", "")
         )
 
 try:

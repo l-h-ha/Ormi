@@ -1,6 +1,6 @@
 [project]
 name = "ormi-core"
-version = "0.1.0a4"
+version = "0.1.0a5"
 description = "A C++ lazily accelerated tensor/autograd engine."
 readme = "README.md"
 authors = [{ name = "Ha H. Le" }]
@@ -10,6 +10,9 @@ dependencies = [
     "numpy>=1.24.0",
 ]
 
+[project.optional-dependencies]
+cuda = ["ormi-cuda==0.1.0a5"]
+
 [build-system]
 requires = ["scikit-build-core>=0.8.0", "pybind11>=2.11.0", "PyYAML>=6.0"]
 build-backend = "scikit_build_core.build"
@@ -17,6 +20,7 @@ build-backend = "scikit_build_core.build"
 [tool.scikit-build]
 wheel.packages = ["src/ormi_core"]
 wheel.license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
+install.components = ["core"]
 cmake.build-type = "Release"
 sdist.inclusion-mode = "explicit"
 sdist.include = [
@@ -72,26 +76,22 @@ test-requires = ["pytest", "PyYAML>=6.0"]
 test-command = "pytest {package}/tests -q"
 
 [tool.cibuildwheel.config-settings]
-"cmake.define.ORMI_ENABLE_CUDA" = "ON"
+"cmake.define.ORMI_ENABLE_CUDA" = "OFF"
 "cmake.define.ORMI_ENABLE_OPENBLAS" = "ON"
-"cmake.define.CMAKE_CUDA_ARCHITECTURES" = "50-real;52-real;60-real;61-real;70-real;75-real;80-real;86-real;89-real;90"
 
 [tool.cibuildwheel.linux]
 before-all = [
     "dnf install -y -q dnf-plugins-core epel-release git make perl gcc-toolset-13-gcc gcc-toolset-13-gcc-c++",
     "dnf config-manager --set-enabled powertools",
-    "dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/cuda-rhel8.repo",
-    "dnf clean all",
-    "dnf install -y -q cuda-compiler-12-4 cuda-cudart-devel-12-4 libcublas-devel-12-4 cuda-nvrtc-devel-12-4 cuda-driver-devel-12-4",
     "/opt/python/cp310-cp310/bin/python -m venv /opt/auditwheel && /opt/auditwheel/bin/pip install -q auditwheel==6.7.0",
     "git clone --branch v0.3.33 --depth 1 https://github.com/OpenMathLib/OpenBLAS.git /tmp/openblas",
     "if ! make -C /tmp/openblas -j\"$(nproc)\" DYNAMIC_ARCH=1 NO_STATIC=1 NO_LAPACK=1 NOFORTRAN=1 USE_OPENMP=0 shared > /tmp/openblas-build.log 2>&1; then tail -n 200 /tmp/openblas-build.log; exit 1; fi",
     "if ! make -C /tmp/openblas PREFIX=/opt/openblas install > /tmp/openblas-install.log 2>&1; then tail -n 200 /tmp/openblas-install.log; exit 1; fi"
 ]
-environment = { PATH="/opt/rh/gcc-toolset-13/root/usr/bin:/usr/local/cuda-12.4/bin:$PATH", LD_LIBRARY_PATH="/opt/openblas/lib:$LD_LIBRARY_PATH", CC="/opt/rh/gcc-toolset-13/root/usr/bin/gcc", CXX="/opt/rh/gcc-toolset-13/root/usr/bin/g++", CUDAHOSTCXX="/opt/rh/gcc-toolset-13/root/usr/bin/g++", CUDACXX="/usr/local/cuda-12.4/bin/nvcc", CMAKE_PREFIX_PATH="/opt/openblas", ORMI_WHEEL_EXPECT_CUDA="1" }
-repair-wheel-command = "/opt/auditwheel/bin/auditwheel repair --exclude libcuda.so.1 -w {dest_dir} {wheel}"
+environment = { PATH="/opt/rh/gcc-toolset-13/root/usr/bin:$PATH", LD_LIBRARY_PATH="/opt/openblas/lib:$LD_LIBRARY_PATH", CC="/opt/rh/gcc-toolset-13/root/usr/bin/gcc", CXX="/opt/rh/gcc-toolset-13/root/usr/bin/g++", CMAKE_PREFIX_PATH="/opt/openblas", ORMI_WHEEL_EXPECT_CUDA="0" }
+repair-wheel-command = "/opt/auditwheel/bin/auditwheel repair -w {dest_dir} {wheel}"
 
 [tool.cibuildwheel.windows]
 before-build = "python -m pip install delvewheel==1.13.0"
-environment = { CMAKE_GENERATOR="Ninja", CUDACXX="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.4/bin/nvcc.exe", SKBUILD_CMAKE_ARGS="-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake", ORMI_WHEEL_EXPECT_CUDA="1" }
-repair-wheel-command = "delvewheel repair --ignore-existing --analyze-existing --no-mangle-all --exclude nvcuda.dll --add-path \"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.4/bin;C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.4/bin/x64\" -w {dest_dir} {wheel}"
+environment = { CMAKE_GENERATOR="Ninja", SKBUILD_CMAKE_ARGS="-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake", ORMI_WHEEL_EXPECT_CUDA="0" }
+repair-wheel-command = "delvewheel repair --ignore-existing --analyze-existing --no-mangle-all -w {dest_dir} {wheel}"

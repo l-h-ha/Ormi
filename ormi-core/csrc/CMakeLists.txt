@@ -237,13 +237,13 @@ if(ORMI_BUILD_PYTHON)
     set_target_properties(ormi_core PROPERTIES INSTALL_RPATH "$ORIGIN")
 
     install(TARGETS _C ormi_core
-        LIBRARY DESTINATION ormi_core/_ext
-        RUNTIME DESTINATION ormi_core/_ext
+        LIBRARY DESTINATION ormi_core/_ext COMPONENT core
+        RUNTIME DESTINATION ormi_core/_ext COMPONENT core
     )
     if(ORMI_ENABLE_CUDA)
         install(TARGETS ormi_cuda_backend
-            LIBRARY DESTINATION ormi_core/_ext
-            RUNTIME DESTINATION ormi_core/_ext
+            LIBRARY DESTINATION ormi_core/_ext COMPONENT cuda
+            RUNTIME DESTINATION ormi_core/_ext COMPONENT cuda
         )
 
         if(WIN32)
@@ -259,14 +259,30 @@ if(ORMI_BUILD_PYTHON)
         if(NOT ORMI_NVRTC_BUILTINS)
             message(FATAL_ERROR "Cannot package CUDA: NVRTC builtins were not found.")
         endif()
-        install(FILES ${ORMI_NVRTC_BUILTINS} DESTINATION ormi_core.libs)
+        install(
+            FILES ${ORMI_NVRTC_BUILTINS}
+            DESTINATION ormi_cuda.libs
+            COMPONENT cuda
+        )
     endif()
     if(WIN32 AND ORMI_ENABLE_OPENBLAS)
-        install(FILES $<TARGET_FILE:OpenBLAS::OpenBLAS> DESTINATION ormi_core/_ext)
+        install(
+            FILES $<TARGET_FILE:OpenBLAS::OpenBLAS>
+            DESTINATION ormi_core/_ext
+            COMPONENT core
+        )
     endif()
 
-    install(DIRECTORY ${ORMI_BINDING_STUB_DIR}/ DESTINATION ormi_core/_ext/_C)
-    install(FILES ${ORMI_BINDING_DIR}/py.typed DESTINATION ormi_core)
+    install(
+        DIRECTORY ${ORMI_BINDING_STUB_DIR}/
+        DESTINATION ormi_core/_ext/_C
+        COMPONENT core
+    )
+    install(
+        FILES ${ORMI_BINDING_DIR}/py.typed
+        DESTINATION ormi_core
+        COMPONENT core
+    )
 endif()
 
 function(ormi_stage_runtime target)

@@ -1,0 +1,54 @@
+[project]
+name = "ormi-cuda"
+version = "0.1.0a5"
+description = "CUDA 12.4 backend for ORMI Core."
+readme = "README.md"
+authors = [{ name = "Ha H. Le" }]
+license = { text = "MIT" }
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "ormi-core==0.1.0a5",
+]
+
+[build-system]
+requires = ["scikit-build-core>=0.8.0", "pybind11>=2.11.0", "PyYAML>=6.0"]
+build-backend = "scikit_build_core.build"
+
+[tool.scikit-build]
+wheel.packages = ["src/ormi_cuda"]
+install.components = ["cuda"]
+cmake.build-type = "Release"
+wheel.py-api = "py3"
+wheel.license-files = ["LICENSE"]
+
+[tool.scikit-build.cmake.define]
+ORMI_BUILD_PYTHON = "ON"
+ORMI_BUILD_TESTS = "OFF"
+ORMI_BUILD_BENCHMARKS = "OFF"
+ORMI_BUILD_EXAMPLES = "OFF"
+ORMI_ENABLE_OPENBLAS = "OFF"
+ORMI_ENABLE_CUDA = "ON"
+
+[tool.cibuildwheel]
+build = "cp310-*"
+skip = "*-win32 *-manylinux_i686 *-musllinux*"
+manylinux-x86_64-image = "manylinux_2_28"
+
+[tool.cibuildwheel.config-settings]
+"cmake.define.CMAKE_CUDA_ARCHITECTURES" = "50-real;52-real;60-real;61-real;70-real;75-real;80-real;86-real;89-real;90"
+
+[tool.cibuildwheel.linux]
+before-all = [
+    "dnf install -y -q dnf-plugins-core gcc-toolset-13-gcc gcc-toolset-13-gcc-c++",
+    "dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/cuda-rhel8.repo",
+    "dnf clean all",
+    "dnf install -y -q cuda-compiler-12-4 cuda-cudart-devel-12-4 libcublas-devel-12-4 cuda-nvrtc-devel-12-4 cuda-driver-devel-12-4",
+    "/opt/python/cp310-cp310/bin/python -m venv /opt/auditwheel && /opt/auditwheel/bin/pip install -q auditwheel==6.7.0"
+]
+environment = { PATH="/opt/rh/gcc-toolset-13/root/usr/bin:/usr/local/cuda-12.4/bin:$PATH", LD_LIBRARY_PATH="/usr/local/cuda-12.4/lib64:$LD_LIBRARY_PATH", CC="/opt/rh/gcc-toolset-13/root/usr/bin/gcc", CXX="/opt/rh/gcc-toolset-13/root/usr/bin/g++", CUDACXX="/usr/local/cuda-12.4/bin/nvcc", CUDAHOSTCXX="/opt/rh/gcc-toolset-13/root/usr/bin/g++" }
+repair-wheel-command = "/opt/auditwheel/bin/auditwheel repair --exclude libcuda.so.1 --exclude libormi_core.so -w {dest_dir} {wheel}"
+
+[tool.cibuildwheel.windows]
+before-build = "python -m pip install delvewheel==1.13.0"
+environment = { CMAKE_GENERATOR="Ninja", CUDACXX="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.4/bin/nvcc.exe" }
+repair-wheel-command = "delvewheel repair --custom-patch --ignore-existing --analyze-existing --no-mangle-all --exclude nvcuda.dll --exclude ormi_core.dll --add-path \"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.4/bin;C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.4/bin/x64\" -w {dest_dir} {wheel}"

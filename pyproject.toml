@@ -9,10 +9,11 @@ dependencies = [
 ]
 
 [tool.uv.workspace]
-members = ["ormi", "ormi-core"]
+members = ["ormi", "ormi-core", "ormi-cuda"]
 
 [tool.uv.sources]
 ormi-core = { workspace = true }
+ormi-cuda = { workspace = true }
 ormi = { workspace = true }
 
 [dependency-groups]

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.0a5 - 2026-07-20
+
+### Changed
+
+- CPU wheels now contain only `ormi-core` and bundled OpenBLAS.
+- The CUDA 12.4 backend and its runtime libraries are distributed separately as
+  the version-matched `ormi-cuda` package.
+- `pip install "ormi-core[cuda]"` installs both packages while preserving lazy
+  CUDA loading.
+
+### Added
+
+- Published-wheel checks verify CPU-only package contents and the matching CUDA
+  add-on on Windows and Linux.
+
 ## 0.1.0a4 - 2026-07-20
 
 ### Added

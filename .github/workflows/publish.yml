@@ -1,29 +1,75 @@
-name: Build and Publish to PyPI
+name: Build and Publish Packages
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - 'ormi-core-v*'
 
 jobs:
   validate_release:
-    name: Validate release tag
+    name: Validate package versions
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
-      - name: Match tag to package version
+      - name: Match package versions and release tag
         shell: bash
         run: |
           version="$(python -c 'import tomllib; print(tomllib.load(open("ormi-core/pyproject.toml", "rb"))["project"]["version"])')"
-          expected="ormi-core-v${version}"
-          if [[ "${GITHUB_REF_NAME}" != "${expected}" ]]; then
-            echo "::error::Release tag ${GITHUB_REF_NAME} does not match ${expected}."
+          cuda_version="$(python -c 'import tomllib; print(tomllib.load(open("ormi-cuda/pyproject.toml", "rb"))["project"]["version"])')"
+          if [[ "${cuda_version}" != "${version}" ]]; then
+            echo "::error::ormi-cuda ${cuda_version} does not match ormi-core ${version}."
             exit 1
           fi
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            expected="ormi-core-v${version}"
+            if [[ "${GITHUB_REF_NAME}" != "${expected}" ]]; then
+              echo "::error::Release tag ${GITHUB_REF_NAME} does not match ${expected}."
+              exit 1
+            fi
+          fi
 
-  build_wheels:
-    name: Build wheels on ${{ matrix.os }}
+  build_core_wheels:
+    name: Build ormi-core on ${{ matrix.os }}
+    needs: validate_release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-2022]
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - name: Setup MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install pinned C++ dependencies (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: >-
+          C:\vcpkg\vcpkg.exe install
+          --x-manifest-root=${{ github.workspace }}\ormi-core
+          --triplet=x64-windows
+          
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v3.4.1
+        env:
+          CIBW_PROJECT_REQUIRES_PYTHON: ">=3.10,<3.14"
+        with:
+          package-dir: ormi-core
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-core-wheels-${{ matrix.os }}-${{ strategy.job-index }}
+          path: ./wheelhouse/*.whl
+
+  build_cuda_wheels:
+    name: Build ormi-cuda on ${{ matrix.os }}
     needs: validate_release
     runs-on: ${{ matrix.os }}
     strategy:
@@ -46,24 +92,16 @@ jobs:
         with:
           cuda: '12.4.0'
 
-      - name: Install pinned C++ dependencies (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: >-
-          C:\vcpkg\vcpkg.exe install
-          --x-manifest-root=${{ github.workspace }}\ormi-core
-          --triplet=x64-windows
-          
-      - name: Build wheels
+      - name: Build wheel
         uses: pypa/cibuildwheel@v3.4.1
         env:
           CIBW_PROJECT_REQUIRES_PYTHON: ">=3.10,<3.14"
         with:
-          package-dir: ormi-core
+          package-dir: ormi-cuda
 
       - uses: actions/upload-artifact@v4
         with:
-          name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
+          name: release-cuda-wheel-${{ matrix.os }}-${{ strategy.job-index }}
           path: ./wheelhouse/*.whl
 
   build_sdist:
@@ -80,12 +118,13 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: cibw-sdist
+          name: release-core-sdist
           path: ormi-core/dist/*.tar.gz
 
   publish:
-    name: Publish to Custom PyPI Index
-    needs: [build_wheels, build_sdist]
+    name: Publish release and package index
+    if: github.ref_type == 'tag'
+    needs: [build_core_wheels, build_cuda_wheels, build_sdist]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -98,7 +137,7 @@ jobs:
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: cibw-*
+          pattern: release-*
           path: dist
           merge-multiple: true
 
@@ -113,23 +152,27 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p pypi_server/whl/ormi-core
+          mkdir -p pypi_server/whl/ormi-core pypi_server/whl/ormi-cuda
 
           echo '<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0; url=whl/"><title>ORMI packages</title></head><body><a href="whl/">ORMI packages</a></body></html>' > pypi_server/index.html
 
           echo "<!DOCTYPE html><html><body>" > pypi_server/whl/index.html
           echo "<a href=\"ormi-core/\">ormi-core</a>" >> pypi_server/whl/index.html
+          echo "<a href=\"ormi-cuda/\">ormi-cuda</a>" >> pypi_server/whl/index.html
           echo "</body></html>" >> pypi_server/whl/index.html
           
           echo "<!DOCTYPE html><html><body>" > pypi_server/whl/ormi-core/index.html
+          echo "<!DOCTYPE html><html><body>" > pypi_server/whl/ormi-cuda/index.html
           
           gh release list --repo ${{ github.repository }} --limit 100 --json tagName --jq '.[].tagName' | while read tag; do
             if [ -n "$tag" ]; then
-              gh release view "$tag" --repo ${{ github.repository }} --json assets --jq '.assets[] | "<a href=\"" + .url + "\">" + .name + "</a><br>"' >> pypi_server/whl/ormi-core/index.html
+              gh release view "$tag" --repo ${{ github.repository }} --json assets --jq '.assets[] | select(.name | startswith("ormi_core-")) | "<a href=\"" + .url + "\">" + .name + "</a><br>"' >> pypi_server/whl/ormi-core/index.html
+              gh release view "$tag" --repo ${{ github.repository }} --json assets --jq '.assets[] | select(.name | startswith("ormi_cuda-")) | "<a href=\"" + .url + "\">" + .name + "</a><br>"' >> pypi_server/whl/ormi-cuda/index.html
             fi
           done
           
           echo "</body></html>" >> pypi_server/whl/ormi-core/index.html
+          echo "</body></html>" >> pypi_server/whl/ormi-cuda/index.html
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

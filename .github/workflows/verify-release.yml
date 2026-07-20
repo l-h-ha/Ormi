@@ -8,7 +8,7 @@ on:
         required: true
         type: string
   workflow_run:
-    workflows: ["Build and Publish to PyPI"]
+    workflows: ["Build and Publish Packages"]
     types: [completed]
 
 permissions:
@@ -19,7 +19,8 @@ jobs:
     name: Resolve release
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.release.outputs.tag }}
@@ -116,4 +117,24 @@ jobs:
           ORMI_CPU_JIT_CACHE_DIR: ${{ runner.temp }}/ormi-release-jit
         run: >-
           python -m pytest ormi-core/release-tests/test_jit.py
+          -q -p no:cacheprovider
+
+      - name: Verify CPU package boundary
+        run: >-
+          python -m pytest
+          ormi-core/release-tests/test_packages.py::test_core_install_is_cpu_only
+          -q -p no:cacheprovider
+
+      - name: Install matching CUDA backend
+        run: >-
+          python -m pip install
+          --no-deps
+          --only-binary=:all:
+          --index-url https://l-h-ha.github.io/Ormi/whl/
+          ormi-cuda==${{ needs.release.outputs.version }}
+
+      - name: Verify CUDA package boundary
+        run: >-
+          python -m pytest
+          ormi-core/release-tests/test_packages.py::test_cuda_install_matches_core
           -q -p no:cacheprovider

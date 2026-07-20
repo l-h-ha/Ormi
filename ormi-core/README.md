@@ -2,7 +2,7 @@
 
 `ormi-core` is ORMI's lazy tensor, automatic-differentiation, and C++ execution runtime for Python and C++.
 
-Version `0.1.0a4` is an alpha release for 64-bit Windows and Linux. CPU is always available. CUDA is an optional backend plugin: importing ORMI and running CPU work do not load CUDA.
+Version `0.1.0a5` is an alpha release for 64-bit Windows and Linux. CPU is always available. CUDA is an optional backend plugin: importing ORMI and running CPU work do not load CUDA.
 
 ## Install
 
@@ -10,7 +10,15 @@ Version `0.1.0a4` is an alpha release for 64-bit Windows and Linux. CPU is alway
 pip install ormi-core --extra-index-url https://l-h-ha.github.io/Ormi/whl/
 ```
 
-Published `0.1.0a4` wheels contain the Python extension, `ormi_core`, OpenBLAS `0.3.33`, and the CUDA `12.4` backend and redistributable runtime libraries. The CUDA plugin is loaded only when a CUDA device is requested.
+This installs the CPU package, including OpenBLAS `0.3.33`. It contains no CUDA libraries.
+
+Install the matching CUDA `12.4` backend and its redistributable runtime libraries with:
+
+```bash
+pip install "ormi-core[cuda]" --extra-index-url https://l-h-ha.github.io/Ormi/whl/
+```
+
+The CUDA plugin is loaded only when a CUDA device is requested.
 
 ## Python API
 
@@ -34,7 +42,7 @@ The alpha surface includes:
 - CPU JIT cache inspection and clearing through `ormi_core.jit`.
 - Generated type stubs for the root module and `ops`, `optim`, and `jit` submodules.
 
-Fractional differentiation is planned but is not part of `0.1.0a4`.
+Fractional differentiation is planned but is not part of `0.1.0a5`.
 
 ## User Requirements
 
@@ -43,9 +51,9 @@ Fractional differentiation is planned but is not part of `0.1.0a4`.
 | Python | CPython `3.10`, `3.11`, `3.12`, or `3.13`; NumPy `>=1.24`. |
 | Windows wheel | 64-bit Windows and the Microsoft Visual C++ runtime supplied by supported Windows installations. |
 | Linux wheel | x86-64 Linux with glibc `>=2.28` (`manylinux_2_28`). |
-| CPU execution | No CUDA Toolkit, OpenBLAS installation, or compiler is required for ordinary kernels. OpenBLAS `0.3.33` is bundled in release wheels. |
+| CPU execution | No CUDA Toolkit, OpenBLAS installation, or compiler is required for ordinary kernels. OpenBLAS `0.3.33` is bundled in `ormi-core` wheels. |
 | CPU JIT fusion | A supported C++20 compiler is required only when realizing an eligible fused graph that is not already in the persistent cache. Absence is reported at that realization, not at import. |
-| CUDA execution | An NVIDIA CUDA-capable GPU and NVIDIA driver `>=550.54.14` on Linux or `>=551.61` on Windows. The CUDA Toolkit is not required for release wheels. |
+| CUDA execution | Install `ormi-core[cuda]`. An NVIDIA CUDA-capable GPU and NVIDIA driver `>=550.54.14` on Linux or `>=551.61` on Windows are required. The CUDA Toolkit is not required. |
 
 The CUDA driver floors above are the CUDA `12.4` GA toolkit-driver versions, not the lower CUDA 12.x minor-compatibility floors. This release uses the conservative full-compatibility requirement.
 
