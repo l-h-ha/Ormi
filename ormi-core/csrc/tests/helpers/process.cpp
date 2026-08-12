@@ -8,7 +8,6 @@
 #include <windows.h>
 #else
 #include <csignal>
-#include <sys/resource.h>
 #endif
 
 int main(int argc, char** argv) {
@@ -31,9 +30,7 @@ int main(int argc, char** argv) {
 #if defined(_WIN32)
         RaiseException(0xe0000001ul, EXCEPTION_NONCONTINUABLE, 0, nullptr);
 #else
-        const rlimit limit{0, 0};
-        setrlimit(RLIMIT_CORE, &limit);
-        std::raise(SIGSEGV);
+        std::raise(SIGKILL);
 #endif
         return 3;
     }
