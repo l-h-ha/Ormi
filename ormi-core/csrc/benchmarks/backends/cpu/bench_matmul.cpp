@@ -266,7 +266,9 @@ BENCHMARK_CAPTURE(
 )->Name("backend/cpu/matmul/forward_hidden")
     ->Args({1, 16, 32})
     ->Args({32, 16, 32})
-    ->Args({1024, 16, 32});
+    ->Args({1024, 16, 32})
+    ->Args({2048, 512, 512})
+    ->UseRealTime();
 
 BENCHMARK_CAPTURE(
     bmMatmul,
@@ -276,7 +278,8 @@ BENCHMARK_CAPTURE(
 )->Name("backend/cpu/matmul/forward_output")
     ->Args({1, 32, 1})
     ->Args({32, 32, 1})
-    ->Args({1024, 32, 1});
+    ->Args({1024, 32, 1})
+    ->UseRealTime();
 
 BENCHMARK_CAPTURE(
     bmMatmul,
@@ -286,7 +289,8 @@ BENCHMARK_CAPTURE(
 )->Name("backend/cpu/matmul/backward_second_weight")
     ->Args({32, 1, 1})
     ->Args({32, 32, 1})
-    ->Args({32, 1024, 1});
+    ->Args({32, 1024, 1})
+    ->UseRealTime();
 
 BENCHMARK_CAPTURE(
     bmMatmul,
@@ -296,7 +300,8 @@ BENCHMARK_CAPTURE(
 )->Name("backend/cpu/matmul/backward_hidden")
     ->Args({1, 1, 32})
     ->Args({32, 1, 32})
-    ->Args({1024, 1, 32});
+    ->Args({1024, 1, 32})
+    ->UseRealTime();
 
 BENCHMARK_CAPTURE(
     bmMatmul,
@@ -306,7 +311,9 @@ BENCHMARK_CAPTURE(
 )->Name("backend/cpu/matmul/backward_first_weight")
     ->Args({16, 1, 32})
     ->Args({16, 32, 32})
-    ->Args({16, 1024, 32});
+    ->Args({16, 1024, 32})
+    ->Args({512, 2048, 512})
+    ->UseRealTime();
 
 BENCHMARK_CAPTURE(
     bmOpenBLAS,
@@ -316,7 +323,8 @@ BENCHMARK_CAPTURE(
 )->Name("backend/cpu/openblas/forward_hidden")
     ->Args({1, 16, 32})
     ->Args({32, 16, 32})
-    ->Args({1024, 16, 32});
+    ->Args({1024, 16, 32})
+    ->UseRealTime();
 
 BENCHMARK_CAPTURE(
     bmOpenBLAS,
@@ -326,7 +334,8 @@ BENCHMARK_CAPTURE(
 )->Name("backend/cpu/openblas/backward_first_weight")
     ->Args({16, 1, 32})
     ->Args({16, 32, 32})
-    ->Args({16, 1024, 32});
+    ->Args({16, 1024, 32})
+    ->UseRealTime();
 
 #define ORMI_GEMM_SHAPES(benchmark) \
     benchmark \
@@ -335,7 +344,10 @@ BENCHMARK_CAPTURE(
         ->Args({128, 128, 128}) \
         ->Args({256, 256, 256}) \
         ->Args({512, 512, 512}) \
-        ->Args({4096, 64, 64})
+        ->Args({512, 2048, 512}) \
+        ->Args({2048, 512, 512}) \
+        ->Args({4096, 64, 64}) \
+        ->UseRealTime()
 
 ORMI_GEMM_SHAPES(
     BENCHMARK_CAPTURE(
@@ -361,14 +373,18 @@ BENCHMARK_CAPTURE(
     Layout::transposed,
     Layout::contiguous
 )->Name("backend/cpu/openblas/transposed_lhs")
-    ->Args({64, 1024, 32});
+    ->Args({64, 1024, 32})
+    ->Args({512, 2048, 512})
+    ->UseRealTime();
 
 BENCHMARK_CAPTURE(
     bmAVX2,
     transposed_lhs,
     Layout::transposed
 )->Name("backend/cpu/avx2/transposed_lhs")
-    ->Args({64, 1024, 32});
+    ->Args({64, 1024, 32})
+    ->Args({512, 2048, 512})
+    ->UseRealTime();
 #endif
 
 #undef ORMI_GEMM_SHAPES

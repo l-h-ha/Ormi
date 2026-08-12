@@ -6,11 +6,19 @@
 
 - CPU AVX2 matrix multiplication now divides output rows among every useful
   configured CPU worker instead of exposing only two row partitions. The
-  existing 2-row and 4-row kernel tiles remain intact, including partial final
-  tiles, and serial calls retain their direct fast path. On the development
+  kernel tile boundaries remain intact, including partial final tiles, and
+  serial calls retain their direct fast path. On the development
   i5-11400H, median `512x512x512` throughput at six threads increased from
   116.75 to 341.78 GFLOP/s; the one-thread result remained within measurement
   variation. The framework dense-compute plan improved from 36.30 to 19.52 ms.
+- Transposed-left AVX2 matrix multiplication now traverses each right-hand
+  column panel across six output rows at a time. Its twelve accumulators fit
+  the AVX2 register budget while reducing repeated right-hand matrix traffic
+  for long inner dimensions. In a controlled comparison on the same system,
+  median `512x2048x512` wall time at six threads decreased from 7.80 to 6.67
+  ms, and the framework dense-compute plan improved from 19.52 to 17.26 ms.
+- CPU matrix-multiplication benchmarks now measure wall time, so rates include
+  work performed by ORMI and BLAS worker threads.
 
 ## 0.1.0a6 - 2026-08-12
 
