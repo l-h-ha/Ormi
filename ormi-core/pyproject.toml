@@ -91,9 +91,10 @@ before-all = [
     "if ! make -C /tmp/openblas -j\"$(nproc)\" DYNAMIC_ARCH=1 NO_STATIC=1 NO_LAPACK=1 NOFORTRAN=1 USE_OPENMP=0 shared > /tmp/openblas-build.log 2>&1; then tail -n 200 /tmp/openblas-build.log; exit 1; fi",
     "if ! make -C /tmp/openblas PREFIX=/opt/openblas install > /tmp/openblas-install.log 2>&1; then tail -n 200 /tmp/openblas-install.log; exit 1; fi",
     "git clone --branch 3.9.0 --depth 1 https://github.com/shibatch/sleef.git /tmp/sleef",
-    "if ! cmake -S /tmp/sleef -B /tmp/sleef/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/sleef -DBUILD_SHARED_LIBS=ON -DSLEEF_BUILD_LIBM=ON -DSLEEF_BUILD_QUAD=OFF -DSLEEF_BUILD_DFT=OFF -DSLEEF_BUILD_GNUABI_LIBS=OFF -DSLEEF_BUILD_TESTS=OFF -DSLEEF_DISABLE_SSL=ON -DSLEEF_ENABLE_TLFLOAT=OFF -DSLEEF_ENABLE_TESTER4=OFF > /tmp/sleef-configure.log 2>&1; then tail -n 200 /tmp/sleef-configure.log; exit 1; fi",
+    "if ! cmake -S /tmp/sleef -B /tmp/sleef/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/sleef -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=ON -DSLEEF_BUILD_LIBM=ON -DSLEEF_BUILD_QUAD=OFF -DSLEEF_BUILD_DFT=OFF -DSLEEF_BUILD_GNUABI_LIBS=OFF -DSLEEF_BUILD_TESTS=OFF -DSLEEF_DISABLE_SSL=ON -DSLEEF_ENABLE_TLFLOAT=OFF -DSLEEF_ENABLE_TESTER4=OFF > /tmp/sleef-configure.log 2>&1; then tail -n 200 /tmp/sleef-configure.log; exit 1; fi",
     "if ! cmake --build /tmp/sleef/build --parallel \"$(nproc)\" > /tmp/sleef-build.log 2>&1; then tail -n 200 /tmp/sleef-build.log; exit 1; fi",
-    "if ! cmake --install /tmp/sleef/build > /tmp/sleef-install.log 2>&1; then tail -n 200 /tmp/sleef-install.log; exit 1; fi"
+    "if ! cmake --install /tmp/sleef/build > /tmp/sleef-install.log 2>&1; then tail -n 200 /tmp/sleef-install.log; exit 1; fi",
+    "test -e /opt/sleef/lib/libsleef.so.3"
 ]
 environment = { PATH="/opt/rh/gcc-toolset-13/root/usr/bin:$PATH", LD_LIBRARY_PATH="/opt/openblas/lib:/opt/sleef/lib:$LD_LIBRARY_PATH", CC="/opt/rh/gcc-toolset-13/root/usr/bin/gcc", CXX="/opt/rh/gcc-toolset-13/root/usr/bin/g++", CMAKE_PREFIX_PATH="/opt/openblas;/opt/sleef", ORMI_WHEEL_EXPECT_CUDA="0" }
 repair-wheel-command = "/opt/auditwheel/bin/auditwheel repair -w {dest_dir} {wheel}"
