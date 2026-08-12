@@ -431,10 +431,10 @@ namespace {
         }
     }
 
-    TEST(CPULinalgTest, realizesParallelContiguousAndTransposedProducts) {
-        const auto contiguous_lhs = floatTensor({1024, 64});
+    TEST(CPULinalgTest, realizesParallelProductsWithPartialFinalTiles) {
+        const auto contiguous_lhs = floatTensor({1025, 64});
         const auto contiguous_rhs = floatTensor({64, 32});
-        const auto transposed_storage = floatTensor({1024, 64});
+        const auto transposed_storage = floatTensor({1024, 65});
         const auto transposed_lhs = ormi::core::ops::transpose(
             transposed_storage,
             {1, 0}

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Changed
+
+- CPU AVX2 matrix multiplication now divides output rows among every useful
+  configured CPU worker instead of exposing only two row partitions. The
+  existing 2-row and 4-row kernel tiles remain intact, including partial final
+  tiles, and serial calls retain their direct fast path. On the development
+  i5-11400H, median `512x512x512` throughput at six threads increased from
+  116.75 to 341.78 GFLOP/s; the one-thread result remained within measurement
+  variation. The framework dense-compute plan improved from 36.30 to 19.52 ms.
+
 ## 0.1.0a6 - 2026-08-12
 
 ### Changed
