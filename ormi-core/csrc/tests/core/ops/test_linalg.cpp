@@ -434,7 +434,7 @@ namespace {
     TEST(CPULinalgTest, realizesParallelProductsWithPartialFinalTiles) {
         const auto contiguous_lhs = floatTensor({1025, 64});
         const auto contiguous_rhs = floatTensor({64, 32});
-        const auto transposed_storage = floatTensor({1024, 65});
+        const auto transposed_storage = floatTensor({1024, 389});
         const auto transposed_lhs = ormi::core::ops::transpose(
             transposed_storage,
             {1, 0}
@@ -482,6 +482,20 @@ namespace {
         }
         for (std::size_t i = 0; i < transposed->numel(); ++i) {
             EXPECT_FLOAT_EQ(transposed_data[i], 32.0f);
+        }
+    }
+
+    TEST(CPULinalgTest, realizesProductsWithAnEmptyInnerDimension) {
+        const auto lhs_storage = floatTensor({0, 7});
+        const auto lhs = ormi::core::ops::transpose(lhs_storage, {1, 0});
+        const auto rhs = floatTensor({0, 5});
+
+        const auto result = ormi::core::ops::matmul(lhs, rhs);
+        const auto* data = static_cast<const float*>(result->data());
+
+        EXPECT_EQ(result->shape(), (ormi::core::Shape{7, 5}));
+        for (std::size_t i = 0; i < result->numel(); ++i) {
+            EXPECT_FLOAT_EQ(data[i], 0.0f);
         }
     }
 

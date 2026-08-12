@@ -17,6 +17,13 @@
   for long inner dimensions. In a controlled comparison on the same system,
   median `512x2048x512` wall time at six threads decreased from 7.80 to 6.67
   ms, and the framework dense-compute plan improved from 19.52 to 17.26 ms.
+- Large transposed-left AVX2 products now process the inner dimension in
+  256-element blocks once a worker's left-hand working set reaches 256 KiB.
+  Smaller products retain one direct pass. On the development i5-11400H,
+  median `512x2048x512` wall time at six threads decreased from 6.19 to 3.79
+  ms, while the complete dense forward-and-backward plan decreased from 10.94
+  to 8.63 ms. The transposed benchmark now covers intermediate inner depths
+  so the cache policy is measured beyond one training shape.
 - CPU matrix-multiplication benchmarks now measure wall time, so rates include
   work performed by ORMI and BLAS worker threads.
 - The CPU benchmark suite can now decompose a complete dense forward-and-

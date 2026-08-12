@@ -374,6 +374,9 @@ BENCHMARK_CAPTURE(
     Layout::contiguous
 )->Name("backend/cpu/openblas/transposed_lhs")
     ->Args({64, 1024, 32})
+    ->Args({512, 256, 512})
+    ->Args({512, 512, 512})
+    ->Args({512, 1024, 512})
     ->Args({512, 2048, 512})
     ->UseRealTime();
 
@@ -383,6 +386,9 @@ BENCHMARK_CAPTURE(
     Layout::transposed
 )->Name("backend/cpu/avx2/transposed_lhs")
     ->Args({64, 1024, 32})
+    ->Args({512, 256, 512})
+    ->Args({512, 512, 512})
+    ->Args({512, 1024, 512})
     ->Args({512, 2048, 512})
     ->UseRealTime();
 #endif
