@@ -71,6 +71,18 @@ namespace {
         EXPECT_EQ(explicit_compiler.id, detected.id);
     }
 
+    TEST(CPUJITCompilerTest, trustsExplicitCompilerIdWithoutLaunchingIt) {
+        const EnvironmentGuard compiler_guard("ORMI_CPU_JIT_CXX");
+        const EnvironmentGuard id_guard("ORMI_CPU_JIT_CXX_ID");
+        environment("ORMI_CPU_JIT_CXX", ORMI_PROCESS_HELPER);
+        environment("ORMI_CPU_JIT_CXX_ID", "gcc");
+
+        const auto compiler = ormi::backends::cpu::jit::resolve();
+
+        EXPECT_EQ(compiler.executable, std::filesystem::path(ORMI_PROCESS_HELPER));
+        EXPECT_EQ(compiler.id, ormi::backends::cpu::jit::CXX::gcc);
+    }
+
     TEST(CPUJITCompilerTest, idWithoutPathFiltersAutomaticDiscovery) {
         environment("ORMI_CPU_JIT_CXX", "");
         environment("ORMI_CPU_JIT_CXX_ID", "");

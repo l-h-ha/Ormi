@@ -1,5 +1,7 @@
-#include <ormi/core/runtime/backend.h>
-#include <ormi/core/runtime/dispatch/reduction.h>
+#include <ormi/backend/api.h>
+
+#include "core/runtime/dispatch/reduction.h"
+#include "core/runtime/device.h"
 
 namespace ormi::core::runtime::reduction {
     void reduce(
@@ -9,6 +11,12 @@ namespace ormi::core::runtime::reduction {
         std::span<const std::int64_t> axes,
         bool keepdims
     ) {
-        out.device().backend()->reduce(op, out, input, axes, keepdims);
+        backend(out.device()).ops.reduce(
+            op,
+            out,
+            input,
+            axes,
+            keepdims
+        );
     }
 }

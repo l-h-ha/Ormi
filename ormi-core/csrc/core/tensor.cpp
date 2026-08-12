@@ -2,8 +2,9 @@
 #include <utility>
 
 #include <ormi/core/error.h>
-#include <ormi/core/runtime/realize.h>
 #include <ormi/core/tensor.h>
+
+#include "core/runtime/realize.h"
 
 namespace ormi::core {
     namespace {

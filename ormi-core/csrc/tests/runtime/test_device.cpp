@@ -2,57 +2,52 @@
 
 #include <ormi/core/device.h>
 #include <ormi/core/error.h>
-#include <ormi/core/runtime/backend.h>
-#include <ormi/core/runtime/backend_id.h>
-
 namespace {
     TEST(DeviceTest, cpuDeviceResolvesBuiltinBackend) {
         const auto device = ormi::core::Device::cpu();
 
-        EXPECT_EQ(device.backend_id(), ormi::core::runtime::backend_id_cpu);
         EXPECT_EQ(device.index(), 0);
-        ASSERT_NE(device.backend(), nullptr);
-        EXPECT_EQ(device.backend()->name, "cpu");
-        EXPECT_TRUE(device.is_cpu());
-        EXPECT_FALSE(device.is_cuda());
+        EXPECT_EQ(device.name(), "cpu");
+        EXPECT_FALSE(device.indexed());
+        EXPECT_TRUE(device.is_host());
     }
 
 #ifdef ORMI_ENABLE_CUDA
     TEST(DeviceTest, cudaDeviceResolvesOptionalBackend) {
-        const auto device = ormi::core::Device::cuda(1);
+        const auto device = ormi::core::Device::from("cuda", 1);
 
-        EXPECT_EQ(device.backend_id(), ormi::core::runtime::backend_id_cuda);
         EXPECT_EQ(device.index(), 1);
-        ASSERT_NE(device.backend(), nullptr);
-        EXPECT_EQ(device.backend()->name, "cuda");
-        EXPECT_FALSE(device.is_cpu());
-        EXPECT_TRUE(device.is_cuda());
+        EXPECT_EQ(device.name(), "cuda");
+        EXPECT_TRUE(device.indexed());
+        EXPECT_FALSE(device.is_host());
     }
 #else
     TEST(DeviceTest, rejectsCudaDeviceWhenDisabled) {
-        EXPECT_THROW(ormi::core::Device::cuda(), ormi::DeviceError);
+        EXPECT_THROW(ormi::core::Device::from("cuda"), ormi::DeviceError);
     }
 #endif
 
     TEST(DeviceTest, parsesCpuDeviceString) {
         const auto device = ormi::core::Device::from("cpu");
 
-        EXPECT_EQ(device.backend_id(), ormi::core::runtime::backend_id_cpu);
+        EXPECT_EQ(device.backend_id(), ormi::core::Device::cpu().backend_id());
         EXPECT_EQ(device.index(), 0);
     }
 
 #ifdef ORMI_ENABLE_CUDA
     TEST(DeviceTest, parsesCudaDeviceStringWhenEnabled) {
         const auto default_device = ormi::core::Device::from("cuda");
-        EXPECT_EQ(default_device.backend_id(), ormi::core::runtime::backend_id_cuda);
+        EXPECT_EQ(
+            default_device.backend_id(),
+            ormi::core::Device::from("cuda").backend_id()
+        );
         EXPECT_EQ(default_device.index(), 0);
 
         const auto device = ormi::core::Device::from("cuda:2");
 
-        EXPECT_EQ(device.backend_id(), ormi::core::runtime::backend_id_cuda);
+        EXPECT_EQ(device.backend_id(), default_device.backend_id());
         EXPECT_EQ(device.index(), 2);
-        ASSERT_NE(device.backend(), nullptr);
-        EXPECT_EQ(device.backend()->name, "cuda");
+        EXPECT_EQ(device.name(), "cuda");
     }
 #else
     TEST(DeviceTest, rejectsCudaDeviceStringWhenDisabled) {
@@ -74,7 +69,10 @@ namespace {
 
     TEST(DeviceTest, rejectsInvalidCpuIndex) {
         EXPECT_THROW(ormi::core::Device::from("cpu:1"), ormi::DeviceError);
-        EXPECT_THROW(ormi::core::Device(ormi::core::runtime::backend_id_cpu, 1), ormi::DeviceError);
+        EXPECT_THROW(
+            ormi::core::Device(ormi::core::Device::cpu().backend_id(), 1),
+            ormi::DeviceError
+        );
     }
 
     TEST(DeviceTest, rejectsMalformedDeviceStrings) {

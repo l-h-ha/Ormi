@@ -1,7 +1,8 @@
 #include <benchmark/benchmark.h>
 
 #include <ormi/core/device.h>
-#include <ormi/core/runtime/dispatch/device.h>
+
+#include "core/runtime/dispatch/device.h"
 
 namespace {
     void bmDeviceCpu(benchmark::State& state) {
@@ -38,13 +39,13 @@ namespace {
 #ifdef ORMI_ENABLE_CUDA
     void bmDeviceCuda(benchmark::State& state) {
         for (auto _ : state) {
-            auto device = ormi::core::Device::cuda();
+            auto device = ormi::core::Device::from("cuda");
             benchmark::DoNotOptimize(device);
         }
     }
 
     void bmRuntimeAllocatorCuda(benchmark::State& state) {
-        const auto device = ormi::core::Device::cuda();
+        const auto device = ormi::core::Device::from("cuda");
 
         for (auto _ : state) {
             const auto* allocator = ormi::core::runtime::device::allocator(device);
@@ -53,7 +54,7 @@ namespace {
     }
 
     void bmRuntimeSynchronizeCuda(benchmark::State& state) {
-        const auto device = ormi::core::Device::cuda();
+        const auto device = ormi::core::Device::from("cuda");
 
         for (auto _ : state) {
             ormi::core::runtime::device::synchronize(device);

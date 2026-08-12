@@ -1,7 +1,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-
 #include <cuda.h>
 #include <cuda_runtime_api.h>
 #include <gtest/gtest.h>
@@ -10,8 +9,9 @@
 #include <ormi/core/error.h>
 #include <ormi/core/memory/allocator.h>
 #include <ormi/core/memory/buffer.h>
-#include <ormi/core/runtime/backend_id.h>
-#include <ormi/core/runtime/dispatch/device.h>
+#include <ormi/backend/id.h>
+
+#include "core/runtime/dispatch/device.h"
 
 namespace {
     class CUDAAllocatorTest : public ::testing::Test {
@@ -41,7 +41,7 @@ namespace {
     }
 
     TEST_F(CUDAAllocatorTest, allocatesAndReleasesDeviceMemory) {
-        auto* allocator = ormi::core::runtime::device::allocator(ormi::core::Device::cuda());
+        auto* allocator = ormi::core::runtime::device::allocator(ormi::core::Device::from("cuda"));
 
         ASSERT_NE(allocator, nullptr);
         EXPECT_FALSE(allocator->host_visible());
@@ -56,7 +56,7 @@ namespace {
     }
 
     TEST_F(CUDAAllocatorTest, cachesAllocatorPerDevice) {
-        const auto device = ormi::core::Device::cuda();
+        const auto device = ormi::core::Device::from("cuda");
         auto* first = ormi::core::runtime::device::allocator(device);
         auto* second = ormi::core::runtime::device::allocator(device);
 
@@ -66,25 +66,25 @@ namespace {
 
     TEST_F(CUDAAllocatorTest, bufferOwnsDeviceMemory) {
         constexpr std::size_t bytes = 256;
-        ormi::core::memory::Buffer buffer(ormi::core::Device::cuda(), bytes);
+        ormi::core::memory::Buffer buffer(ormi::core::Device::from("cuda"), bytes);
 
         EXPECT_EQ(buffer.bytes(), bytes);
         EXPECT_NE(buffer.data(), nullptr);
         EXPECT_NE(buffer.allocator(), nullptr);
-        EXPECT_EQ(buffer.device().backend_id(), ormi::core::runtime::backend_id_cuda);
+        EXPECT_EQ(buffer.device().name(), "cuda");
     }
 
     TEST_F(CUDAAllocatorTest, rejectsUnavailableDeviceIndex) {
-        const auto unavailable = ormi::core::Device::cuda(device_count_);
+        const auto unavailable = ormi::core::Device::from("cuda", device_count_);
 
         EXPECT_THROW(
             (void)ormi::core::runtime::device::allocator(unavailable),
-            ormi::cudaError
+            ormi::BackendError
         );
     }
 
     TEST_F(CUDAAllocatorTest, accountsLiveAllocationInPrivatePool) {
-        const auto device = ormi::core::Device::cuda();
+        const auto device = ormi::core::Device::from("cuda");
 
         if (!memory_pool_supported(device.index())) {
             GTEST_SKIP() << "CUDA memory pools are unavailable.";
@@ -139,7 +139,7 @@ namespace {
     }
 
     TEST_F(CUDAAllocatorTest, emptyCacheTrimsReclaimablePoolMemory) {
-        const auto device = ormi::core::Device::cuda();
+        const auto device = ormi::core::Device::from("cuda");
 
         if (!memory_pool_supported(device.index())) {
             GTEST_SKIP() << "CUDA memory pools are unavailable.";

@@ -1,9 +1,20 @@
 #pragma once
+#include <span>
 
+#include <ormi/backend/fusion.h>
+#include <ormi/core/op.h>
 #include <ormi/core/tensor.h>
 
-#include "core/runtime/fusion/expr.h"
-
 namespace ormi::backends::cuda::fusion {
-    void execute(core::Tensor& out, const core::runtime::fusion::Expr& expression);
+    bool supports(const core::runtime::fusion::Expr& expression);
+    core::Setup prepare(
+        core::Tensor& out,
+        std::span<core::Tensor* const> auxiliary_outputs,
+        const core::runtime::fusion::Expr& expression
+    );
+    void execute(
+        core::Tensor& out,
+        std::span<core::Tensor* const> auxiliary_outputs,
+        const core::runtime::fusion::Expr& expression
+    );
 }

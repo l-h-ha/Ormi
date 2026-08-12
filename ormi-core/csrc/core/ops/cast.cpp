@@ -6,8 +6,9 @@
 #include <ormi/core/error.h>
 #include <ormi/core/op.h>
 #include <ormi/core/ops/cast.h>
-#include <ormi/core/runtime/dispatch/cast.h>
 #include <ormi/core/tensor.h>
+
+#include "core/runtime/dispatch/cast.h"
 
 namespace ormi::core::ops {
     namespace {
@@ -55,5 +56,9 @@ namespace ormi::core::ops {
             input->shape(),
             dtype
         );
+    }
+
+    bool is_cast(const Tensor& tensor) {
+        return tensor.op() == &cast_op;
     }
 }

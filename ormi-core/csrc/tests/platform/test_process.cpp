@@ -27,7 +27,7 @@ namespace {
             helper,
             std::vector<std::string>{"sleep"},
             {},
-            std::chrono::milliseconds(100)
+            std::chrono::milliseconds(500)
         );
         const auto elapsed = std::chrono::steady_clock::now() - started;
 

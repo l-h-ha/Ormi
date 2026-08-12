@@ -1,6 +1,7 @@
 #include <ormi/core/error.h>
 #include <ormi/core/memory/ops.h>
-#include <ormi/core/runtime/dispatch/memory.h>
+
+#include "core/runtime/dispatch/memory.h"
 
 namespace ormi::core::memory {
     void copy(void* dst, Device dst_device, const void* src, Device src_device, std::size_t bytes) {

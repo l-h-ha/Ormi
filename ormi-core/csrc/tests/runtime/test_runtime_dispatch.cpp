@@ -2,7 +2,8 @@
 
 #include <ormi/core/device.h>
 #include <ormi/core/error.h>
-#include <ormi/core/runtime/dispatch/device.h>
+
+#include "core/runtime/dispatch/device.h"
 
 namespace {
     TEST(BackendDispatchTest, dispatchesThroughResolvedCPUBackend) {
@@ -14,7 +15,7 @@ namespace {
 
 #ifdef ORMI_ENABLE_CUDA
     TEST(BackendDispatchTest, dispatchesThroughResolvedCUDABackendWhenEnabled) {
-        const auto device = ormi::core::Device::cuda();
+        const auto device = ormi::core::Device::from("cuda");
 
         EXPECT_NE(ormi::core::runtime::device::allocator(device), nullptr);
         EXPECT_NO_THROW(ormi::core::runtime::device::synchronize(device));

@@ -167,8 +167,8 @@ namespace ormi::backends::cuda {
 #endif
 
     State& state(core::Device device) {
-        if (!device.is_cuda()) {
-            ORMI_THROW(cudaError, "CUDA state requires a CUDA device.");
+        if (device.name() != "cuda") {
+            ORMI_THROW(BackendError, "CUDA state requires a CUDA device.");
         }
 
         static const int device_cnt = available_devices();
@@ -189,5 +189,9 @@ namespace ormi::backends::cuda {
         }
 
         return *slot;
+    }
+
+    cudaStream_t stream(core::Device device) {
+        return state(device).stream();
     }
 }

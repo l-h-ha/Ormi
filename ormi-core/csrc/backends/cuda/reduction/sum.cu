@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <span>
 #include <type_traits>
 
@@ -91,7 +92,8 @@ namespace ormi::backends::cuda {
             const Storage* input,
             std::size_t outputs,
             std::size_t reduced_elements,
-            Layout layout
+            Layout layout,
+            Accum scale
         ) {
             extern __shared__ unsigned char shared_bytes[];
             auto* partial = reinterpret_cast<Accum*>(shared_bytes);
@@ -116,7 +118,7 @@ namespace ormi::backends::cuda {
                 const auto total = block_sum(sum, partial);
 
                 if (threadIdx.x == 0) {
-                    store_value<Storage, Accum>(out, output, total);
+                    store_value<Storage, Accum>(out, output, total * scale);
                 }
             }
         }
@@ -155,7 +157,8 @@ namespace ormi::backends::cuda {
             Storage* out,
             const Accum* partials,
             std::size_t outputs,
-            std::size_t parts
+            std::size_t parts,
+            Accum scale
         ) {
             extern __shared__ unsigned char shared_bytes[];
             auto* partial = reinterpret_cast<Accum*>(shared_bytes);
@@ -174,7 +177,7 @@ namespace ormi::backends::cuda {
                 const auto total = block_sum(sum, partial);
 
                 if (threadIdx.x == 0) {
-                    store_value<Storage, Accum>(out, output, total);
+                    store_value<Storage, Accum>(out, output, total * scale);
                 }
             }
         }
@@ -241,7 +244,8 @@ namespace ormi::backends::cuda {
             const core::Tensor& input,
             std::size_t reduction_size,
             std::size_t parts,
-            cudaStream_t stream
+            cudaStream_t stream,
+            Accum scale
         ) {
             const auto outputs = out.numel();
             const auto partials_count = outputs * parts;
@@ -273,7 +277,8 @@ namespace ormi::backends::cuda {
                     static_cast<Storage*>(out.data()),
                     partials,
                     outputs,
-                    parts
+                    parts,
+                    scale
                 );
                 check(cudaGetLastError(), "CUDA final sum kernel");
             } catch (...) {
@@ -285,11 +290,12 @@ namespace ormi::backends::cuda {
         }
 
         template <typename Storage, typename Accum>
-        void launch_sum(
+        void launch_reduction(
             core::Tensor& out,
             const core::Tensor& input,
             std::span<const std::int64_t> axes,
-            cudaStream_t stream
+            cudaStream_t stream,
+            Accum scale
         ) {
             const auto outputs = out.numel();
             const auto reduction_size = reduced_elements(input, axes);
@@ -310,7 +316,8 @@ namespace ormi::backends::cuda {
                         input,
                         reduction_size,
                         parts,
-                        stream
+                        stream,
+                        scale
                     );
                     return;
                 }
@@ -325,7 +332,8 @@ namespace ormi::backends::cuda {
                     input_data,
                     outputs,
                     reduction_size,
-                    Contiguous{}
+                    Contiguous{},
+                    scale
                 );
             } else {
                 const auto index = reduction::make_index(input, axes);
@@ -339,11 +347,26 @@ namespace ormi::backends::cuda {
                     input_data,
                     outputs,
                     reduction_size,
-                    Indexed{index}
+                    Indexed{index},
+                    scale
                 );
             }
 
-            check(cudaGetLastError(), "CUDA sum kernel");
+            check(cudaGetLastError(), "CUDA reduction kernel");
+        }
+
+        template <typename Storage, typename Accum>
+        void launch_mean(
+            core::Tensor& out,
+            const core::Tensor& input,
+            std::span<const std::int64_t> axes,
+            cudaStream_t stream
+        ) {
+            const auto elements = reduced_elements(input, axes);
+            const auto scale = elements == 0
+                ? std::numeric_limits<Accum>::quiet_NaN()
+                : Accum{1} / static_cast<Accum>(elements);
+            launch_reduction<Storage, Accum>(out, input, axes, stream, scale);
         }
     }
 
@@ -361,20 +384,27 @@ namespace ormi::backends::cuda {
 
         switch (out.dtype()) {
             case core::DType::float64:
-                launch_sum<double, double>(out, input, axes, cuda_state.stream());
+                launch_reduction<double, double>(
+                    out, input, axes, cuda_state.stream(), 1.0
+                );
                 return;
             case core::DType::float32:
-                launch_sum<float, float>(out, input, axes, cuda_state.stream());
+                launch_reduction<float, float>(
+                    out, input, axes, cuda_state.stream(), 1.0f
+                );
                 return;
             case core::DType::float16:
-                launch_sum<__half, float>(out, input, axes, cuda_state.stream());
+                launch_reduction<__half, float>(
+                    out, input, axes, cuda_state.stream(), 1.0f
+                );
                 return;
             case core::DType::int32:
-                launch_sum<std::int32_t, std::int32_t>(
+                launch_reduction<std::int32_t, std::int32_t>(
                     out,
                     input,
                     axes,
-                    cuda_state.stream()
+                    cuda_state.stream(),
+                    1
                 );
                 return;
             case core::DType::boolean:
@@ -382,5 +412,35 @@ namespace ormi::backends::cuda {
         }
 
         ORMI_THROW(DTypeError, "CUDA sum cannot handle an unknown dtype.");
+    }
+
+    void reduce_mean(
+        core::Tensor& out,
+        const core::Tensor& input,
+        std::span<const std::int64_t> axes
+    ) {
+        if (out.numel() == 0) {
+            return;
+        }
+
+        auto& cuda_state = state(out.device());
+        check(cudaSetDevice(cuda_state.index()), "cudaSetDevice");
+
+        switch (out.dtype()) {
+            case core::DType::float64:
+                launch_mean<double, double>(out, input, axes, cuda_state.stream());
+                return;
+            case core::DType::float32:
+                launch_mean<float, float>(out, input, axes, cuda_state.stream());
+                return;
+            case core::DType::float16:
+                launch_mean<__half, float>(out, input, axes, cuda_state.stream());
+                return;
+            case core::DType::int32:
+            case core::DType::boolean:
+                ORMI_THROW(DTypeError, "CUDA mean requires a floating-point dtype.");
+        }
+
+        ORMI_THROW(DTypeError, "CUDA mean cannot handle an unknown dtype.");
     }
 }

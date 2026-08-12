@@ -1,4 +1,5 @@
 from ._ext._C import (
+    BackendError,
     BufferError,
     DTypeError,
     DeviceError,
@@ -6,11 +7,11 @@ from ._ext._C import (
     OperationError,
     OrmiError,
     ShapeError,
-    cudaError,
     jitError,
 )
 
 __all__ = [
+    "BackendError",
     "BufferError",
     "DTypeError",
     "DeviceError",
@@ -18,6 +19,5 @@ __all__ = [
     "OperationError",
     "OrmiError",
     "ShapeError",
-    "cudaError",
     "jitError",
 ]

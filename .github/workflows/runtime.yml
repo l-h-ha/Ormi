@@ -50,7 +50,7 @@ jobs:
       ORMI_CPU_JIT_CACHE_DIR: ${{ github.workspace }}/ormi-core/build-ci/jit-cache
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install toolchain
         run: |
@@ -83,6 +83,48 @@ jobs:
           ulimit -c 0
           ctest --test-dir build-ci --output-on-failure --no-tests=error
 
+  linux-sanitizers:
+    name: Linux Clang sanitizers
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: ormi-core
+    env:
+      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+      ORMI_CPU_JIT_CXX: clang++-18
+      ORMI_CPU_JIT_CXX_ID: clang
+      ORMI_CPU_JIT_CACHE_DIR: ${{ github.workspace }}/ormi-core/build-sanitize/jit-cache
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang-18 ninja-build
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build-sanitize -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_C_COMPILER=clang-18
+          -DCMAKE_CXX_COMPILER=clang++-18
+          -DORMI_ENABLE_SANITIZERS=ON
+          -DORMI_ENABLE_CUDA=OFF
+          -DORMI_ENABLE_OPENBLAS=OFF
+          -DORMI_BUILD_TESTS=ON
+          -DORMI_BUILD_BENCHMARKS=OFF
+          -DORMI_BUILD_EXAMPLES=ON
+
+      - name: Build
+        run: cmake --build build-sanitize --parallel
+
+      - name: Test
+        run: |
+          ulimit -c 0
+          ctest --test-dir build-sanitize --output-on-failure --no-tests=error
+
   windows-msvc:
     name: Windows ${{ matrix.name }}
     runs-on: windows-2022
@@ -107,7 +149,7 @@ jobs:
       VSCMD_SKIP_SENDTELEMETRY: 1
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Visual Studio environment
         uses: ilammy/msvc-dev-cmd@v1
@@ -151,6 +193,52 @@ jobs:
       - name: Test
         run: ctest --test-dir build-ci --output-on-failure --no-tests=error
 
+  windows-sanitizer:
+    name: Windows MSVC AddressSanitizer
+    runs-on: windows-2022
+    defaults:
+      run:
+        working-directory: ormi-core
+    env:
+      ASAN_OPTIONS: halt_on_error=1
+      ORMI_CPU_JIT_CXX_ID: msvc
+      ORMI_CPU_JIT_CACHE_DIR: ${{ github.workspace }}/ormi-core/build-sanitize/jit-cache
+      VSCMD_SKIP_SENDTELEMETRY: 1
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Visual Studio environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Report toolchain
+        shell: pwsh
+        run: |
+          $compiler = Get-Command cl -ErrorAction Stop
+          Get-Item $compiler.Source | Select-Object -ExpandProperty VersionInfo |
+            Select-Object ProductVersion, FileVersion
+          "ORMI_CPU_JIT_CXX=$($compiler.Source)" | Out-File $env:GITHUB_ENV -Append
+
+      - name: Configure
+        shell: pwsh
+        run: >-
+          cmake -S . -B build-sanitize -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_C_COMPILER=cl
+          -DCMAKE_CXX_COMPILER=cl
+          -DORMI_ENABLE_SANITIZERS=ON
+          -DORMI_ENABLE_CUDA=OFF
+          -DORMI_ENABLE_OPENBLAS=OFF
+          -DORMI_BUILD_TESTS=ON
+          -DORMI_BUILD_BENCHMARKS=OFF
+          -DORMI_BUILD_EXAMPLES=ON
+
+      - name: Build
+        run: cmake --build build-sanitize --parallel
+
+      - name: Test
+        run: ctest --test-dir build-sanitize --output-on-failure --no-tests=error
+
   windows-gcc:
     name: Windows GCC UCRT64
     runs-on: windows-2022
@@ -164,7 +252,7 @@ jobs:
       ORMI_CPU_JIT_CACHE_DIR: ${{ github.workspace }}/ormi-core/build-ci/jit-cache
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup UCRT64 toolchain
         uses: msys2/setup-msys2@v2

@@ -1,5 +1,6 @@
 #include <limits>
 #include <optional>
+#include <string_view>
 
 #if defined(ORMI_ENABLE_OPENBLAS)
 #include <cblas.h>
@@ -88,6 +89,16 @@ namespace ormi::backends::cpu::blas {
         }
     }
 
+    bool available() {
+        return true;
+    }
+
+    bool generic() {
+        static const bool result =
+            std::string_view(openblas_get_corename()) == "generic";
+        return result;
+    }
+
     bool gemm(float* out, const float* lhs, Matrix lhs_matrix, const float* rhs, Matrix rhs_matrix) {
         return gemm_typed(out, lhs, lhs_matrix, rhs, rhs_matrix, cblas_sgemm);
     }
@@ -96,6 +107,14 @@ namespace ormi::backends::cpu::blas {
         return gemm_typed(out, lhs, lhs_matrix, rhs, rhs_matrix, cblas_dgemm);
     }
 #else
+    bool available() {
+        return false;
+    }
+
+    bool generic() {
+        return false;
+    }
+
     bool gemm(float*, const float*, Matrix, const float*, Matrix) {
         return false;
     }

@@ -86,6 +86,43 @@ namespace {
         EXPECT_EQ(first.size(), 32);
     }
 
+    TEST(CPUJITCacheTest, keysIncludeTargetContext) {
+        const auto baseline = ormi::backends::cpu::jit::cache::key(
+            "generated",
+            "baseline"
+        );
+        const auto avx2 = ormi::backends::cpu::jit::cache::key(
+            "generated",
+            "avx2"
+        );
+
+        EXPECT_NE(baseline, avx2);
+    }
+
+    TEST(CPUJITCacheTest, findsCompleteArtifactWithoutBuilding) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        builds = 0;
+
+        EXPECT_FALSE(
+            ormi::backends::cpu::jit::cache::find("generated", "direct")
+        );
+        const auto built = ormi::backends::cpu::jit::cache::get(
+            "generated",
+            "direct",
+            build
+        );
+        auto found = ormi::backends::cpu::jit::cache::find(
+            "generated",
+            "direct"
+        );
+
+        ASSERT_TRUE(found.has_value());
+        EXPECT_EQ(builds, 1);
+        EXPECT_EQ(found->library, built.library);
+        EXPECT_TRUE(found->cached);
+    }
+
     TEST(CPUJITCacheTest, serializesConcurrentMisses) {
         Directory cache;
         environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
@@ -107,6 +144,27 @@ namespace {
                 static_cast<int>(second_artifact.cached),
             1
         );
+    }
+
+    TEST(CPUJITCacheTest, serializesConcurrentProcesses) {
+        Directory cache;
+        const std::filesystem::path helper(ORMI_JIT_CACHE_HELPER);
+        const std::vector<std::string> arguments{
+            cache.path.string(),
+            "compile"
+        };
+
+        auto first = std::async(std::launch::async, [&] {
+            return ormi::platform::run(helper, arguments);
+        });
+        auto second = std::async(std::launch::async, [&] {
+            return ormi::platform::run(helper, arguments);
+        });
+
+        const auto first_result = first.get();
+        const auto second_result = second.get();
+        EXPECT_EQ(first_result.code, 0) << first_result.output;
+        EXPECT_EQ(second_result.code, 0) << second_result.output;
     }
 
     TEST(CPUJITCacheTest, evictsLeastRecentlyUsedEntryAfterPublishing) {

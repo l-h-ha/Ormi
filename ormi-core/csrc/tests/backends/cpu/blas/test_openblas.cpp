@@ -3,6 +3,10 @@
 #include "backends/cpu/blas/openblas.h"
 
 namespace {
+    TEST(CPUOpenBLASTest, reportsAvailability) {
+        EXPECT_TRUE(ormi::backends::cpu::blas::available());
+    }
+
     TEST(CPUOpenBLASTest, multipliesContiguousFloat32Matrices) {
         const float lhs[]{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
         const float rhs[]{7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};

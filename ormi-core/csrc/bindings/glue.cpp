@@ -7,7 +7,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -22,11 +21,10 @@
 #include <ormi/core/ops/pointwise.h>
 #include <ormi/core/ops/reduction.h>
 #include <ormi/core/ops/view.h>
-#include <ormi/core/runtime/backend.h>
-#include <ormi/core/runtime/dispatch/device.h>
 #include <ormi/core/shape.h>
 #include <ormi/core/tensor.h>
 
+#include "core/runtime/dispatch/device.h"
 #include "bindings/glue.h"
 
 namespace ormi::bindings {
@@ -160,8 +158,8 @@ namespace ormi::bindings {
     }
 
     std::string device_string(core::Device device) {
-        std::string value(device.backend()->name);
-        if (!device.is_cpu() || device.index() != 0) {
+        std::string value(device.name());
+        if (device.indexed()) {
             value += ":" + std::to_string(device.index());
         }
         return value;
@@ -210,6 +208,27 @@ namespace ormi::bindings {
             core::memory::copy(result->data(), device, info.ptr, core::Device::cpu(), bytes);
         }
         return result;
+    }
+
+    std::unique_ptr<core::Plan> plan_from_python(
+        std::vector<std::shared_ptr<core::Tensor>> outputs,
+        std::vector<std::pair<
+            std::shared_ptr<core::Tensor>,
+            std::shared_ptr<core::Tensor>
+        >> updates
+    ) {
+        std::vector<core::Plan::Update> converted;
+        converted.reserve(updates.size());
+        for (auto& [destination, value] : updates) {
+            converted.push_back(core::Plan::Update{
+                std::move(destination),
+                std::move(value)
+            });
+        }
+        return std::make_unique<core::Plan>(
+            std::move(outputs),
+            std::move(converted)
+        );
     }
 
     py::array tensor_numpy(const std::shared_ptr<core::Tensor>& tensor) {
@@ -365,6 +384,17 @@ namespace ormi::bindings {
             return core::ops::sum(input, keepdims);
         }
         return core::ops::sum(input, axes.cast<std::vector<std::int64_t>>(), keepdims);
+    }
+
+    std::shared_ptr<core::Tensor> tensor_mean(
+        const std::shared_ptr<core::Tensor>& input,
+        py::object axes,
+        bool keepdims
+    ) {
+        if (axes.is_none()) {
+            return core::ops::mean(input, keepdims);
+        }
+        return core::ops::mean(input, axes.cast<std::vector<std::int64_t>>(), keepdims);
     }
 
     std::shared_ptr<core::Tensor> tensor_transpose(

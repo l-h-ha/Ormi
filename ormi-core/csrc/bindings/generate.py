@@ -427,6 +427,8 @@ def generate_source_marker(module: str) -> str:
 
 def write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists() and path.read_bytes() == content.encode("utf-8"):
+        return
     path.write_text(content, encoding="utf-8", newline="\n")
 
 

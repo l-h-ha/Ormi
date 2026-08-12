@@ -35,6 +35,7 @@
       "inherits": "cpu-debug",
       "binaryDir": "${sourceDir}/build-csrc-cpu-gcc",
       "cacheVariables": {
+        "CMAKE_C_COMPILER": "gcc",
         "CMAKE_CXX_COMPILER": "g++"
       }
     },
@@ -44,7 +45,34 @@
       "inherits": "cpu-debug",
       "binaryDir": "${sourceDir}/build-csrc-cpu-clang",
       "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
         "CMAKE_CXX_COMPILER": "clang++"
+      }
+    },
+    {
+      "name": "cpu-msvc-sanitize",
+      "displayName": "CPU MSVC AddressSanitizer",
+      "inherits": "cpu-msvc-debug",
+      "binaryDir": "${sourceDir}/build-csrc-cpu-msvc-sanitize",
+      "cacheVariables": {
+        "ORMI_ENABLE_SANITIZERS": "ON"
+      }
+    },
+    {
+      "name": "cpu-clang-sanitize",
+      "displayName": "CPU Clang Address and Undefined Sanitizers",
+      "inherits": "cpu-clang-debug",
+      "binaryDir": "${sourceDir}/build-csrc-cpu-clang-sanitize",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_C_FLAGS_RELWITHDEBINFO": "-O1 -g -DNDEBUG",
+        "CMAKE_CXX_FLAGS_RELWITHDEBINFO": "-O1 -g -DNDEBUG",
+        "ORMI_ENABLE_SANITIZERS": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
       }
     },
     {
@@ -73,6 +101,7 @@
       "inherits": "cpu-debug",
       "binaryDir": "${sourceDir}/build-csrc-cpu-clang-cl",
       "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang-cl",
         "CMAKE_CXX_COMPILER": "clang-cl"
       },
       "condition": {
@@ -127,6 +156,27 @@
       "configurePreset": "cpu-clang-debug"
     },
     {
+      "name": "cpu-msvc-sanitize",
+      "displayName": "Build CPU MSVC AddressSanitizer",
+      "configurePreset": "cpu-msvc-sanitize",
+      "configuration": "RelWithDebInfo",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "cpu-clang-sanitize",
+      "displayName": "Build CPU Clang Address and Undefined Sanitizers",
+      "configurePreset": "cpu-clang-sanitize",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
       "name": "cpu-msvc-debug",
       "displayName": "Build CPU MSVC Debug",
       "configurePreset": "cpu-msvc-debug",
@@ -169,6 +219,40 @@
       "name": "cpu-clang-debug",
       "displayName": "Test CPU Clang Debug",
       "configurePreset": "cpu-clang-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "cpu-msvc-sanitize",
+      "displayName": "Test CPU MSVC AddressSanitizer",
+      "configurePreset": "cpu-msvc-sanitize",
+      "configuration": "RelWithDebInfo",
+      "environment": {
+        "ASAN_OPTIONS": "halt_on_error=1"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "cpu-clang-sanitize",
+      "displayName": "Test CPU Clang Address and Undefined Sanitizers",
+      "configurePreset": "cpu-clang-sanitize",
+      "environment": {
+        "ASAN_OPTIONS": "halt_on_error=1",
+        "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
       "output": {
         "outputOnFailure": true
       }

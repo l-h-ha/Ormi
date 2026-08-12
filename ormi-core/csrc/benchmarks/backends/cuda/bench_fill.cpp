@@ -1,6 +1,5 @@
 #include <cstddef>
 #include <cstdint>
-
 #include <benchmark/benchmark.h>
 #include <cuda_runtime_api.h>
 
@@ -9,8 +8,9 @@
 #include <ormi/core/memory/buffer.h>
 #include <ormi/core/memory/ops.h>
 #include <ormi/core/ops/creation.h>
-#include <ormi/core/runtime/dispatch/device.h>
 #include <ormi/core/tensor.h>
+
+#include "core/runtime/dispatch/device.h"
 
 namespace {
     bool require_cuda(benchmark::State& state) {
@@ -47,7 +47,7 @@ namespace {
         }
 
         const auto elements = static_cast<std::size_t>(state.range(0));
-        const auto device = ormi::core::Device::cuda();
+        const auto device = ormi::core::Device::from("cuda");
         ormi::core::memory::Buffer buffer(device, elements * sizeof(float));
         constexpr float value = 2.5f;
 
@@ -90,7 +90,7 @@ namespace {
             auto tensor = ormi::core::ops::full(
                 {static_cast<std::int64_t>(elements)},
                 value,
-                ormi::core::Device::cuda()
+                ormi::core::Device::from("cuda")
             );
             state.ResumeTiming();
 
@@ -102,7 +102,7 @@ namespace {
             }
         }
 
-        ormi::core::runtime::device::synchronize(ormi::core::Device::cuda());
+        ormi::core::runtime::device::synchronize(ormi::core::Device::from("cuda"));
         report_elements(state, elements);
     }
 }

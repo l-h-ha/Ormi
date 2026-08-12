@@ -9,7 +9,15 @@ namespace ormi::core::ops {
     };
 
     enum class ReduceOp {
-        sum
+        sum,
+        mean
+    };
+
+    enum class FractionalOp {
+        caputo,
+        caputo_adjoint,
+        caputo_initial,
+        caputo_initial_adjoint
     };
 
     enum class UnaryOp {

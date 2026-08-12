@@ -7,9 +7,9 @@
 #include <ormi/core/op.h>
 #include <ormi/core/ops/cast.h>
 #include <ormi/core/ops/pointwise.h>
-#include <ormi/core/runtime/dispatch/pointwise.h>
 #include <ormi/core/tensor.h>
 
+#include "core/runtime/dispatch/pointwise.h"
 #include "core/precision.h"
 
 namespace ormi::core::ops {

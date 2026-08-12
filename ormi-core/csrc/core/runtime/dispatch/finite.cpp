@@ -1,8 +1,10 @@
 #include <ormi/core/dtype.h>
 #include <ormi/core/error.h>
-#include <ormi/core/runtime/backend.h>
-#include <ormi/core/runtime/dispatch/finite.h>
+#include <ormi/backend/api.h>
 #include <ormi/core/tensor.h>
+
+#include "core/runtime/dispatch/finite.h"
+#include "core/runtime/device.h"
 
 namespace ormi::core::runtime::finite {
     bool all(std::span<const Tensor* const> inputs) {
@@ -34,10 +36,7 @@ namespace ormi::core::runtime::finite {
             }
         }
 
-        if (device.backend()->all_finite == nullptr) {
-            ORMI_THROW(OperationError, "The selected backend does not support finiteness queries.");
-        }
-
-        return device.backend()->all_finite(inputs);
+        const auto& selected = backend(device);
+        return selected.ops.all_finite(inputs);
     }
 }

@@ -1,6 +1,8 @@
-#include <ormi/core/runtime/backend.h>
-#include <ormi/core/runtime/dispatch/optimizer.h>
+#include <ormi/backend/api.h>
 #include <ormi/core/tensor.h>
+
+#include "core/runtime/dispatch/optimizer.h"
+#include "core/runtime/device.h"
 
 namespace ormi::core::runtime::optimizer {
     void sgd(
@@ -9,6 +11,11 @@ namespace ormi::core::runtime::optimizer {
         const Tensor& gradient,
         double step_size
     ) {
-        out.device().backend()->sgd(out, parameter, gradient, step_size);
+        backend(out.device()).ops.sgd(
+            out,
+            parameter,
+            gradient,
+            step_size
+        );
     }
 }

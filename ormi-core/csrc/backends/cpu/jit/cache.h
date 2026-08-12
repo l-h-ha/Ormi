@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -46,8 +47,19 @@ namespace ormi::backends::cpu::jit::cache {
 
     std::filesystem::path directory();
     std::string key(std::string_view generated);
+    std::string key(std::string_view generated, std::string_view context);
     Artifact get(std::string_view generated, Build build);
+    Artifact get(
+        std::string_view generated,
+        std::string_view context,
+        Build build
+    );
+    std::optional<Artifact> find(
+        std::string_view generated,
+        std::string_view context
+    );
     void discard(std::string_view generated);
+    void discard(std::string_view generated, std::string_view context);
     Info info();
     Info clear();
 }

@@ -1,14 +1,10 @@
 #include <cstddef>
-#include <cstdlib>
 #include <limits>
 #include <mutex>
+#include <new>
 #include <string>
 #include <unordered_map>
 #include <vector>
-
-#if defined(_WIN32)
-#include <malloc.h>
-#endif
 
 #include <ormi/core/device.h>
 #include <ormi/core/error.h>
@@ -44,16 +40,11 @@ namespace ormi::backends::cpu {
             if (bytes == 0) {
                 return nullptr;
             }
-
-        #if defined(_WIN32)
-            return _aligned_malloc(bytes, alignment);
-        #else
-            void* ptr = nullptr;
-            if (posix_memalign(&ptr, alignment, bytes) != 0) {
-                return nullptr;
-            }
-            return ptr;
-        #endif
+            return ::operator new(
+                bytes,
+                std::align_val_t{alignment},
+                std::nothrow
+            );
         }
 
         void aligned_deallocate(void* ptr) {
@@ -61,11 +52,7 @@ namespace ormi::backends::cpu {
                 return;
             }
 
-        #if defined(_WIN32)
-            _aligned_free(ptr);
-        #else
-            std::free(ptr);
-        #endif
+            ::operator delete(ptr, std::align_val_t{alignment});
         }
 
         class cpuAllocator final : public core::memory::Allocator {

@@ -13,10 +13,12 @@
 #include <ormi/core/shape.h>
 
 namespace ormi::core {
+    class Plan;
     class Tensor;
 }
 
 namespace ormi::core::runtime {
+    class Step;
     void realize(Tensor& tensor);
 }
 
@@ -78,6 +80,8 @@ namespace ormi::core {
         bool is_contiguous() const;
 
     private:
+        friend class Plan;
+        friend class runtime::Step;
         friend void runtime::realize(Tensor& tensor);
 
         const Op* op_;

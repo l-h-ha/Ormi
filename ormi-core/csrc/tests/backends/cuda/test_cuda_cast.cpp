@@ -71,7 +71,7 @@ namespace {
         ) {
             const auto bytes = values.size() * sizeof(T);
             auto device_buffer = std::make_shared<ormi::core::memory::Buffer>(
-                ormi::core::Device::cuda(),
+                ormi::core::Device::from("cuda"),
                 bytes
             );
             ormi::core::memory::Buffer host(ormi::core::Device::cpu(), bytes);
@@ -131,7 +131,7 @@ namespace {
     };
 
     TEST_F(CUDACastTest, convertsEveryDTypePair) {
-        const auto device = ormi::core::Device::cuda();
+        const auto device = ormi::core::Device::from("cuda");
         const std::array<std::shared_ptr<ormi::core::Tensor>, 5> inputs{
             ormi::core::ops::full({}, ormi::core::Scalar{1.0}, device),
             ormi::core::ops::full({}, ormi::core::Scalar{1.0f}, device),
@@ -258,7 +258,7 @@ namespace {
         const auto input = ormi::core::ops::full(
             {0},
             2.0f,
-            ormi::core::Device::cuda()
+            ormi::core::Device::from("cuda")
         );
         auto result = ormi::core::ops::cast(input, ormi::core::DType::float16);
 
@@ -274,7 +274,7 @@ namespace {
             ormi::core::ops::full(
                 ormi::core::Shape{},
                 2.0f,
-                ormi::core::Device::cuda()
+                ormi::core::Device::from("cuda")
             ),
             ormi::core::Shape{std::move(dims)}
         );

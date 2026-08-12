@@ -1,4 +1,6 @@
+#include <array>
 #include <memory>
+#include <span>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -12,6 +14,11 @@
 
 namespace ormi::core {
     namespace {
+        struct Frame {
+            const std::shared_ptr<Tensor>* node;
+            std::size_t next_parent;
+        };
+
         bool same_device(const Tensor& lhs, const Tensor& rhs) {
             return
                 lhs.device().backend_id() == rhs.device().backend_id() &&
@@ -20,27 +27,98 @@ namespace ormi::core {
 
         std::vector<std::shared_ptr<Tensor>> topology(const std::shared_ptr<Tensor>& root) {
             std::vector<std::shared_ptr<Tensor>> result;
-            std::vector<std::pair<std::shared_ptr<Tensor>, bool>> stack{{root, false}};
+            std::vector<Frame> stack{{&root, 0}};
             std::unordered_set<const Tensor*> visited;
+            visited.insert(root.get());
 
             while (!stack.empty()) {
-                auto [node, expanded] = std::move(stack.back());
-                stack.pop_back();
+                auto& frame = stack.back();
+                const auto& node = *frame.node;
+                const auto& parents = node->parents();
 
-                if (expanded) {
-                    result.push_back(std::move(node));
+                if (frame.next_parent == parents.size()) {
+                    result.push_back(node);
+                    stack.pop_back();
                     continue;
                 }
 
-                if (!visited.insert(node.get()).second) {
+                const auto& parent = parents[frame.next_parent++];
+                if (!visited.insert(parent.get()).second) {
                     continue;
                 }
 
-                stack.emplace_back(node, true);
+                stack.push_back(Frame{&parent, 0});
+            }
 
-                for (auto parent = node->parents().rbegin(); parent != node->parents().rend(); ++parent) {
-                    stack.emplace_back(*parent, false);
+            return result;
+        }
+
+        std::vector<std::shared_ptr<Tensor>> grad_impl(
+            const std::shared_ptr<Tensor>& output,
+            std::span<const std::shared_ptr<Tensor>> inputs,
+            std::shared_ptr<Tensor> seed
+        ) {
+            if (!output) {
+                ORMI_THROW(OperationError, "Gradient output cannot be null.");
+            }
+
+            if (!is_floating(output->dtype())) {
+                ORMI_THROW(DTypeError, "Autograd supports floating-point tensors only.");
+            }
+
+            for (const auto& input : inputs) {
+                if (!input) {
+                    ORMI_THROW(OperationError, "Gradient inputs cannot contain null tensors.");
                 }
+
+                if (!is_floating(input->dtype())) {
+                    ORMI_THROW(DTypeError, "Autograd supports floating-point tensors only.");
+                }
+            }
+
+            if (!seed) {
+                if (!output->shape().scalar()) {
+                    ORMI_THROW(ShapeError, "A non-scalar gradient output requires an explicit seed.");
+                }
+                seed = ops::ones_like(output);
+            }
+
+            if (seed->shape() != output->shape()) {
+                ORMI_THROW(ShapeError, "Gradient seed shape must match the output shape.");
+            }
+
+            if (seed->dtype() != output->dtype()) {
+                ORMI_THROW(DTypeError, "Gradient seed dtype must match the output dtype.");
+            }
+
+            if (!same_device(*seed, *output)) {
+                ORMI_THROW(DeviceError, "Gradient seed device must match the output device.");
+            }
+
+            Grads gradients;
+            gradients.add(output, std::move(seed));
+            auto nodes = topology(output);
+
+            for (auto node = nodes.rbegin(); node != nodes.rend(); ++node) {
+                const auto upstream = gradients.get(*node);
+
+                if (!upstream || !(*node)->op()) {
+                    continue;
+                }
+
+                if (!(*node)->op()->adjoint) {
+                    ORMI_THROW(OperationError, "Operation has no adjoint: " + std::string((*node)->op()->name));
+                }
+
+                (*node)->op()->adjoint(*node, upstream, gradients);
+            }
+
+            std::vector<std::shared_ptr<Tensor>> result;
+            result.reserve(inputs.size());
+
+            for (const auto& input : inputs) {
+                auto gradient = gradients.get(input);
+                result.push_back(gradient ? std::move(gradient) : ops::zeros_like(input));
             }
 
             return result;
@@ -52,70 +130,7 @@ namespace ormi::core {
         const std::vector<std::shared_ptr<Tensor>>& inputs,
         std::shared_ptr<Tensor> seed
     ) {
-        if (!output) {
-            ORMI_THROW(OperationError, "Gradient output cannot be null.");
-        }
-
-        if (!is_floating(output->dtype())) {
-            ORMI_THROW(DTypeError, "Autograd supports floating-point tensors only.");
-        }
-
-        for (const auto& input : inputs) {
-            if (!input) {
-                ORMI_THROW(OperationError, "Gradient inputs cannot contain null tensors.");
-            }
-
-            if (!is_floating(input->dtype())) {
-                ORMI_THROW(DTypeError, "Autograd supports floating-point tensors only.");
-            }
-        }
-
-        if (!seed) {
-            if (!output->shape().scalar()) {
-                ORMI_THROW(ShapeError, "A non-scalar gradient output requires an explicit seed.");
-            }
-            seed = ops::ones_like(output);
-        }
-
-        if (seed->shape() != output->shape()) {
-            ORMI_THROW(ShapeError, "Gradient seed shape must match the output shape.");
-        }
-
-        if (seed->dtype() != output->dtype()) {
-            ORMI_THROW(DTypeError, "Gradient seed dtype must match the output dtype.");
-        }
-
-        if (!same_device(*seed, *output)) {
-            ORMI_THROW(DeviceError, "Gradient seed device must match the output device.");
-        }
-
-        Grads gradients;
-        gradients.add(output, std::move(seed));
-        auto nodes = topology(output);
-
-        for (auto node = nodes.rbegin(); node != nodes.rend(); ++node) {
-            const auto upstream = gradients.get(*node);
-
-            if (!upstream || !(*node)->op()) {
-                continue;
-            }
-
-            if (!(*node)->op()->adjoint) {
-                ORMI_THROW(OperationError, "Operation has no adjoint: " + std::string((*node)->op()->name));
-            }
-
-            (*node)->op()->adjoint(*node, upstream, gradients);
-        }
-
-        std::vector<std::shared_ptr<Tensor>> result;
-        result.reserve(inputs.size());
-
-        for (const auto& input : inputs) {
-            auto gradient = gradients.get(input);
-            result.push_back(gradient ? std::move(gradient) : ops::zeros_like(input));
-        }
-
-        return result;
+        return grad_impl(output, inputs, std::move(seed));
     }
 
     std::shared_ptr<Tensor> grad(
@@ -123,7 +138,9 @@ namespace ormi::core {
         const std::shared_ptr<Tensor>& input,
         std::shared_ptr<Tensor> seed
     ) {
-        return grad(output, std::vector<std::shared_ptr<Tensor>>{input}, std::move(seed))[0];
+        const std::array inputs{input};
+        auto result = grad_impl(output, inputs, std::move(seed));
+        return std::move(result[0]);
     }
 
     std::shared_ptr<Tensor> diff(

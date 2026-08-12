@@ -18,7 +18,7 @@ namespace ormi::backends::cuda {
 
         if (id < 0 || id >= count) {
             ORMI_THROW(
-                cudaError,
+                BackendError,
                 "CUDA device index: " + std::to_string(id) + " is out of range. Only " +
                 std::to_string(count) + " device(s) are available."
             );

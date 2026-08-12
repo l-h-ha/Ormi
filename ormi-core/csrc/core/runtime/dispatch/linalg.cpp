@@ -1,8 +1,10 @@
-#include <ormi/core/runtime/backend.h>
-#include <ormi/core/runtime/dispatch/linalg.h>
+#include <ormi/backend/api.h>
+
+#include "core/runtime/dispatch/linalg.h"
+#include "core/runtime/device.h"
 
 namespace ormi::core::runtime::linalg {
     void matmul(Tensor& out, const Tensor& lhs, const Tensor& rhs) {
-        out.device().backend()->matmul(out, lhs, rhs);
+        backend(out.device()).ops.matmul(out, lhs, rhs);
     }
 }

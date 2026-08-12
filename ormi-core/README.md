@@ -1,26 +1,21 @@
 # ormi-core
 
-`ormi-core` is ORMI's lazy tensor, automatic-differentiation, and C++ execution runtime for Python and C++.
+`ormi-core` is ORMI's lazy tensor, automatic-differentiation, and execution
+library. Version `0.1.0a6` supports x86-64 Windows and Linux.
 
-Version `0.1.0a5` is an alpha release for 64-bit Windows and Linux. CPU is always available. CUDA is an optional backend plugin: importing ORMI and running CPU work do not load CUDA.
+## Users
 
-## Install
-
-```bash
-pip install ormi-core --extra-index-url https://l-h-ha.github.io/Ormi/whl/
-```
-
-This installs the CPU package, including OpenBLAS `0.3.33`. It contains no CUDA libraries.
-
-Install the matching CUDA `12.4` backend and its redistributable runtime libraries with:
+CPU:
 
 ```bash
-pip install "ormi-core[cuda]" --extra-index-url https://l-h-ha.github.io/Ormi/whl/
+python -m pip install "ormi-core==0.1.0a6" --extra-index-url https://l-h-ha.github.io/Ormi/whl/
 ```
 
-The CUDA plugin is loaded only when a CUDA device is requested.
+CPU and CUDA:
 
-## Python API
+```bash
+python -m pip install "ormi-core[cuda]==0.1.0a6" --extra-index-url https://l-h-ha.github.io/Ormi/whl/
+```
 
 ```python
 import ormi_core as oc
@@ -28,67 +23,85 @@ import ormi_core as oc
 x = oc.Tensor([1.0, 2.0, 3.0])
 y = (x * x + 1.0).sum()
 dx = oc.grad(y, [x])[0]
-
-print(y.numpy())
-print(dx.numpy())
 ```
 
-The alpha surface includes:
+### Requirements
 
-- `Tensor`, `Device`, and `DType` with Float64, Float32, Float16, Int32, and Bool storage.
-- Lazy creation, pointwise arithmetic, elementary unary operations, casts, views, multi-axis reduction, and all-rank broadcasted matmul.
-- Lazy reverse-mode `grad`, repeated `diff`, and higher-order differentiation.
-- Autocast, functional SGD, and dynamic `GradScaler` support.
-- CPU JIT cache inspection and clearing through `ormi_core.jit`.
-- Generated type stubs for the root module and `ops`, `optim`, and `jit` submodules.
-
-Fractional differentiation is planned but is not part of `0.1.0a5`.
-
-## User Requirements
-
-| Capability | Requirement |
+| Use | Requirement |
 | --- | --- |
-| Python | CPython `3.10`, `3.11`, `3.12`, or `3.13`; NumPy `>=1.24`. |
-| Windows wheel | 64-bit Windows and the Microsoft Visual C++ runtime supplied by supported Windows installations. |
-| Linux wheel | x86-64 Linux with glibc `>=2.28` (`manylinux_2_28`). |
-| CPU execution | No CUDA Toolkit, OpenBLAS installation, or compiler is required for ordinary kernels. OpenBLAS `0.3.33` is bundled in `ormi-core` wheels. |
-| CPU JIT fusion | A supported C++20 compiler is required only when realizing an eligible fused graph that is not already in the persistent cache. Absence is reported at that realization, not at import. |
-| CUDA execution | Install `ormi-core[cuda]`. An NVIDIA CUDA-capable GPU and NVIDIA driver `>=550.54.14` on Linux or `>=551.61` on Windows are required. The CUDA Toolkit is not required. |
+| Python | [CPython 3.10-3.13](https://www.python.org/downloads/) and NumPy 1.24 or newer. |
+| Windows | 64-bit Windows. |
+| Linux | x86-64 Linux with glibc 2.28 or newer. |
+| CPU | No OpenBLAS or SLEEF installation. The wheel includes OpenBLAS 0.3.33 and SLEEF 3.9.0. |
+| CPU fusion | A supported C++20 compiler when an uncached fused kernel is first realized. |
+| CUDA | The CUDA extra, a supported NVIDIA GPU, and a compatible [NVIDIA driver](https://www.nvidia.com/Download/index.aspx/). No CUDA Toolkit. |
 
-The CUDA driver floors above are the CUDA `12.4` GA toolkit-driver versions, not the lower CUDA 12.x minor-compatibility floors. This release uses the conservative full-compatibility requirement.
+Published CUDA wheels use CUDA 12.4. The minimum supported driver is
+`550.54.14` on Linux and `551.61` on Windows. The wheels target compute
+capabilities 5.0, 5.2, 6.0, 6.1, 7.0, 7.5, 8.0, 8.6, 8.9, and 9.0, with PTX
+for newer 9.x devices. Float16 fusion requires compute capability 5.3 or newer.
 
-The release build emits CUDA code for compute capabilities `5.0`, `5.2`, `6.0`, `6.1`, `7.0`, `7.5`, `8.0`, `8.6`, `8.9`, and `9.0`, with forward-compatible PTX for `9.0`. CUDA failures are lazy: a machine without a usable NVIDIA driver can import ORMI and run CPU tensors, but requesting `cuda` raises `DeviceError` or `cudaError`.
+CUDA loads only when a CUDA device is requested. Importing `ormi_core` and
+using CPU tensors does not require CUDA.
 
-### CPU JIT Compiler Resolution
+### CPU Fusion Compiler
 
-ORMI resolves a compiler once, on the first uncached eligible CPU fusion:
+Compiler lookup happens only when an uncached fused CPU kernel is needed:
 
-1. If `ORMI_CPU_JIT_CXX` is nonempty, ORMI resolves that executable or path and uses it.
-2. Otherwise Windows probes `cl.exe`, `clang-cl.exe`, `g++.exe`, then `clang++.exe`, followed by Visual Studio discovery outside a developer shell.
-3. Otherwise Linux probes `g++`, `clang++`, then `c++`.
-4. If no usable compiler is found, ORMI raises `jitError` at fused realization. Non-JIT CPU operations remain usable.
+1. `ORMI_CPU_JIT_CXX`, when set, supplies the executable name or path.
+2. Windows tries `cl.exe`, `clang-cl.exe`, `g++.exe`, and `clang++.exe`, then
+   searches for Visual Studio.
+3. Linux tries `g++`, `clang++`, and `c++`.
+4. Failure raises `jitError` at fused realization. Import and non-fused CPU
+   operations still work.
 
-`ORMI_CPU_JIT_CXX_ID` optionally declares how ORMI should invoke an override or filters autodetection. Values are case-insensitive: `gcc`, `clang`, `clang-cl`, and `msvc` (`cl` is an alias). This supports compiler launchers and wrappers whose executable names do not identify their command-line syntax.
+`ORMI_CPU_JIT_CXX_ID` can select the compiler syntax independently of its
+filename. Values are case-insensitive: `gcc`, `clang`, `clang-cl`, and `msvc`;
+`cl` is an alias for `msvc`.
 
-## Builder Requirements
+`ORMI_CPU_JIT_TARGET` selects the generated CPU instruction set. Its default,
+`auto`, uses AVX2 when the CPU and operating system support it and otherwise
+uses the baseline instruction set. `baseline` and `avx2` are explicit
+case-insensitive overrides; requesting unsupported AVX2 raises `jitError` only
+when a fused CPU kernel is first compiled.
 
-| Build | Requirement |
+On AVX2 CPUs with F16C, ORMI also uses packed Float16 conversion and arithmetic
+for eligible fused kernels. F16C is detected automatically and is not a runtime
+prerequisite; unsupported CPUs use the scalar Float16 path.
+
+Published wheels use SLEEF 3.9.0 for eight-lane Float32 `exp`, `log`, `sin`,
+and `cos` inside eligible AVX2 fused kernels. ORMI passes these functions to
+generated kernels through its own table, so the user's JIT compiler does not
+need SLEEF headers or libraries. Non-AVX2 systems use scalar standard-library
+math.
+
+Compiler installers and instructions:
+
+- Windows: [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+  (Visual Studio 2022 is tested),
+  [LLVM/Clang](https://releases.llvm.org/), or
+  [MSYS2 UCRT64 GCC](https://www.msys2.org/).
+- Linux: [GCC](https://gcc.gnu.org/install/) or
+  [LLVM/Clang](https://releases.llvm.org/). Ubuntu users can follow the
+  [Ubuntu GCC setup guide](https://ubuntu.com/developers/docs/howto/gcc-setup/).
+
+## Builders
+
+| Feature | Requirement |
 | --- | --- |
-| C++ core | CMake `>=3.18` and a C++20 compiler. |
-| Verified Linux toolchains | GCC `13` and Clang `18` on Ubuntu `24.04`. |
-| Verified Windows toolchains | MSVC from Visual Studio 2022, `clang-cl`, and GCC in MSYS2 UCRT64. |
-| Python extension | CPython `>=3.10`, scikit-build-core `>=0.8`, pybind11 `>=2.11`, and PyYAML `>=6.0`. Isolated `pip` builds install these build dependencies. |
-| Tests | GoogleTest is fetched by CMake when `ORMI_BUILD_TESTS=ON`. |
-| Benchmarks | Google Benchmark is fetched by CMake when `ORMI_BUILD_BENCHMARKS=ON`. |
-| OpenBLAS | Optional. `ORMI_ENABLE_OPENBLAS=ON` requires the exact OpenBLAS `0.3.33` CMake package. Windows release builds pin it through `vcpkg.json`. |
-| CUDA | Optional. `ORMI_ENABLE_CUDA=ON` requires the CUDA Toolkit, NVCC with C++20 support, cuBLAS, CUDA Runtime, CUDA Driver import library, and NVRTC. Published wheels use Toolkit `12.4`. |
-| Network | Required on the first dependency-fetching configure, and for isolated Python build dependencies. |
+| Core | [CMake 3.18+](https://cmake.org/download/) and a C++20 compiler. [Ninja](https://ninja-build.org/) is required by the Ninja presets. |
+| Linux toolchains tested in CI | GCC 13 and Clang 18 on Ubuntu 24.04. |
+| Windows toolchains tested in CI | Visual Studio 2022 MSVC, clang-cl, and MSYS2 UCRT64 GCC. |
+| Python build | CPython 3.10-3.13. Build isolation installs scikit-build-core 1.0+, pybind11 2.11+, and PyYAML 6.0+. |
+| Tests and benchmarks | Network access on the first configure; CMake fetches GoogleTest and Google Benchmark. Tests also need a matching C compiler. |
+| Sanitizers | Windows x64: Visual Studio 2022 MSVC with [C++ AddressSanitizer](https://learn.microsoft.com/en-us/cpp/sanitizers/asan?view=msvc-170). Linux: Clang with [AddressSanitizer](https://clang.llvm.org/docs/AddressSanitizer.html) and [UndefinedBehaviorSanitizer](https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html). |
+| OpenBLAS | Optional; exactly [OpenBLAS 0.3.33](https://github.com/OpenMathLib/OpenBLAS/releases/tag/v0.3.33) with a discoverable CMake package. |
+| SLEEF | Optional; exactly [SLEEF 3.9.0](https://github.com/shibatch/sleef/releases/tag/3.9.0) with a discoverable CMake package. |
+| CUDA | Optional; [CUDA Toolkit 12.4](https://developer.nvidia.com/cuda-toolkit-archive), C++20-capable NVCC, CUDA Runtime, CUDA Driver import library, cuBLAS, and NVRTC. |
 
-Windows and Linux are the only implemented platform adapters. Core tensors and operations contain no operating-system branches; a new platform requires one process/filesystem/shared-library adapter and one CMake platform selection branch.
+Only Windows and Linux have platform implementations.
 
-## Build From Source
-
-The default C++ build is CPU-only, uses ORMI's direct CPU matmul, and does not build Python:
+### CPU
 
 ```bash
 cmake --preset cpu-debug
@@ -96,35 +109,103 @@ cmake --build --preset cpu-debug
 ctest --preset cpu-debug
 ```
 
-Build the Python package through its isolated PEP 517 configuration:
+Compiler-specific presets are `cpu-gcc-debug`, `cpu-clang-debug`,
+`cpu-msvc-debug`, and `cpu-clang-cl-debug`. Release benchmarks use
+`cpu-bench`.
+
+Run the instrumented CPU suite on Windows x64 from a Visual Studio 2022
+developer shell:
+
+```powershell
+cmake --preset cpu-msvc-sanitize
+cmake --build --preset cpu-msvc-sanitize
+ctest --preset cpu-msvc-sanitize
+```
+
+On Linux, use Clang AddressSanitizer and UndefinedBehaviorSanitizer:
+
+```bash
+cmake --preset cpu-clang-sanitize
+cmake --build --preset cpu-clang-sanitize
+ctest --preset cpu-clang-sanitize
+```
+
+### OpenBLAS
+
+```bash
+cmake -S . -B build-openblas -G Ninja -DORMI_ENABLE_OPENBLAS=ON -DCMAKE_PREFIX_PATH=/path/to/openblas
+cmake --build build-openblas --parallel
+ctest --test-dir build-openblas --output-on-failure
+```
+
+On Windows, replace `CMAKE_PREFIX_PATH` with:
+
+```text
+-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+```
+
+The repository's `vcpkg.json` pins the Windows dependency used by release
+builds. Follow Microsoft's [vcpkg setup guide](https://learn.microsoft.com/en-us/vcpkg/get_started/get-started)
+to install vcpkg.
+
+Enable vectorized Float32 transcendental functions with:
+
+```bash
+cmake -S . -B build-sleef -G Ninja -DORMI_ENABLE_SLEEF=ON -DCMAKE_PREFIX_PATH=/path/to/sleef
+cmake --build build-sleef --parallel
+ctest --test-dir build-sleef --output-on-failure
+```
+
+On Windows, the vcpkg toolchain in the preceding example supplies SLEEF as
+well as OpenBLAS.
+
+### CUDA
+
+```bash
+cmake --preset cuda-debug
+cmake --build --preset cuda-debug
+ctest --preset cuda-debug
+```
+
+On Windows, run this from a Visual Studio 2022 developer shell. Release
+benchmarks use `cuda-bench`.
+
+### Python And C++
+
+Build the CPU Python package from source:
 
 ```bash
 python -m pip install .
 ```
 
-Enable optional backends explicitly:
+That source build has OpenBLAS, SLEEF, and CUDA disabled unless explicitly
+configured.
+Build the separately installable CUDA wheel from the repository root with:
 
 ```bash
-cmake -S . -B build -DORMI_ENABLE_OPENBLAS=ON -DORMI_ENABLE_CUDA=ON
-cmake --build build --parallel
+python -m pip wheel ./ormi-cuda
 ```
 
-Normal C++ consumers link `ormi::core`. Code that directly consumes the optional CUDA plugin can additionally link `ormi::cuda` when `ORMI_ENABLE_CUDA=ON`.
+For C++, use CMake `add_subdirectory` and link `ormi::core`. When CUDA is
+enabled, direct CUDA consumers may also link `ormi::cuda`. A
+`find_package(ormi)` package is not installed yet.
 
-## Binding Generation
+## Runtime Settings
 
-The Python API is declared in `csrc/bindings/defs/*.yaml`. CMake runs `csrc/bindings/generate.py` to produce the pybind11 registration unit and `.pyi` files from the same declarations. `glue.cpp` contains only Python/NumPy conversion and ergonomic argument handling that cannot be expressed as direct pybind11 bindings.
-
-## Runtime Configuration
-
-| Name | Default | Meaning |
+| Variable | Default | Purpose |
 | --- | --- | --- |
-| `ORMI_CPU_JIT_CXX` | unset | Compiler executable name or path override. |
-| `ORMI_CPU_JIT_CXX_ID` | auto | Override syntax: `gcc`, `clang`, `clang-cl`, or `msvc`. |
-| `ORMI_CPU_JIT_TIMEOUT_MS` | `120000` | Compiler deadline in milliseconds; `0` disables the deadline. |
-| `ORMI_CPU_JIT_CACHE_DIR` | platform user cache | Persistent compiled-kernel cache directory. |
-| `ORMI_CPU_JIT_CACHE_MAX_BYTES` | `268435456` | Persistent cache budget; `0` disables automatic eviction. |
+| `ORMI_CPU_THREADS` | Detected physical cores | Threads used by large contiguous CPU JIT maps; `1` forces serial execution. |
+| `ORMI_CPU_JIT_CXX` | Unset | Compiler executable name or path. |
+| `ORMI_CPU_JIT_CXX_ID` | Auto | Compiler syntax: `gcc`, `clang`, `clang-cl`, or `msvc`. |
+| `ORMI_CPU_JIT_TARGET` | `auto` | CPU instruction set: `auto`, `baseline`, or `avx2`. |
+| `ORMI_CPU_JIT_TIMEOUT_MS` | `120000` | Compile timeout in milliseconds; `0` disables it. |
+| `ORMI_CPU_JIT_CACHE_DIR` | User cache | Persistent fused-kernel cache directory. |
+| `ORMI_CPU_JIT_CACHE_MAX_BYTES` | `268435456` | Cache budget in bytes; `0` disables eviction. |
+| `ORMI_CUDA_JIT_CACHE_DIR` | User cache | Persistent CUDA source and PTX cache directory. |
+| `ORMI_CUDA_JIT_CACHE_MAX_BYTES` | `268435456` | CUDA cache budget in bytes; `0` disables eviction. |
+
+Bindings and `.pyi` files are generated from `csrc/bindings/defs/*.yaml`.
 
 ## License
 
-MIT. Bundled third-party runtime libraries retain their own licenses.
+MIT. Bundled dependencies retain their own licenses.

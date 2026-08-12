@@ -1,98 +1,51 @@
 # ORMI
 
-ORMI is an early-stage Python tensor and autograd project. It is designed around lazy computation: tensor operations build computation graphs
-that can be executed, optimized, and accelerated by the backend.
+ORMI is an alpha-stage lazy tensor and automatic-differentiation library for
+Python and C++. It currently supports x86-64 Windows and Linux.
 
-This repository is a `uv` workspace. The implemented runtime is split into
-`ormi-core` for CPU execution and `ormi-cuda` for optional CUDA execution.
-The top-level `ormi` package exists in the workspace, but it has not started
-development yet.
+The Python package is `ormi_core`.
 
-## Packages
+## Users
 
-- `ormi-core`: C++ tensor and autograd engine with Python bindings.
-- `ormi-cuda`: Optional CUDA backend for `ormi-core`.
-- `ormi`: Placeholder package for the future user-facing ORMI API.
+Install a supported [CPython 3.10-3.13](https://www.python.org/downloads/),
+then install ORMI.
 
-For package-specific documentation, see:
-
-- [ormi-core/README.md](ormi-core/README.md)
-- [ormi-cuda/README.md](ormi-cuda/README.md)
-
-## Set Up The Workspace
-
-This repository is a real `uv` workspace. The root project depends on the
-workspace packages through `[tool.uv.sources]`, so `uv sync` installs `ormi`
-and `ormi-core` from the local checkout.
-
-Because `ormi-core` contains a compiled extension, syncing the full workspace may
-compile it. The default source build is CPU-only and requires:
-
-- CMake `>=3.18`.
-- A C++20 compiler.
-- CPython `>=3.10`.
-
-Then install the workspace dependencies from the repository root:
+Install CPU support:
 
 ```bash
-uv sync
+python -m pip install "ormi-core==0.1.0a6" --extra-index-url https://l-h-ha.github.io/Ormi/whl/
 ```
 
-This installs the workspace packages in editable mode and prepares the local
-development environment.
-
-OpenBLAS and CUDA are explicit optional source-build features. On Windows,
-enable exact OpenBLAS `0.3.33` through the pinned vcpkg manifest with:
-
-```powershell
-$env:CMAKE_GENERATOR = "Ninja"
-$env:SKBUILD_CMAKE_ARGS = "-DORMI_ENABLE_OPENBLAS=ON;-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
-uv sync
-```
-
-Make sure Ninja is installed and available on `PATH` if you set
-`CMAKE_GENERATOR` to `Ninja`.
-
-## Run Tests
-
-After the workspace is synced, run the Python test suite from the repository
-root:
+Install CPU and CUDA 12.4 support:
 
 ```bash
-uv run pytest
+python -m pip install "ormi-core[cuda]==0.1.0a6" --extra-index-url https://l-h-ha.github.io/Ormi/whl/
 ```
 
-Most tests live under `ormi-core`. See the `ormi-core` README for the
-full CMake, C++ test, CUDA, OpenBLAS, and platform-specific build notes.
+The wheels include OpenBLAS, SLEEF vector math, and, for the CUDA extra, ORMI's
+CUDA runtime libraries. Users do not install OpenBLAS, SLEEF, or the CUDA
+Toolkit. CUDA users only install a compatible
+[NVIDIA driver](https://www.nvidia.com/Download/index.aspx/).
+CPU fusion needs a C++20 compiler when an uncached fused kernel is first used.
+CUDA fusion stores generated PTX in the user's cache, so NVRTC compilation is
+normally paid once per kernel and GPU target.
 
-## Build Packages
+Read [ormi-core/README.md](ormi-core/README.md) for the exact Python, compiler,
+platform, GPU, and NVIDIA driver requirements.
 
-To build the CPU package:
+## Builders
 
-```bash
-uv build --package ormi-core
-```
+Install [CMake 3.18 or newer](https://cmake.org/download/),
+[Ninja](https://ninja-build.org/), and a C++20 toolchain:
 
-This command uses the same build prerequisites as `uv sync`.
+- Windows: [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+  (Visual Studio 2022 is tested),
+  [LLVM/Clang](https://releases.llvm.org/), or
+  [MSYS2 UCRT64 GCC](https://www.msys2.org/).
+- Linux: [GCC](https://gcc.gnu.org/install/) or
+  [LLVM/Clang](https://releases.llvm.org/).
 
-Building `ormi-cuda` requires the CUDA Toolkit:
-
-```bash
-uv build --package ormi-cuda
-```
-
-To build all workspace packages:
-
-```bash
-uv build --all-packages
-```
-
-The `ormi` package is present so the workspace shape is ready for the future
-user-facing API.
-
-## Development
-
-If you wish to contribute, start with the checked CPU preset:
+Then run:
 
 ```bash
 cd ormi-core
@@ -101,24 +54,33 @@ cmake --build --preset cpu-debug
 ctest --preset cpu-debug
 ```
 
-CUDA is never enabled just because a GPU or toolkit is present. Configure it
-explicitly with `-DORMI_ENABLE_CUDA=ON` or use the `cuda-debug` preset.
+CUDA additionally requires the
+[CUDA 12.4 Toolkit](https://developer.nvidia.com/cuda-toolkit-archive). It is
+enabled only by the CUDA preset:
 
-For the full build guide, including CUDA and OpenBLAS details, read:
-
-- [ormi-core/README.md](ormi-core/README.md)
-
-## Repository Layout
-
-```text
-ormi-workspace/
-  ormi-core/      Implemented Python backend library
-  ormi-cuda/      Optional CUDA backend package
-  ormi/           Future user-facing package; not developed yet
-  pyproject.toml  uv workspace configuration
-  uv.lock         Locked workspace dependencies
+```bash
+cmake --preset cuda-debug
+cmake --build --preset cuda-debug
+ctest --preset cuda-debug
 ```
+
+For Python workspace development, [install `uv`](https://docs.astral.sh/uv/getting-started/installation/)
+and run from the repository root:
+
+```bash
+uv sync
+uv run pytest
+```
+
+`uv sync` builds `ormi-core` with CUDA and OpenBLAS disabled. Detailed build
+requirements and optional build commands are in
+[ormi-core/README.md](ormi-core/README.md).
+
+## Layout
+
+- `ormi-core`: tensor, autograd, CPU runtime, Python bindings, and CUDA source.
+- `ormi-cuda`: separately installable CUDA plugin package.
 
 ## License
 
-MIT
+MIT.

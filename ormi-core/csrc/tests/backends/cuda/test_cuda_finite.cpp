@@ -5,7 +5,6 @@
 #include <limits>
 #include <memory>
 #include <vector>
-
 #include <cuda_runtime_api.h>
 #include <gtest/gtest.h>
 
@@ -20,9 +19,10 @@
 #include <ormi/core/ops/reduction.h>
 #include <ormi/core/ops/view.h>
 #include <ormi/core/optim/grad_scaler.h>
-#include <ormi/core/runtime/dispatch/finite.h>
 #include <ormi/core/shape.h>
 #include <ormi/core/tensor.h>
+
+#include "core/runtime/dispatch/finite.h"
 
 namespace {
     template <typename T>
@@ -65,7 +65,7 @@ namespace {
         ) {
             const auto bytes = values.size() * sizeof(T);
             auto device_buffer = std::make_shared<ormi::core::memory::Buffer>(
-                ormi::core::Device::cuda(),
+                ormi::core::Device::from("cuda"),
                 bytes
             );
             ormi::core::memory::Buffer host(ormi::core::Device::cpu(), bytes);
@@ -97,7 +97,7 @@ namespace {
         auto result = ormi::core::ops::all_finite(input);
 
         EXPECT_FALSE(result->realized());
-        EXPECT_TRUE(result->device().is_cuda());
+        EXPECT_EQ(result->device().name(), "cuda");
         EXPECT_EQ(result->dtype(), ormi::core::DType::boolean);
         EXPECT_TRUE(result->shape().scalar());
         EXPECT_TRUE(host_value(*result));
@@ -129,12 +129,12 @@ namespace {
         const auto numerator = ormi::core::ops::full(
             {1024},
             1.0f,
-            ormi::core::Device::cuda()
+            ormi::core::Device::from("cuda")
         );
         const auto denominator = ormi::core::ops::full(
             {1024},
             0.0f,
-            ormi::core::Device::cuda()
+            ormi::core::Device::from("cuda")
         );
         const auto quotient = ormi::core::ops::div(numerator, denominator);
         auto result = ormi::core::ops::all_finite(quotient);
@@ -158,7 +158,7 @@ namespace {
             ormi::core::ops::transpose(input, {1, 0})
         );
         auto empty = ormi::core::ops::all_finite(
-            ormi::core::ops::full({0}, 1.0f, ormi::core::Device::cuda())
+            ormi::core::ops::full({0}, 1.0f, ormi::core::Device::from("cuda"))
         );
 
         EXPECT_FALSE(host_value(*transposed));
@@ -233,7 +233,7 @@ namespace {
             ormi::core::ops::full(
                 ormi::core::Shape{},
                 1.0f,
-                ormi::core::Device::cuda()
+                ormi::core::Device::from("cuda")
             ),
             ormi::core::Shape{dims}
         );
@@ -242,7 +242,7 @@ namespace {
             ormi::core::ops::full(
                 ormi::core::Shape{std::vector<std::int64_t>(65, 1)},
                 1.0f,
-                ormi::core::Device::cuda()
+                ormi::core::Device::from("cuda")
             )
         );
 

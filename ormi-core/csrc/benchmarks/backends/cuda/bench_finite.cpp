@@ -2,17 +2,17 @@
 #include <cstddef>
 #include <memory>
 #include <vector>
-
 #include <benchmark/benchmark.h>
 #include <cuda_runtime_api.h>
 
 #include <ormi/core/device.h>
 #include <ormi/core/ops/creation.h>
 #include <ormi/core/ops/reduction.h>
-#include <ormi/core/runtime/dispatch/device.h>
-#include <ormi/core/runtime/dispatch/finite.h>
 #include <ormi/core/shape.h>
 #include <ormi/core/tensor.h>
+
+#include "core/runtime/dispatch/device.h"
+#include "core/runtime/dispatch/finite.h"
 
 namespace {
     bool requireCUDA(benchmark::State& state) {
@@ -38,7 +38,7 @@ namespace {
         }
 
         const auto elements = state.range(0);
-        const auto device = ormi::core::Device::cuda();
+        const auto device = ormi::core::Device::from("cuda");
         const auto input = ormi::core::ops::full({elements}, 1.0f, device);
         const std::array<const ormi::core::Tensor*, 1> inputs{input.get()};
         input->realize();
@@ -58,7 +58,7 @@ namespace {
         }
 
         const auto elements = state.range(0);
-        const auto device = ormi::core::Device::cuda();
+        const auto device = ormi::core::Device::from("cuda");
         const auto input = ormi::core::ops::full({elements}, 1.0f, device);
         input->realize();
         ormi::core::runtime::device::synchronize(device);
@@ -83,7 +83,7 @@ namespace {
 
         const auto count = static_cast<std::size_t>(state.range(0));
         const auto elements = state.range(1);
-        const auto device = ormi::core::Device::cuda();
+        const auto device = ormi::core::Device::from("cuda");
         std::vector<std::shared_ptr<ormi::core::Tensor>> tensors;
         std::vector<const ormi::core::Tensor*> inputs;
         tensors.reserve(count);

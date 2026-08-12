@@ -62,7 +62,7 @@ namespace {
         ) {
             const auto bytes = values.size() * sizeof(T);
             auto device_buffer = std::make_shared<ormi::core::memory::Buffer>(
-                ormi::core::Device::cuda(),
+                ormi::core::Device::from("cuda"),
                 bytes
             );
             ormi::core::memory::Buffer host(ormi::core::Device::cpu(), bytes);

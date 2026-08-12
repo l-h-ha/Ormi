@@ -1,15 +1,15 @@
 #include <cstdint>
 #include <vector>
-
 #include <benchmark/benchmark.h>
 #include <cuda_runtime_api.h>
 
 #include <ormi/core/device.h>
 #include <ormi/core/ops/creation.h>
 #include <ormi/core/ops/reduction.h>
-#include <ormi/core/runtime/dispatch/device.h>
 #include <ormi/core/shape.h>
 #include <ormi/core/tensor.h>
+
+#include "core/runtime/dispatch/device.h"
 
 namespace {
     bool requireCUDA(benchmark::State& state) {
@@ -35,7 +35,7 @@ namespace {
         }
 
         const auto elements = state.range(0);
-        const auto device = ormi::core::Device::cuda();
+        const auto device = ormi::core::Device::from("cuda");
         const auto input = ormi::core::ops::full({elements}, 1.0f, device);
         input->realize();
 
@@ -70,7 +70,7 @@ namespace {
 
         const auto side = state.range(0);
         const auto elements = side * side;
-        const auto device = ormi::core::Device::cuda();
+        const auto device = ormi::core::Device::from("cuda");
         const auto input = ormi::core::ops::full({side, side}, 1.0f, device);
         const std::vector<std::int64_t> axes{first_axis ? 0 : 1};
         input->realize();

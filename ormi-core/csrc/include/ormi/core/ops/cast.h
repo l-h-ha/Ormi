@@ -10,4 +10,5 @@ namespace ormi::core {
 
 namespace ormi::core::ops {
     std::shared_ptr<Tensor> cast(const std::shared_ptr<Tensor>& input, DType dtype);
+    bool is_cast(const Tensor& tensor);
 }

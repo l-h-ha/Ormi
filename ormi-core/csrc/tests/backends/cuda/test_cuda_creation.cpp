@@ -52,7 +52,7 @@ namespace {
         auto tensor = ormi::core::ops::full(
             ormi::core::Shape{std::vector<std::int64_t>{2, 3}},
             ormi::core::Scalar{2.5},
-            ormi::core::Device::cuda()
+            ormi::core::Device::from("cuda")
         );
 
         EXPECT_FALSE(tensor->realized());
@@ -68,7 +68,7 @@ namespace {
         auto tensor = ormi::core::ops::full(
             ormi::core::Shape{std::vector<std::int64_t>{2, 3}},
             ormi::core::Scalar{2.5f},
-            ormi::core::Device::cuda()
+            ormi::core::Device::from("cuda")
         );
         const auto output = copy_to_host<float, 6>(*tensor);
 
@@ -82,7 +82,7 @@ namespace {
         auto tensor = ormi::core::ops::full(
             ormi::core::Shape{std::vector<std::int64_t>{2, 3}},
             ormi::core::Scalar{expected},
-            ormi::core::Device::cuda()
+            ormi::core::Device::from("cuda")
         );
         const auto output = copy_to_host<ormi::core::Float16, 6>(*tensor);
 
@@ -95,7 +95,7 @@ namespace {
         auto tensor = ormi::core::ops::full(
             ormi::core::Shape{std::vector<std::int64_t>{2, 3}},
             ormi::core::Scalar{std::int32_t{7}},
-            ormi::core::Device::cuda()
+            ormi::core::Device::from("cuda")
         );
         const auto output = copy_to_host<std::int32_t, 6>(*tensor);
 
@@ -108,7 +108,7 @@ namespace {
         auto tensor = ormi::core::ops::full(
             ormi::core::Shape{std::vector<std::int64_t>{2, 3}},
             ormi::core::Scalar{true},
-            ormi::core::Device::cuda()
+            ormi::core::Device::from("cuda")
         );
         const auto output = copy_to_host<bool, 6>(*tensor);
 
@@ -121,7 +121,7 @@ namespace {
         const auto input = ormi::core::ops::full(
             ormi::core::Shape{std::vector<std::int64_t>{4}},
             ormi::core::Scalar{2.0f},
-            ormi::core::Device::cuda()
+            ormi::core::Device::from("cuda")
         );
         auto zeros = ormi::core::ops::zeros_like(input);
         auto ones = ormi::core::ops::ones_like(input);
@@ -140,7 +140,7 @@ namespace {
         auto tensor = ormi::core::ops::full(
             ormi::core::Shape{std::vector<std::int64_t>{0}},
             ormi::core::Scalar{2.5f},
-            ormi::core::Device::cuda()
+            ormi::core::Device::from("cuda")
         );
 
         EXPECT_NO_THROW(tensor->realize());
@@ -149,7 +149,7 @@ namespace {
     }
 
     TEST_F(CUDACreationTest, rejectsUnknownDType) {
-        ormi::core::memory::Buffer buffer(ormi::core::Device::cuda(), sizeof(float));
+        ormi::core::memory::Buffer buffer(ormi::core::Device::from("cuda"), sizeof(float));
         constexpr float value = 1.0f;
 
         EXPECT_THROW(

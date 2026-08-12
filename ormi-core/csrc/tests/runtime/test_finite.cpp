@@ -2,15 +2,15 @@
 #include <limits>
 #include <memory>
 #include <span>
-
 #include <gtest/gtest.h>
 
 #include <ormi/core/device.h>
 #include <ormi/core/dtype.h>
 #include <ormi/core/error.h>
-#include <ormi/core/runtime/dispatch/finite.h>
 #include <ormi/core/shape.h>
 #include <ormi/core/tensor.h>
+
+#include "core/runtime/dispatch/finite.h"
 
 namespace {
     std::shared_ptr<ormi::core::Tensor> tensor(ormi::core::DType dtype) {

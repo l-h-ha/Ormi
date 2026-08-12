@@ -1,3 +1,4 @@
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -67,7 +68,7 @@ namespace {
         ) {
             const auto bytes = values.size() * sizeof(T);
             auto device_buffer = std::make_shared<ormi::core::memory::Buffer>(
-                ormi::core::Device::cuda(),
+                ormi::core::Device::from("cuda"),
                 bytes
             );
             ormi::core::memory::Buffer host(ormi::core::Device::cpu(), bytes);
@@ -132,6 +133,66 @@ namespace {
         EXPECT_EQ(host_values<std::int32_t>(*int32)[0], 10);
     }
 
+    TEST_F(CUDAReductionTest, realizesMeanForEveryFloatingDType) {
+        auto float64 = ormi::core::ops::mean(
+            tensor<double>({4}, {0.25, 0.5, 0.75, 1.0})
+        );
+        auto float32 = ormi::core::ops::mean(
+            tensor<float>({2, 2}, {1.0f, 2.0f, 3.0f, 4.0f}),
+            {0}
+        );
+        auto float16 = ormi::core::ops::mean(
+            tensor<ormi::core::Float16>(
+                {4},
+                {
+                    ormi::core::Float16{2048.0f},
+                    ormi::core::Float16{1.0f},
+                    ormi::core::Float16{1.0f},
+                    ormi::core::Float16{-2048.0f}
+                }
+            )
+        );
+
+        EXPECT_DOUBLE_EQ(host_values<double>(*float64)[0], 0.625);
+        EXPECT_EQ(
+            host_values<float>(*float32),
+            (std::vector<float>{2.0f, 3.0f})
+        );
+        EXPECT_FLOAT_EQ(
+            static_cast<float>(host_values<ormi::core::Float16>(*float16)[0]),
+            0.5f
+        );
+    }
+
+    TEST_F(CUDAReductionTest, realizesHierarchicalAndEmptyMean) {
+        auto hierarchical = ormi::core::ops::mean(
+            ormi::core::ops::full(
+                {2, 4096},
+                1.0f,
+                ormi::core::Device::from("cuda")
+            ),
+            {1}
+        );
+        auto empty = ormi::core::ops::mean(
+            ormi::core::ops::full(
+                {2, 0, 3},
+                4.0f,
+                ormi::core::Device::from("cuda")
+            ),
+            {1}
+        );
+
+        EXPECT_EQ(
+            host_values<float>(*hierarchical),
+            (std::vector<float>{1.0f, 1.0f})
+        );
+        const auto empty_values = host_values<float>(*empty);
+        ASSERT_EQ(empty_values.size(), 6u);
+        for (const auto value : empty_values) {
+            EXPECT_TRUE(std::isnan(value));
+        }
+    }
+
     TEST_F(CUDAReductionTest, realizesMultipleAxesWithAndWithoutKeepdims) {
         const auto input = tensor<float>(
             {2, 3, 2},
@@ -159,7 +220,7 @@ namespace {
         const auto input = ormi::core::ops::full(
             {2, 4096},
             1.0f,
-            ormi::core::Device::cuda()
+            ormi::core::Device::from("cuda")
         );
         auto result = ormi::core::ops::sum(input, {1});
 
@@ -194,7 +255,7 @@ namespace {
         const auto input = ormi::core::ops::full(
             {2, 0, 3},
             4.0f,
-            ormi::core::Device::cuda()
+            ormi::core::Device::from("cuda")
         );
         auto result = ormi::core::ops::sum(input, {1});
 
@@ -207,14 +268,14 @@ namespace {
             ormi::core::ops::full(
                 ormi::core::Shape{},
                 3.5f,
-                ormi::core::Device::cuda()
+                ormi::core::Device::from("cuda")
             )
         );
         auto empty = ormi::core::ops::sum(
             ormi::core::ops::full(
                 {0, 2, 3},
                 1.0f,
-                ormi::core::Device::cuda()
+                ormi::core::Device::from("cuda")
             ),
             {2}
         );
@@ -236,6 +297,18 @@ namespace {
         EXPECT_FLOAT_EQ(host_values<float>(*second)[0], 2.0f);
     }
 
+    TEST_F(CUDAReductionTest, differentiatesMeanLazilyTwice) {
+        const auto input = tensor<float>({2}, {1.5f, 2.5f});
+        const auto average = ormi::core::ops::mean(
+            ormi::core::ops::mul(input, input)
+        );
+        const auto first = ormi::core::grad(average, input);
+        const auto second = ormi::core::grad(ormi::core::ops::sum(first), input);
+
+        EXPECT_EQ(host_values<float>(*first), (std::vector<float>{1.5f, 2.5f}));
+        EXPECT_EQ(host_values<float>(*second), (std::vector<float>{1.0f, 1.0f}));
+    }
+
     TEST_F(CUDAReductionTest, limitsOnlyIndexedReductionRank) {
         std::vector<std::int64_t> dims(65, 1);
         dims[0] = 2;
@@ -243,7 +316,7 @@ namespace {
             ormi::core::ops::full(
                 ormi::core::Shape{},
                 2.0f,
-                ormi::core::Device::cuda()
+                ormi::core::Device::from("cuda")
             ),
             ormi::core::Shape{dims}
         );
@@ -252,7 +325,7 @@ namespace {
             ormi::core::ops::full(
                 ormi::core::Shape{std::vector<std::int64_t>(65, 1)},
                 2.0f,
-                ormi::core::Device::cuda()
+                ormi::core::Device::from("cuda")
             )
         );
 

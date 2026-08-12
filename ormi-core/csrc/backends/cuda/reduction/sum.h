@@ -12,4 +12,10 @@ namespace ormi::backends::cuda {
         const core::Tensor& input,
         std::span<const std::int64_t> axes
     );
+
+    void reduce_mean(
+        core::Tensor& out,
+        const core::Tensor& input,
+        std::span<const std::int64_t> axes
+    );
 }

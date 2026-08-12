@@ -26,12 +26,12 @@ namespace {
 
     TEST(TensorTest, aliasOperationReusesParentBuffer) {
         static const ormi::core::Op alias_op{
-            "test_alias",
-            ormi::core::Output::alias,
-            1,
-            nullptr,
-            nullptr,
-            std::monostate{}
+            .name = "test_alias",
+            .output = ormi::core::Output::alias,
+            .parents = 1,
+            .compute = nullptr,
+            .adjoint = nullptr,
+            .scalar = std::monostate{}
         };
         const auto parent = std::make_shared<ormi::core::Tensor>(
             ormi::core::Device::cpu(),
@@ -55,12 +55,12 @@ namespace {
 
     TEST(TensorTest, rejectsMalformedOperationDefinition) {
         static const ormi::core::Op malformed{
-            "malformed",
-            ormi::core::Output::allocate,
-            1,
-            nullptr,
-            nullptr,
-            std::monostate{}
+            .name = "malformed",
+            .output = ormi::core::Output::allocate,
+            .parents = 1,
+            .compute = nullptr,
+            .adjoint = nullptr,
+            .scalar = std::monostate{}
         };
         const auto parent = std::make_shared<ormi::core::Tensor>(
             ormi::core::Device::cpu(),

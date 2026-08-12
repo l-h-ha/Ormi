@@ -20,4 +20,19 @@ namespace ormi::core::ops {
         bool keepdims = false
     );
     std::shared_ptr<Tensor> sum(const std::shared_ptr<Tensor>& input, bool keepdims = false);
+
+    std::shared_ptr<Tensor> mean(
+        const std::shared_ptr<Tensor>& input,
+        std::vector<std::int64_t> axes,
+        bool keepdims = false
+    );
+    std::shared_ptr<Tensor> mean(
+        const std::shared_ptr<Tensor>& input,
+        std::initializer_list<std::int64_t> axes,
+        bool keepdims = false
+    );
+    std::shared_ptr<Tensor> mean(const std::shared_ptr<Tensor>& input, bool keepdims = false);
+
+    bool is_sum(const Tensor& tensor);
+    bool is_mean(const Tensor& tensor);
 }

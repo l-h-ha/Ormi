@@ -1,14 +1,14 @@
 #include <cstdint>
-
 #include <benchmark/benchmark.h>
 #include <cuda_runtime_api.h>
 
 #include <ormi/core/device.h>
 #include <ormi/core/ops/creation.h>
 #include <ormi/core/ops/pointwise.h>
-#include <ormi/core/runtime/dispatch/device.h>
 #include <ormi/core/shape.h>
 #include <ormi/core/tensor.h>
+
+#include "core/runtime/dispatch/device.h"
 
 namespace {
     bool require_pointwise_cuda(benchmark::State& state) {
@@ -34,7 +34,7 @@ namespace {
         }
 
         const auto elements = state.range(0);
-        const auto device = ormi::core::Device::cuda();
+        const auto device = ormi::core::Device::from("cuda");
         const auto lhs = ormi::core::ops::full({elements}, 1.25f, device);
         const auto rhs = ormi::core::ops::full(
             broadcast ? ormi::core::Shape{} : ormi::core::Shape{elements},
@@ -74,7 +74,7 @@ namespace {
         }
 
         const auto elements = state.range(0);
-        const auto device = ormi::core::Device::cuda();
+        const auto device = ormi::core::Device::from("cuda");
         const auto input = ormi::core::ops::full({elements}, 1.25f, device);
         input->realize();
 
@@ -109,7 +109,7 @@ namespace {
 
         const auto side = state.range(0);
         const auto elements = side * side;
-        const auto device = ormi::core::Device::cuda();
+        const auto device = ormi::core::Device::from("cuda");
         const auto lhs = ormi::core::ops::full({side, 1}, 1.25f, device);
         const auto rhs = ormi::core::ops::full({1, side}, 2.0f, device);
         lhs->realize();

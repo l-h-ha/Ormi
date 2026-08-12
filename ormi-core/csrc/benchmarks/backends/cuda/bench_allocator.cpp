@@ -1,3 +1,4 @@
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -9,7 +10,8 @@
 
 #include <ormi/core/device.h>
 #include <ormi/core/memory/allocator.h>
-#include <ormi/core/runtime/dispatch/device.h>
+
+#include "core/runtime/dispatch/device.h"
 
 namespace {
     bool require_cuda(benchmark::State& state) {
@@ -33,6 +35,109 @@ namespace {
         state.counters["bytes"] = static_cast<double>(bytes);
     }
 
+    void bmCUDASetCurrentDevice(benchmark::State& state) {
+        if (!require_cuda(state)) {
+            return;
+        }
+
+        const auto device = ormi::core::Device::from("cuda");
+        cudaError_t status = cudaSetDevice(device.index());
+        if (status != cudaSuccess) {
+            state.SkipWithError(cudaGetErrorString(status));
+            return;
+        }
+
+        for (auto _ : state) {
+            status = cudaSetDevice(device.index());
+            benchmark::DoNotOptimize(status);
+        }
+    }
+
+    void bmCUDAGetCurrentDevice(benchmark::State& state) {
+        if (!require_cuda(state)) {
+            return;
+        }
+
+        const auto device = ormi::core::Device::from("cuda");
+        cudaError_t status = cudaSetDevice(device.index());
+        if (status != cudaSuccess) {
+            state.SkipWithError(cudaGetErrorString(status));
+            return;
+        }
+
+        for (auto _ : state) {
+            int current = -1;
+            status = cudaGetDevice(&current);
+            benchmark::DoNotOptimize(current);
+            benchmark::DoNotOptimize(status);
+        }
+    }
+
+    void bmCUDAAllocatorLookup(benchmark::State& state) {
+        if (!require_cuda(state)) {
+            return;
+        }
+
+        const auto device = ormi::core::Device::from("cuda");
+        for (auto _ : state) {
+            auto* allocator =
+                ormi::core::runtime::device::allocator(device);
+            benchmark::DoNotOptimize(allocator);
+        }
+    }
+
+    void bmORMIAllocateHost(benchmark::State& state) {
+        if (!require_cuda(state)) {
+            return;
+        }
+
+        const auto device = ormi::core::Device::from("cuda");
+        const auto bytes = static_cast<std::size_t>(state.range(0));
+        auto* allocator = ormi::core::runtime::device::allocator(device);
+
+        for (auto _ : state) {
+            ormi::core::runtime::device::synchronize(device);
+            const auto start = std::chrono::steady_clock::now();
+            void* ptr = allocator->allocate(bytes);
+            const auto elapsed = std::chrono::steady_clock::now() - start;
+            ormi::core::runtime::device::synchronize(device);
+
+            benchmark::DoNotOptimize(ptr);
+            allocator->deallocate(ptr, bytes);
+            ormi::core::runtime::device::synchronize(device);
+            state.SetIterationTime(
+                std::chrono::duration<double>(elapsed).count()
+            );
+        }
+
+        report_size(state, bytes);
+    }
+
+    void bmORMIDeallocateHost(benchmark::State& state) {
+        if (!require_cuda(state)) {
+            return;
+        }
+
+        const auto device = ormi::core::Device::from("cuda");
+        const auto bytes = static_cast<std::size_t>(state.range(0));
+        auto* allocator = ormi::core::runtime::device::allocator(device);
+
+        for (auto _ : state) {
+            void* ptr = allocator->allocate(bytes);
+            ormi::core::runtime::device::synchronize(device);
+
+            const auto start = std::chrono::steady_clock::now();
+            allocator->deallocate(ptr, bytes);
+            const auto elapsed = std::chrono::steady_clock::now() - start;
+            ormi::core::runtime::device::synchronize(device);
+            state.SetIterationTime(
+                std::chrono::duration<double>(elapsed).count()
+            );
+        }
+
+        report_size(state, bytes);
+    }
+
     void bmORMIPoolBurst(
         benchmark::State& benchmark_state,
         std::uint64_t release_threshold
@@ -53,7 +158,7 @@ namespace {
             return;
         }
 
-        const auto device = ormi::core::Device::cuda();
+        const auto device = ormi::core::Device::from("cuda");
         auto* allocator = ormi::core::runtime::device::allocator(device);
         void* probe = allocator->allocate(1);
         ormi::core::runtime::device::synchronize(device);
@@ -178,7 +283,7 @@ namespace {
             return;
         }
 
-        const auto device = ormi::core::Device::cuda();
+        const auto device = ormi::core::Device::from("cuda");
         const auto bytes = static_cast<std::size_t>(state.range(0));
         auto* allocator = ormi::core::runtime::device::allocator(device);
         void* warmup = allocator->allocate(bytes);
@@ -200,7 +305,7 @@ namespace {
             return;
         }
 
-        const auto device = ormi::core::Device::cuda();
+        const auto device = ormi::core::Device::from("cuda");
         const auto bytes = static_cast<std::size_t>(state.range(0));
         auto* allocator = ormi::core::runtime::device::allocator(device);
         void* warmup = allocator->allocate(bytes);
@@ -217,6 +322,31 @@ namespace {
         report_size(state, bytes);
     }
 }
+
+BENCHMARK(bmCUDASetCurrentDevice)
+    ->Name("memory/cuda_context/set_current");
+
+BENCHMARK(bmCUDAGetCurrentDevice)
+    ->Name("memory/cuda_context/get_current");
+
+BENCHMARK(bmCUDAAllocatorLookup)
+    ->Name("memory/cuda_allocator/lookup");
+
+BENCHMARK(bmORMIAllocateHost)
+    ->Name("memory/cuda_allocator/allocate_host")
+    ->Arg(64)
+    ->Arg(4096)
+    ->Arg(1048576)
+    ->Iterations(1000)
+    ->UseManualTime();
+
+BENCHMARK(bmORMIDeallocateHost)
+    ->Name("memory/cuda_allocator/deallocate_host")
+    ->Arg(64)
+    ->Arg(4096)
+    ->Arg(1048576)
+    ->Iterations(1000)
+    ->UseManualTime();
 
 BENCHMARK(bmCUDADirectAllocateDeallocate)
     ->Name("memory/cuda_alloc_free/direct")

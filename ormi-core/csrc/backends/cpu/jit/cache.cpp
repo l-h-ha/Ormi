@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <string>
@@ -80,8 +81,8 @@ namespace ormi::backends::cpu::jit::cache {
             };
         }
 
-        Files files(std::string_view generated) {
-            return files_for(key(generated));
+        Files files(std::string_view generated, std::string_view context) {
+            return files_for(key(generated, context));
         }
 
         std::uintmax_t configured_limit() {
@@ -455,10 +456,15 @@ namespace ormi::backends::cpu::jit::cache {
     }
 
     std::string key(std::string_view generated) {
+        return key(generated, {});
+    }
+
+    std::string key(std::string_view generated, std::string_view context) {
         const auto contract =
             std::string(abi) + "\n" +
             std::string(architecture()) + "\n" +
             std::string(platform::shared_extension()) + "\n" +
+            std::string(context) + "\n" +
             std::string(generated);
         return
             hex(hash(contract, 14695981039346656037ull)) +
@@ -466,8 +472,16 @@ namespace ormi::backends::cpu::jit::cache {
     }
 
     Artifact get(std::string_view generated, Build build) {
+        return get(generated, {}, build);
+    }
+
+    Artifact get(
+        std::string_view generated,
+        std::string_view context,
+        Build build
+    ) {
         create_directory();
-        const auto stem = key(generated);
+        const auto stem = key(generated, context);
         const auto paths = files_for(stem);
         bool built = false;
 
@@ -522,9 +536,34 @@ namespace ormi::backends::cpu::jit::cache {
         }
     }
 
+    std::optional<Artifact> find(
+        std::string_view generated,
+        std::string_view context
+    ) {
+        if (!directory_exists()) {
+            return std::nullopt;
+        }
+
+        const auto paths = files(generated, context);
+        auto lease = std::make_unique<platform::FileLock>(
+            paths.lock,
+            platform::Lock::shared
+        );
+        if (!valid(paths, generated)) {
+            return std::nullopt;
+        }
+
+        touch(paths);
+        return Artifact{paths.library, true, std::move(lease)};
+    }
+
     void discard(std::string_view generated) {
+        discard(generated, {});
+    }
+
+    void discard(std::string_view generated, std::string_view context) {
         create_directory();
-        const auto paths = files(generated);
+        const auto paths = files(generated, context);
         platform::FileLock lock(paths.lock);
         erase(paths);
     }

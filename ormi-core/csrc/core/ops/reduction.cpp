@@ -12,15 +12,17 @@
 #include <ormi/core/error.h>
 #include <ormi/core/op.h>
 #include <ormi/core/ops/cast.h>
+#include <ormi/core/ops/creation.h>
 #include <ormi/core/ops/kind.h>
+#include <ormi/core/ops/pointwise.h>
 #include <ormi/core/ops/reduction.h>
 #include <ormi/core/ops/view.h>
-#include <ormi/core/runtime/dispatch/reduction.h>
-#include <ormi/core/runtime/dispatch/finite.h>
-#include <ormi/core/runtime/dispatch/memory.h>
 #include <ormi/core/shape.h>
 #include <ormi/core/tensor.h>
 
+#include "core/runtime/dispatch/reduction.h"
+#include "core/runtime/dispatch/finite.h"
+#include "core/runtime/dispatch/memory.h"
 #include "core/precision.h"
 
 namespace ormi::core::ops {
@@ -48,14 +50,23 @@ namespace ormi::core::ops {
             );
         }
 
-        void adjoint_sum(
+        void compute_mean(Tensor& out) {
+            const auto& attrs = std::get<Reduce>(out.attrs());
+            runtime::reduction::reduce(
+                ReduceOp::mean,
+                out,
+                *out.parents()[0],
+                attrs.axes,
+                attrs.keepdims
+            );
+        }
+
+        std::shared_ptr<Tensor> expanded_adjoint(
             const std::shared_ptr<Tensor>& node,
-            const std::shared_ptr<Tensor>& upstream,
-            Grads& gradients
+            std::shared_ptr<Tensor> gradient
         ) {
             const auto& input = node->parents()[0];
             const auto& attrs = std::get<Reduce>(node->attrs());
-            auto gradient = upstream;
 
             if (!attrs.keepdims) {
                 auto dims = input->shape().dims();
@@ -67,7 +78,60 @@ namespace ormi::core::ops {
                 gradient = reshape(gradient, Shape(std::move(dims)));
             }
 
-            gradients.add(input, expand(gradient, input->shape()));
+            return expand(gradient, input->shape());
+        }
+
+        void adjoint_sum(
+            const std::shared_ptr<Tensor>& node,
+            const std::shared_ptr<Tensor>& upstream,
+            Grads& gradients
+        ) {
+            gradients.add(node->parents()[0], expanded_adjoint(node, upstream));
+        }
+
+        Scalar reciprocal_scalar(std::size_t count, DType dtype) {
+            switch (dtype) {
+                case DType::float64:
+                    return 1.0 / static_cast<double>(count);
+                case DType::float32:
+                    return 1.0f / static_cast<float>(count);
+                case DType::float16:
+                    return Float16{1.0f / static_cast<float>(count)};
+                case DType::int32:
+                case DType::boolean:
+                    ORMI_THROW(DTypeError, "Mean requires a floating-point tensor.");
+            }
+
+            ORMI_THROW(DTypeError, "Mean received an unknown dtype.");
+        }
+
+        void adjoint_mean(
+            const std::shared_ptr<Tensor>& node,
+            const std::shared_ptr<Tensor>& upstream,
+            Grads& gradients
+        ) {
+            const auto& input = node->parents()[0];
+            const auto& attrs = std::get<Reduce>(node->attrs());
+            std::size_t count = 1;
+
+            for (const auto axis : attrs.axes) {
+                count *= static_cast<std::size_t>(
+                    input->shape()[static_cast<std::size_t>(axis)]
+                );
+            }
+
+            const auto scaled = count == 1 ? upstream : mul(
+                upstream,
+                full(
+                    Shape{},
+                    reciprocal_scalar(count, upstream->dtype()),
+                    upstream->device()
+                )
+            );
+            gradients.add(
+                input,
+                expanded_adjoint(node, scaled)
+            );
         }
 
         const Op all_finite_op{
@@ -84,6 +148,15 @@ namespace ormi::core::ops {
             .parents = 1,
             .compute = compute_sum,
             .adjoint = adjoint_sum,
+            .scalar = std::monostate{},
+            .precision = Precision::float32
+        };
+        const Op mean_op{
+            .name = "mean",
+            .output = Output::allocate,
+            .parents = 1,
+            .compute = compute_mean,
+            .adjoint = adjoint_mean,
             .scalar = std::monostate{},
             .precision = Precision::float32
         };
@@ -213,5 +286,53 @@ namespace ormi::core::ops {
         bool keepdims
     ) {
         return sum(input, std::vector<std::int64_t>(axes), keepdims);
+    }
+
+    bool is_sum(const Tensor& tensor) {
+        return tensor.op() == &sum_op;
+    }
+
+    std::shared_ptr<Tensor> mean(
+        const std::shared_ptr<Tensor>& input,
+        std::vector<std::int64_t> axes,
+        bool keepdims
+    ) {
+        if (!input) {
+            ORMI_THROW(OperationError, "Mean requires a tensor.");
+        }
+
+        if (!is_floating(input->dtype())) {
+            ORMI_THROW(DTypeError, "Mean requires a floating-point tensor.");
+        }
+
+        axes = normalize_axes(std::move(axes), input->rank());
+        auto shape = reduced_shape(input->shape(), axes, keepdims);
+        const auto dtype = precision::apply(mean_op.precision, input->dtype());
+        const auto parent = input->dtype() == dtype ? input : cast(input, dtype);
+
+        return std::make_shared<Tensor>(
+            mean_op,
+            Reduce{std::move(axes), keepdims},
+            std::vector<std::shared_ptr<Tensor>>{parent},
+            input->device(),
+            std::move(shape),
+            dtype
+        );
+    }
+
+    std::shared_ptr<Tensor> mean(const std::shared_ptr<Tensor>& input, bool keepdims) {
+        return mean(input, std::vector<std::int64_t>{}, keepdims);
+    }
+
+    std::shared_ptr<Tensor> mean(
+        const std::shared_ptr<Tensor>& input,
+        std::initializer_list<std::int64_t> axes,
+        bool keepdims
+    ) {
+        return mean(input, std::vector<std::int64_t>(axes), keepdims);
+    }
+
+    bool is_mean(const Tensor& tensor) {
+        return tensor.op() == &mean_op;
     }
 }

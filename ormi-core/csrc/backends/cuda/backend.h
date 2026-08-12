@@ -1,6 +1,6 @@
 #pragma once
 
-#include <ormi/core/runtime/backend.h>
+#include <ormi/backend/api.h>
 
 namespace ormi::backends::cuda {
     core::runtime::Backend init();

@@ -4,11 +4,17 @@
 
 #include <ormi/core/device.h>
 #include <ormi/core/error.h>
-#include <ormi/core/runtime/backend_id.h>
-#include <ormi/core/runtime/backends.h>
+#include <ormi/backend/id.h>
+
+#include "core/runtime/backends.h"
+#include "core/runtime/catalog.h"
 
 namespace ormi::core {
     namespace {
+        constexpr auto host_backend = runtime::catalog::host();
+
+        static_assert(host_backend != runtime::backend_invalid);
+
         int parse_device_index(std::string_view index_text, std::string_view device_string) {
             if (index_text.empty()) {
                 ORMI_THROW(DeviceError, "Invalid device string: " + std::string(device_string));
@@ -31,7 +37,7 @@ namespace ormi::core {
         }
     }
 
-    Device::Device() : Device(runtime::backend_id_cpu, 0) {}
+    Device::Device() : Device(host_backend, 0) {}
 
     Device::Device(runtime::BackendId backend_id, int index)
         : backend_id_(backend_id), backend_(nullptr), index_(index)
@@ -40,23 +46,27 @@ namespace ormi::core {
             ORMI_THROW(DeviceError, "Device index cannot be negative.");
         }
 
-        if (backend_id == runtime::backend_invalid) {
+        if (
+            backend_id == runtime::backend_invalid ||
+            backend_id >= runtime::catalog::entries.size()
+        ) {
             ORMI_THROW(DeviceError, "Invalid backend id.");
         }
 
-        if (backend_id == runtime::backend_id_cpu && index != 0) {
-            ORMI_THROW(DeviceError, "CPU device index must be 0.");
+        const auto& entry = runtime::catalog::entries[backend_id];
+        if (!entry.indexed && index != 0) {
+            ORMI_THROW(
+                DeviceError,
+                "Backend '" + std::string(entry.name) +
+                    "' device index must be 0."
+            );
         }
 
         backend_ = &runtime::Backends::instance().require(backend_id);
     }
 
     Device Device::cpu() {
-        return Device(runtime::backend_id_cpu, 0);
-    }
-
-    Device Device::cuda(int index) {
-        return Device(runtime::backend_id_cuda, index);
+        return Device(host_backend, 0);
     }
 
     Device Device::from(std::string_view device_string) {
@@ -74,10 +84,18 @@ namespace ormi::core {
             ORMI_THROW(DeviceError, "Invalid device string: " + std::string(device_string));
         }
 
+        return from(backend_name, index);
+    }
+
+    Device Device::from(std::string_view backend_name, int index) {
+        if (backend_name.empty() || backend_name.find(':') != std::string_view::npos) {
+            ORMI_THROW(DeviceError, "Invalid backend name: " + std::string(backend_name));
+        }
+
         const runtime::BackendId id = runtime::Backends::instance().find(backend_name);
 
         if (id == runtime::backend_invalid) {
-            ORMI_THROW(DeviceError, "Invalid device string: " + std::string(device_string));
+            ORMI_THROW(DeviceError, "Unknown backend: " + std::string(backend_name));
         }
 
         return Device(id, index);
@@ -87,19 +105,19 @@ namespace ormi::core {
         return backend_id_;
     }
 
-    const runtime::Backend* Device::backend() const {
-        return backend_;
+    std::string_view Device::name() const {
+        return runtime::catalog::entries[backend_id_].name;
     }
 
     int Device::index() const {
         return index_;
     }
 
-    bool Device::is_cpu() const {
-        return backend_id_ == runtime::backend_id_cpu;
+    bool Device::indexed() const {
+        return runtime::catalog::entries[backend_id_].indexed;
     }
 
-    bool Device::is_cuda() const {
-        return backend_id_ == runtime::backend_id_cuda;
+    bool Device::is_host() const {
+        return backend_id_ == host_backend;
     }
 }

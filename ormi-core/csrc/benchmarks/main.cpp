@@ -1,3 +1,6 @@
+#include <exception>
+#include <iostream>
+
 #include <benchmark/benchmark.h>
 
 int main(int argc, char** argv) {
@@ -7,6 +10,13 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    benchmark::RunSpecifiedBenchmarks();
+    try {
+        benchmark::RunSpecifiedBenchmarks();
+    } catch (const std::exception& error) {
+        std::cerr << "Benchmark failed: " << error.what() << '\n';
+        benchmark::Shutdown();
+        return 1;
+    }
+
     benchmark::Shutdown();
 }

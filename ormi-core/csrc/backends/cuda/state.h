@@ -5,6 +5,16 @@
 
 #include <ormi/core/device.h>
 
+#if defined(_WIN32)
+#if defined(ORMI_CUDA_BACKEND_BUILD)
+#define ORMI_CUDA_INTERNAL __declspec(dllexport)
+#else
+#define ORMI_CUDA_INTERNAL __declspec(dllimport)
+#endif
+#else
+#define ORMI_CUDA_INTERNAL
+#endif
+
 namespace ormi::backends::cuda {
     class State final {
     public:
@@ -41,4 +51,7 @@ namespace ormi::backends::cuda {
     };
 
     State& state(core::Device device);
+    ORMI_CUDA_INTERNAL cudaStream_t stream(core::Device device);
 }
+
+#undef ORMI_CUDA_INTERNAL

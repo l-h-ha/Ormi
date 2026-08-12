@@ -61,10 +61,6 @@ namespace ormi::backends::cuda {
             return;
         }
 
-        if (device.is_cpu()) {
-            ORMI_THROW(cudaError, "CUDA cannot fill a tensor on a CPU device.");
-        }
-
         auto& cuda_state = state(device);
         check(cudaSetDevice(cuda_state.index()), "cudaSetDevice");
 

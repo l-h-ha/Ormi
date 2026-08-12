@@ -20,6 +20,9 @@ namespace ormi::backends::cpu {
             case core::ops::ReduceOp::sum:
                 reduce_sum(out, input, axes, keepdims);
                 return;
+            case core::ops::ReduceOp::mean:
+                reduce_mean(out, input, axes, keepdims);
+                return;
         }
 
         ORMI_THROW(OperationError, "Unknown CPU reduction operation.");

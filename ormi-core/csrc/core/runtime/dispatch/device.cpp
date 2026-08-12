@@ -1,11 +1,13 @@
 #include <ormi/core/device.h>
 #include <ormi/core/error.h>
-#include <ormi/core/runtime/backend.h>
-#include <ormi/core/runtime/dispatch/device.h>
+#include <ormi/backend/api.h>
+
+#include "core/runtime/dispatch/device.h"
+#include "core/runtime/device.h"
 
 namespace ormi::core::runtime::device {
     memory::Allocator* allocator(Device device) {
-        auto* result = device.backend()->allocator(device);
+        auto* result = backend(device).memory.allocator(device);
 
         if (!result) {
             ORMI_THROW(DeviceError, "Backend returned no allocator.");
@@ -15,6 +17,6 @@ namespace ormi::core::runtime::device {
     }
 
     void synchronize(Device device) {
-        device.backend()->synchronize(device);
+        backend(device).memory.synchronize(device);
     }
 }

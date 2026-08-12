@@ -6,8 +6,10 @@ includes:
   - ormi/core/dtype.h
   - ormi/core/error.h
   - ormi/core/ops/cast.h
+  - ormi/core/ops/fractional.h
   - ormi/core/ops/linalg.h
   - ormi/core/ops/pointwise.h
+  - ormi/core/plan.h
   - ormi/core/tensor.h
 
 exceptions:
@@ -35,8 +37,8 @@ exceptions:
   - name: jitError
     cpp_type: ormi::jitError
     base: OrmiError
-  - name: cudaError
-    cpp_type: ormi::cudaError
+  - name: BackendError
+    cpp_type: ormi::BackendError
     base: DeviceError
 
 enums:
@@ -69,14 +71,17 @@ classes:
           - name: value
             py_type: str
     properties_readonly:
+      - name: name
+        cpp: name
+        py_type: str
       - name: index
         cpp: index
         py_type: int
-      - name: is_cpu
-        cpp: is_cpu
+      - name: indexed
+        cpp: indexed
         py_type: bool
-      - name: is_cuda
-        cpp: is_cuda
+      - name: is_host
+        cpp: is_host
         py_type: bool
     methods:
       - name: __str__
@@ -187,6 +192,17 @@ classes:
             py_type: bool
             default: false
         returns: Tensor
+      - name: mean
+        binding: ormi::bindings::tensor_mean
+        args:
+          - name: axes
+            py_type: Sequence[int] | None
+            default: py::none()
+            py_default: None
+          - name: keepdims
+            py_type: bool
+            default: false
+        returns: Tensor
       - name: exp
         binding: ormi::core::ops::exp
         returns: Tensor
@@ -198,6 +214,20 @@ classes:
         returns: Tensor
       - name: cos
         binding: ormi::core::ops::cos
+        returns: Tensor
+      - name: caputo
+        binding: ormi::core::ops::caputo
+        args:
+          - name: alpha
+            py_type: float
+          - name: spacing
+            py_type: float
+          - name: axis
+            py_type: int
+            default: -1
+          - name: initial_derivative
+            py_type: Tensor | None
+            default: null
         returns: Tensor
       - name: grad
         expr: >-
@@ -271,6 +301,39 @@ classes:
         binding: ormi::bindings::tensor_repr
         returns: str
 
+  - name: Replay
+    cpp_type: ormi::core::Plan::Replay
+    methods:
+      - name: run
+        cpp: run
+        returns: None
+        release_gil: true
+
+  - name: Plan
+    cpp_type: ormi::core::Plan
+    constructors:
+      - factory: ormi::bindings::plan_from_python
+        args:
+          - name: outputs
+            py_type: Sequence[Tensor]
+          - name: updates
+            py_type: Sequence[tuple[Tensor, Tensor]]
+            default: py::tuple()
+            py_default: ()
+    properties_readonly:
+      - {name: steps, cpp: steps, py_type: int}
+      - {name: storage_buffers, cpp: storage_buffers, py_type: int}
+      - {name: storage_bytes, cpp: storage_bytes, py_type: int}
+    methods:
+      - name: run
+        cpp: run
+        returns: None
+        release_gil: true
+      - name: record
+        cpp: record
+        returns: Replay
+        release_gil: true
+
   - name: Autocast
     cpp_type: ormi::core::Autocast
     constructors:
@@ -299,14 +362,6 @@ functions:
   - python: cpu
     namespace: ormi::core::Device
     cpp: cpu
-    returns: Device
-  - python: cuda
-    namespace: ormi::core::Device
-    cpp: cuda
-    args:
-      - name: index
-        py_type: int
-        default: 0
     returns: Device
   - python: synchronize
     binding: ormi::bindings::synchronize

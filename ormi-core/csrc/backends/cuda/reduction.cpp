@@ -23,6 +23,9 @@ namespace ormi::backends::cuda {
             case core::ops::ReduceOp::sum:
                 reduce_sum(out, input, axes);
                 return;
+            case core::ops::ReduceOp::mean:
+                reduce_mean(out, input, axes);
+                return;
         }
 
         ORMI_THROW(OperationError, "Unknown CUDA reduction operation.");

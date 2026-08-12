@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <pybind11/numpy.h>
@@ -9,6 +10,7 @@
 
 #include <ormi/core/device.h>
 #include <ormi/core/dtype.h>
+#include <ormi/core/plan.h>
 #include <ormi/core/tensor.h>
 
 namespace ormi::bindings {
@@ -23,6 +25,13 @@ namespace ormi::bindings {
         py::object data,
         core::DType dtype,
         py::object device
+    );
+    std::unique_ptr<core::Plan> plan_from_python(
+        std::vector<std::shared_ptr<core::Tensor>> outputs,
+        std::vector<std::pair<
+            std::shared_ptr<core::Tensor>,
+            std::shared_ptr<core::Tensor>
+        >> updates
     );
     py::array tensor_numpy(const std::shared_ptr<core::Tensor>& tensor);
     py::object tensor_item(const std::shared_ptr<core::Tensor>& tensor);
@@ -66,6 +75,11 @@ namespace ormi::bindings {
     );
 
     std::shared_ptr<core::Tensor> tensor_sum(
+        const std::shared_ptr<core::Tensor>& input,
+        py::object axes,
+        bool keepdims
+    );
+    std::shared_ptr<core::Tensor> tensor_mean(
         const std::shared_ptr<core::Tensor>& input,
         py::object axes,
         bool keepdims

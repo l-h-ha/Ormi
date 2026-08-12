@@ -68,7 +68,7 @@ namespace {
         ) {
             const auto bytes = values.size() * sizeof(T);
             auto device_buffer = std::make_shared<ormi::core::memory::Buffer>(
-                ormi::core::Device::cuda(),
+                ormi::core::Device::from("cuda"),
                 bytes
             );
             ormi::core::memory::Buffer host(ormi::core::Device::cpu(), bytes);
@@ -238,8 +238,8 @@ namespace {
     }
 
     TEST_F(CUDAPointwiseTest, realizesEmptyOutputWithoutLaunching) {
-        const auto lhs = ormi::core::ops::full({0, 3}, 2.0f, ormi::core::Device::cuda());
-        const auto rhs = ormi::core::ops::full({1, 3}, 4.0f, ormi::core::Device::cuda());
+        const auto lhs = ormi::core::ops::full({0, 3}, 2.0f, ormi::core::Device::from("cuda"));
+        const auto rhs = ormi::core::ops::full({1, 3}, 4.0f, ormi::core::Device::from("cuda"));
         auto result = ormi::core::ops::add(lhs, rhs);
 
         EXPECT_NO_THROW(result->realize());
@@ -249,11 +249,11 @@ namespace {
 
     TEST_F(CUDAPointwiseTest, rejectsOversizedIndexedRankLazily) {
         const ormi::core::Shape shape(std::vector<std::int64_t>(65, 1));
-        const auto lhs = ormi::core::ops::full(shape, 2.0f, ormi::core::Device::cuda());
+        const auto lhs = ormi::core::ops::full(shape, 2.0f, ormi::core::Device::from("cuda"));
         const auto rhs = ormi::core::ops::full(
             ormi::core::Shape{},
             3.0f,
-            ormi::core::Device::cuda()
+            ormi::core::Device::from("cuda")
         );
         auto result = ormi::core::ops::add(lhs, rhs);
 

@@ -9,10 +9,10 @@
 #include <ormi/core/ops/cast.h>
 #include <ormi/core/ops/linalg.h>
 #include <ormi/core/ops/view.h>
-#include <ormi/core/runtime/dispatch/linalg.h>
 #include <ormi/core/shape.h>
 #include <ormi/core/tensor.h>
 
+#include "core/runtime/dispatch/linalg.h"
 #include "core/precision.h"
 
 namespace ormi::core::ops {
@@ -184,14 +184,14 @@ namespace ormi::core::ops {
             ORMI_THROW(DTypeError, "Matmul requires numeric tensors.");
         }
 
-        const auto shape = matmul_shape(lhs->shape(), rhs->shape());
+        auto shape = matmul_shape(lhs->shape(), rhs->shape());
 
         if (!precision::state.enabled && lhs_dtype == rhs_dtype) {
             return std::make_shared<Tensor>(
                 matmul_op,
                 std::vector<std::shared_ptr<Tensor>>{lhs, rhs},
                 lhs_device,
-                shape.output,
+                std::move(shape.output),
                 lhs_dtype
             );
         }
@@ -207,7 +207,7 @@ namespace ormi::core::ops {
             matmul_op,
             std::vector<std::shared_ptr<Tensor>>{promoted_lhs, promoted_rhs},
             lhs_device,
-            shape.output,
+            std::move(shape.output),
             dtype
         );
     }

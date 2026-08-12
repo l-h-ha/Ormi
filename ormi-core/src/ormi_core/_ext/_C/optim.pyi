@@ -5,7 +5,7 @@ import enum
 from collections.abc import Sequence
 from typing import Any, ClassVar, overload
 
-from . import DType, Device, Tensor, Autocast
+from . import DType, Device, Tensor, Replay, Plan, Autocast
 
 __all__ = ['ScalePolicy', 'GradScaler', 'sgd']
 

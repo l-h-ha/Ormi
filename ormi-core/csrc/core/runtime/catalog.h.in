@@ -1,0 +1,76 @@
+#pragma once
+#include <array>
+#include <cstddef>
+#include <string_view>
+
+#include <ormi/backend/api.h>
+#include <ormi/backend/id.h>
+
+@ORMI_BACKEND_HEADERS@
+namespace ormi::core::runtime::catalog {
+    using Init = Backend (*)();
+
+    struct Entry {
+        std::string_view name;
+        std::string_view library;
+        Init init;
+        bool indexed;
+        bool host;
+    };
+
+    inline constexpr std::array entries{
+@ORMI_BACKEND_ROWS@    };
+
+    constexpr BackendId find(std::string_view name) {
+        for (std::size_t index = 0; index < entries.size(); ++index) {
+            if (entries[index].name == name) {
+                return static_cast<BackendId>(index);
+            }
+        }
+        return backend_invalid;
+    }
+
+    constexpr BackendId host() {
+        BackendId result = backend_invalid;
+
+        for (std::size_t index = 0; index < entries.size(); ++index) {
+            if (!entries[index].host) {
+                continue;
+            }
+            if (result != backend_invalid) {
+                return backend_invalid;
+            }
+            result = static_cast<BackendId>(index);
+        }
+
+        return result;
+    }
+
+    constexpr bool valid() {
+        if (entries.size() > static_cast<std::size_t>(backend_invalid)) {
+            return false;
+        }
+        if (host() == backend_invalid) {
+            return false;
+        }
+
+        for (std::size_t index = 0; index < entries.size(); ++index) {
+            const auto& entry = entries[index];
+            const bool builtin = entry.init != nullptr;
+            const bool plugin = !entry.library.empty();
+
+            if (entry.name.empty() || builtin == plugin) {
+                return false;
+            }
+
+            for (std::size_t other = index + 1; other < entries.size(); ++other) {
+                if (entry.name == entries[other].name) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    static_assert(valid());
+}

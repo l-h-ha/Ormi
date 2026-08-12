@@ -7,9 +7,9 @@
 #include <ormi/core/error.h>
 #include <ormi/core/op.h>
 #include <ormi/core/optim/sgd.h>
-#include <ormi/core/runtime/dispatch/optimizer.h>
 #include <ormi/core/tensor.h>
 
+#include "core/runtime/dispatch/optimizer.h"
 #include "core/optim/sgd_detail.h"
 
 namespace ormi::core::optim {

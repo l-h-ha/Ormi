@@ -1,5 +1,6 @@
 #pragma once
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -75,5 +76,9 @@ namespace ormi::platform {
     std::string_view shared_extension();
     std::filesystem::path cache_directory();
     std::filesystem::path library_path(const void* anchor, std::string_view stem);
+    bool supports_avx2() noexcept;
+    bool supports_fma() noexcept;
+    bool supports_f16c() noexcept;
+    std::size_t cpu_cores();
     unsigned long long process_id();
 }

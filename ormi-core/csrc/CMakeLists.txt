@@ -1,5 +1,7 @@
 add_compile_options($<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/FS>)
 
+set(ORMI_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
+
 set(ORMI_CORE_SRCS
     core/autocast.cpp
     core/autograd/grad.cpp
@@ -13,6 +15,9 @@ set(ORMI_CORE_SRCS
     core/optim/grad_scaler.cpp
     core/optim/sgd.cpp
     core/ops/cast.cpp
+    core/ops/fractional.cpp
+    core/ops/fractional/nodes.cpp
+    core/ops/fractional/weights.cpp
     core/ops/pointwise/binary.cpp
     core/ops/pointwise/unary.cpp
     core/ops/linalg.cpp
@@ -21,167 +26,68 @@ set(ORMI_CORE_SRCS
     core/ops/view.cpp
     core/shape.cpp
     core/tensor.cpp
+    core/runtime/backend.cpp
     core/runtime/backends.cpp
     core/runtime/fusion/expr.cpp
+    core/runtime/fusion/group.cpp
+    core/runtime/fusion/key.cpp
+    core/runtime/lower.cpp
+    core/runtime/plan.cpp
     core/runtime/realize.cpp
+    core/runtime/schedule.cpp
+    core/runtime/step.cpp
     core/runtime/dispatch/device.cpp
     core/runtime/dispatch/cast.cpp
     core/runtime/dispatch/finite.cpp
+    core/runtime/dispatch/fractional.cpp
     core/runtime/dispatch/linalg.cpp
     core/runtime/dispatch/memory.cpp
     core/runtime/dispatch/optimizer.cpp
     core/runtime/dispatch/pointwise.cpp
     core/runtime/dispatch/reduction.cpp
-    backends/cpu/allocator.cpp
-    backends/cpu/backend.cpp
-    backends/cpu/blas/openblas.cpp
-    backends/cpu/cast.cpp
-    backends/cpu/jit/cache.cpp
-    backends/cpu/jit/codegen.cpp
-    backends/cpu/jit/compiler.cpp
-    backends/cpu/jit/kernel.cpp
-    backends/cpu/matmul.cpp
-    backends/cpu/memory.cpp
-    backends/cpu/optimizer.cpp
-    backends/cpu/pointwise/binary.cpp
-    backends/cpu/pointwise/unary.cpp
-    backends/cpu/reduction.cpp
-    backends/cpu/reduction/finite.cpp
-    backends/cpu/reduction/sum.cpp
 )
 
-if(WIN32)
-    list(APPEND ORMI_CORE_SRCS platform/windows.cpp)
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    list(APPEND ORMI_CORE_SRCS platform/linux.cpp)
-else()
-    message(FATAL_ERROR "ORMI currently supports Windows and Linux.")
-endif()
+include(cmake/platform.cmake)
+file(GLOB ORMI_PLATFORM_FILES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/platform/*.cmake
+)
+list(SORT ORMI_PLATFORM_FILES)
+foreach(platform_file IN LISTS ORMI_PLATFORM_FILES)
+    include(${platform_file})
+endforeach()
+ormi_require_platform()
 
-option(ORMI_ENABLE_CUDA "Build the optional CUDA backend plugin." OFF)
-option(ORMI_ENABLE_OPENBLAS "Use OpenBLAS for compatible CPU matmul operations." OFF)
-
-if(ORMI_ENABLE_OPENBLAS)
-    find_package(OpenBLAS 0.3.33 EXACT CONFIG REQUIRED)
-
-    if(TARGET OpenBLAS::OpenBLAS)
-        get_target_property(ORMI_OPENBLAS_IMPORTED OpenBLAS::OpenBLAS IMPORTED)
-        if(ORMI_OPENBLAS_IMPORTED)
-            set_property(TARGET OpenBLAS::OpenBLAS PROPERTY IMPORTED_GLOBAL TRUE)
-        endif()
-        set(ORMI_OPENBLAS_TARGET OpenBLAS::OpenBLAS)
-    elseif(OpenBLAS_LIBRARY OR OpenBLAS_LIBRARIES)
-        set(ORMI_OPENBLAS_LIBRARIES ${OpenBLAS_LIBRARY} ${OpenBLAS_LIBRARIES})
-        list(REMOVE_DUPLICATES ORMI_OPENBLAS_LIBRARIES)
-        add_library(ormi_openblas INTERFACE)
-        target_link_libraries(ormi_openblas INTERFACE ${ORMI_OPENBLAS_LIBRARIES})
-        if(OpenBLAS_INCLUDE_DIRS)
-            target_include_directories(ormi_openblas INTERFACE ${OpenBLAS_INCLUDE_DIRS})
-        elseif(OpenBLAS_INCLUDE_DIR)
-            target_include_directories(ormi_openblas INTERFACE ${OpenBLAS_INCLUDE_DIR})
-        endif()
-        set(ORMI_OPENBLAS_TARGET ormi_openblas)
-    else()
-        message(FATAL_ERROR "The OpenBLAS package did not provide a library target or path.")
-    endif()
-endif()
+find_package(Threads REQUIRED)
 
 add_library(ormi_core SHARED ${ORMI_CORE_SRCS})
 add_library(ormi::core ALIAS ormi_core)
 target_compile_features(ormi_core PUBLIC cxx_std_20)
+target_link_libraries(ormi_core PRIVATE Threads::Threads)
 
-set_target_properties(ormi_core PROPERTIES
-    WINDOWS_EXPORT_ALL_SYMBOLS ON
-)
-if(WIN32)
-    set_target_properties(ormi_core PROPERTIES PREFIX "")
-endif()
+ormi_configure_platform(ormi_core)
 
 target_include_directories(ormi_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
 target_include_directories(ormi_core PRIVATE
+    ${ORMI_GENERATED_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-if(ORMI_ENABLE_OPENBLAS)
-    target_compile_definitions(ormi_core PRIVATE ORMI_ENABLE_OPENBLAS)
-    target_link_libraries(ormi_core PRIVATE ${ORMI_OPENBLAS_TARGET})
-    if(WIN32)
-        if(NOT TARGET OpenBLAS::OpenBLAS)
-            message(FATAL_ERROR "The Windows OpenBLAS package must provide OpenBLAS::OpenBLAS.")
-        endif()
-        add_custom_command(
-            TARGET ormi_core
-            POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_FILE:OpenBLAS::OpenBLAS>
-                $<TARGET_FILE_DIR:ormi_core>
-        )
-    endif()
-    message(STATUS "Enabled OpenBLAS.")
-else()
-    message(STATUS "OpenBLAS disabled.")
-endif()
+include(cmake/backend.cmake)
+file(GLOB ORMI_BACKEND_FILES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/backends/*/backend.cmake
+)
+list(SORT ORMI_BACKEND_FILES)
+foreach(backend_file IN LISTS ORMI_BACKEND_FILES)
+    include(${backend_file})
+endforeach()
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    target_link_libraries(ormi_core PUBLIC ${CMAKE_DL_LIBS})
-endif()
-
-if(ORMI_ENABLE_CUDA)
-    enable_language(CUDA)
-    find_package(CUDAToolkit REQUIRED)
-
-    add_library(ormi_cuda_backend SHARED
-        backends/cuda/allocator.cu
-        backends/cuda/blas/cublas.cu
-        backends/cuda/cast.cu
-        backends/cuda/fill.cu
-        backends/cuda/fusion/codegen.cpp
-        backends/cuda/fusion/kernel.cu
-        backends/cuda/matmul.cu
-        backends/cuda/memory.cu
-        backends/cuda/optimizer/sgd.cu
-        backends/cuda/pointwise/binary.cu
-        backends/cuda/pointwise/unary.cu
-        backends/cuda/reduction.cpp
-        backends/cuda/reduction/finite.cu
-        backends/cuda/reduction/sum.cu
-        backends/cuda/state.cu
-        backends/cuda/backend.cpp
-        backends/cuda/check.cu
-    )
-    add_library(ormi::cuda ALIAS ormi_cuda_backend)
-
-    set_target_properties(ormi_cuda_backend PROPERTIES
-        CUDA_STANDARD 20
-        CUDA_STANDARD_REQUIRED ON
-    )
-
-    if(WIN32)
-        set_target_properties(ormi_cuda_backend PROPERTIES PREFIX "")
-    elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-        set_target_properties(ormi_cuda_backend PROPERTIES INSTALL_RPATH "$ORIGIN")
-    endif()
-
-    target_compile_features(ormi_cuda_backend PRIVATE cxx_std_20)
-    target_include_directories(ormi_cuda_backend PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-    )
-    target_link_libraries(ormi_cuda_backend
-        PRIVATE
-            ormi::core
-            CUDA::cudart
-            CUDA::cublas
-            CUDA::cuda_driver
-            CUDA::nvrtc
-    )
-    message(STATUS "Enabled CUDA.")
-else()
-    message(STATUS "CUDA disabled.")
-endif()
+ormi_write_catalog(
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/runtime/catalog.h.in
+    ${ORMI_GENERATED_DIR}/core/runtime/catalog.h
+)
 
 if(ORMI_BUILD_PYTHON)
     find_package(Python REQUIRED COMPONENTS Interpreter Development.Module)
@@ -240,38 +146,7 @@ if(ORMI_BUILD_PYTHON)
         LIBRARY DESTINATION ormi_core/_ext COMPONENT core
         RUNTIME DESTINATION ormi_core/_ext COMPONENT core
     )
-    if(ORMI_ENABLE_CUDA)
-        install(TARGETS ormi_cuda_backend
-            LIBRARY DESTINATION ormi_core/_ext COMPONENT cuda
-            RUNTIME DESTINATION ormi_core/_ext COMPONENT cuda
-        )
-
-        if(WIN32)
-            file(GLOB ORMI_NVRTC_BUILTINS
-                "${CUDAToolkit_BIN_DIR}/nvrtc-builtins*.dll"
-                "${CUDAToolkit_BIN_DIR}/x64/nvrtc-builtins*.dll"
-            )
-        else()
-            file(GLOB ORMI_NVRTC_BUILTINS
-                "${CUDAToolkit_LIBRARY_DIR}/libnvrtc-builtins.so*"
-            )
-        endif()
-        if(NOT ORMI_NVRTC_BUILTINS)
-            message(FATAL_ERROR "Cannot package CUDA: NVRTC builtins were not found.")
-        endif()
-        install(
-            FILES ${ORMI_NVRTC_BUILTINS}
-            DESTINATION ormi_cuda.libs
-            COMPONENT cuda
-        )
-    endif()
-    if(WIN32 AND ORMI_ENABLE_OPENBLAS)
-        install(
-            FILES $<TARGET_FILE:OpenBLAS::OpenBLAS>
-            DESTINATION ormi_core/_ext
-            COMPONENT core
-        )
-    endif()
+    ormi_install_backends(ormi_core/_ext)
 
     install(
         DIRECTORY ${ORMI_BINDING_STUB_DIR}/
@@ -286,7 +161,8 @@ if(ORMI_BUILD_PYTHON)
 endif()
 
 function(ormi_stage_runtime target)
-    if(WIN32)
+    ormi_platform_stages(stage_runtime)
+    if(stage_runtime)
         string(MD5 stage_id "${CMAKE_CURRENT_BINARY_DIR}")
         set(stage_target "ormi_runtime_stage_${stage_id}")
 
@@ -299,23 +175,15 @@ function(ormi_stage_runtime target)
                     ${CMAKE_CURRENT_BINARY_DIR}
             )
 
-            if(ORMI_ENABLE_CUDA)
-                list(APPEND stage_dependencies ormi_cuda_backend)
+            ormi_runtime_targets(runtime_targets)
+            foreach(runtime_target IN LISTS runtime_targets)
+                list(APPEND stage_dependencies ${runtime_target})
                 list(APPEND stage_commands
                     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                        $<TARGET_FILE:ormi_cuda_backend>
+                        $<TARGET_FILE:${runtime_target}>
                         ${CMAKE_CURRENT_BINARY_DIR}
                 )
-            endif()
-
-            if(ORMI_ENABLE_OPENBLAS)
-                list(APPEND stage_dependencies OpenBLAS::OpenBLAS)
-                list(APPEND stage_commands
-                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                        $<TARGET_FILE:OpenBLAS::OpenBLAS>
-                        ${CMAKE_CURRENT_BINARY_DIR}
-                )
-            endif()
+            endforeach()
 
             add_custom_command(
                 OUTPUT ${stage_stamp}
@@ -328,6 +196,17 @@ function(ormi_stage_runtime target)
         endif()
 
         add_dependencies(${target} ${stage_target})
+    endif()
+
+    if(ORMI_SANITIZER_RUNTIME)
+        add_custom_command(
+            TARGET ${target}
+            POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${ORMI_SANITIZER_RUNTIME}"
+                "$<TARGET_FILE_DIR:${target}>"
+            VERBATIM
+        )
     endif()
 endfunction()
 

@@ -1,13 +1,13 @@
 [project]
 name = "ormi-cuda"
-version = "0.1.0a5"
+version = "0.1.0a6"
 description = "CUDA 12.4 backend for ORMI Core."
 readme = "README.md"
 authors = [{ name = "Ha H. Le" }]
 license = { text = "MIT" }
 requires-python = ">=3.10,<3.14"
 dependencies = [
-    "ormi-core==0.1.0a5",
+    "ormi-core==0.1.0a6",
 ]
 
 [build-system]

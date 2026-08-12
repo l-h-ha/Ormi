@@ -8,6 +8,9 @@
 #include "platform/platform.h"
 
 namespace ormi::backends::cpu::jit {
+    struct Math;
+    struct Target;
+
     enum class CXX {
         gcc,
         clang,
@@ -27,4 +30,12 @@ namespace ormi::backends::cpu::jit {
         std::span<const std::string> arguments
     );
     Toolchain resolve();
+    const Toolchain& toolchain();
+    void build(
+        const Toolchain& compiler,
+        Target target,
+        Math functions,
+        const std::filesystem::path& source,
+        const std::filesystem::path& output
+    );
 }

@@ -28,7 +28,7 @@ namespace {
     };
 
     TEST_F(CUDAStateTest, cachesOneStatePerDevice) {
-        const auto device = ormi::core::Device::cuda();
+        const auto device = ormi::core::Device::from("cuda");
         auto& first = ormi::backends::cuda::state(device);
         auto& second = ormi::backends::cuda::state(device);
 
@@ -37,9 +37,11 @@ namespace {
     }
 
     TEST_F(CUDAStateTest, ownsNonBlockingStream) {
-        auto& state = ormi::backends::cuda::state(ormi::core::Device::cuda());
+        const auto device = ormi::core::Device::from("cuda");
+        auto& state = ormi::backends::cuda::state(device);
 
         ASSERT_NE(state.stream(), nullptr);
+        EXPECT_EQ(ormi::backends::cuda::stream(device), state.stream());
 
         unsigned int flags = 0;
         ASSERT_EQ(cudaStreamGetFlags(state.stream(), &flags), cudaSuccess);
@@ -47,7 +49,7 @@ namespace {
     }
 
     TEST_F(CUDAStateTest, reportsRuntimePoolCapability) {
-        const auto device = ormi::core::Device::cuda();
+        const auto device = ormi::core::Device::from("cuda");
         auto& state = ormi::backends::cuda::state(device);
 
         int supported = 0;
@@ -95,16 +97,16 @@ namespace {
     TEST_F(CUDAStateTest, rejectsCPUDevice) {
         EXPECT_THROW(
             (void)ormi::backends::cuda::state(ormi::core::Device::cpu()),
-            ormi::cudaError
+            ormi::BackendError
         );
     }
 
     TEST_F(CUDAStateTest, rejectsUnavailableCUDADevice) {
         EXPECT_THROW(
             (void)ormi::backends::cuda::state(
-                ormi::core::Device::cuda(device_count_)
+                ormi::core::Device::from("cuda", device_count_)
             ),
-            ormi::cudaError
+            ormi::BackendError
         );
     }
 
@@ -115,7 +117,7 @@ namespace {
 
         ASSERT_EQ(cudaSetDevice(0), cudaSuccess);
 
-        auto& second = ormi::backends::cuda::state(ormi::core::Device::cuda(1));
+        auto& second = ormi::backends::cuda::state(ormi::core::Device::from("cuda", 1));
         int stream_device = -1;
 
         ASSERT_EQ(cudaSetDevice(1), cudaSuccess);

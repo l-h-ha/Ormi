@@ -1,149 +1,553 @@
+#include <algorithm>
 #include <cstddef>
+#include <span>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <variant>
 
-#include <ormi/core/dtype.h>
 #include <ormi/core/error.h>
 #include <ormi/core/ops/kind.h>
+#include <ormi/core/tensor.h>
 
 #include "backends/cpu/jit/codegen.h"
+#include "backends/cpu/jit/codegen/code.h"
+#include "backends/cpu/jit/codegen/map.h"
+#include "backends/cpu/jit/codegen/reduction.h"
+#include "backends/cpu/jit/loop.h"
 
 namespace ormi::backends::cpu::jit {
     namespace {
-        std::string_view type(core::DType dtype) {
-            switch (dtype) {
-                case core::DType::float64:
-                    return "double";
-                case core::DType::float32:
-                    return "float";
-                case core::DType::float16:
-                case core::DType::int32:
-                case core::DType::boolean:
-                    ORMI_THROW(DTypeError, "CPU fusion code generation currently supports Float64 and Float32.");
-            }
-
-            ORMI_THROW(DTypeError, "CPU fusion code generation received an unknown dtype.");
+        bool uses_transcendentals(
+            const core::runtime::fusion::Expr& expression
+        ) noexcept {
+            return std::any_of(
+                expression.nodes.begin(),
+                expression.nodes.end(),
+                [](const core::runtime::fusion::Node& node) {
+                    const auto* unary = std::get_if<
+                        core::runtime::fusion::Unary
+                    >(&node.instruction);
+                    return unary && unary->op != core::ops::UnaryOp::neg;
+                }
+            );
         }
 
-        std::string_view literal(core::DType dtype, core::runtime::fusion::Constant constant) {
-            if (dtype == core::DType::float32) {
-                return constant == core::runtime::fusion::Constant::zero ? "0.0f" : "1.0f";
-            }
-
-            return constant == core::runtime::fusion::Constant::zero ? "0.0" : "1.0";
+        bool uses_intrinsics(
+            const core::runtime::fusion::Expr& expression,
+            const Loop& loop,
+            bool float16
+        ) noexcept {
+            return float16 || loop.math ||
+                (loop.vectorized && expression.reduction.has_value());
         }
 
-        std::string unary(core::ops::UnaryOp op, std::string_view input) {
-            switch (op) {
-                case core::ops::UnaryOp::neg:
-                    return "-" + std::string(input);
-                case core::ops::UnaryOp::exp:
-                    return "std::exp(" + std::string(input) + ")";
-                case core::ops::UnaryOp::log:
-                    return "std::log(" + std::string(input) + ")";
-                case core::ops::UnaryOp::sin:
-                    return "std::sin(" + std::string(input) + ")";
-                case core::ops::UnaryOp::cos:
-                    return "std::cos(" + std::string(input) + ")";
+        void emit_headers(
+            std::ostringstream& source,
+            bool float16,
+            bool transcendental,
+            bool intrinsics,
+            bool vectorized
+        ) {
+            if (float16) {
+                source
+                    << "#include <bit>\n"
+                    << "#include <cstdint>\n";
             }
 
-            ORMI_THROW(OperationError, "CPU fusion code generation received an unknown unary operation.");
-        }
-
-        std::string_view binary(core::ops::BinaryOp op) {
-            switch (op) {
-                case core::ops::BinaryOp::add:
-                    return "+";
-                case core::ops::BinaryOp::sub:
-                    return "-";
-                case core::ops::BinaryOp::mul:
-                    return "*";
-                case core::ops::BinaryOp::div:
-                    return "/";
+            if (transcendental) {
+                source << "#include <cmath>\n";
             }
 
-            ORMI_THROW(OperationError, "CPU fusion code generation received an unknown binary operation.");
-        }
-
-        std::string value(core::runtime::fusion::Index index) {
-            return "v" + std::to_string(index);
-        }
-
-        void require_prior(core::runtime::fusion::Index referenced, std::size_t current) {
-            if (referenced >= current) {
-                ORMI_THROW(OperationError, "Fusion expression nodes must reference prior nodes.");
+            if (intrinsics) {
+                source
+                    << "#if defined(ORMI_USE_F16C) || "
+                    << "defined(ORMI_USE_VECMATH) || "
+                    << "defined(ORMI_USE_AVX2)\n"
+                    << "#include <immintrin.h>\n"
+                    << "#endif\n";
             }
+
+            source
+                << "\n"
+                << "#if defined(_WIN32)\n"
+                << "#define ORMI_EXPORT __declspec(dllexport)\n"
+                << "#else\n"
+                << "#define ORMI_EXPORT "
+                << "__attribute__((visibility(\"default\")))\n"
+                << "#endif\n\n";
+
+            if (vectorized) {
+                source << R"ormi(#if defined(__clang__)
+#define ORMI_RESTRICT __restrict
+#define ORMI_VECTORIZE_LOOP _Pragma("clang loop vectorize(enable) interleave(enable)")
+#elif defined(_MSC_VER)
+#define ORMI_RESTRICT __restrict
+#define ORMI_VECTORIZE_LOOP __pragma(loop(ivdep))
+#elif defined(__GNUC__)
+#define ORMI_RESTRICT __restrict__
+#define ORMI_VECTORIZE_LOOP _Pragma("GCC ivdep")
+#else
+#define ORMI_RESTRICT
+#define ORMI_VECTORIZE_LOOP
+#endif
+
+template <typename T>
+inline T* ormi_assume_aligned(T* pointer) noexcept {
+#if defined(__clang__) || defined(__GNUC__)
+    return static_cast<T*>(__builtin_assume_aligned(pointer, 64));
+#elif defined(_MSC_VER)
+    __assume((reinterpret_cast<unsigned long long>(pointer) & 63ull) == 0);
+    return pointer;
+#else
+    return pointer;
+#endif
+}
+
+)ormi";
+            }
+        }
+
+        void emit_float16_support(std::ostringstream& source) {
+            source << R"(
+namespace {
+    std::uint16_t ormi_half_bits(float value) noexcept {
+        const auto bits = std::bit_cast<std::uint32_t>(value);
+        const auto sign = (bits >> 16) & 0x8000u;
+        const auto exponent = (bits >> 23) & 0xffu;
+        auto mantissa = bits & 0x007fffffu;
+
+        if (exponent == 0xffu) {
+            return static_cast<std::uint16_t>(
+                sign | (mantissa == 0 ? 0x7c00u : 0x7e00u)
+            );
+        }
+
+        const auto half_exponent = static_cast<std::int32_t>(exponent) - 112;
+        if (half_exponent >= 31) {
+            return static_cast<std::uint16_t>(sign | 0x7c00u);
+        }
+        if (half_exponent <= 0) {
+            if (half_exponent < -10) {
+                return static_cast<std::uint16_t>(sign);
+            }
+
+            mantissa |= 0x00800000u;
+            const auto shift = static_cast<std::uint32_t>(14 - half_exponent);
+            auto half_mantissa = mantissa >> shift;
+            const auto remainder = mantissa & ((1u << shift) - 1u);
+            const auto halfway = 1u << (shift - 1u);
+            if (remainder > halfway || (remainder == halfway && (half_mantissa & 1u))) {
+                ++half_mantissa;
+            }
+            return static_cast<std::uint16_t>(sign | half_mantissa);
+        }
+
+        auto half = sign |
+            (static_cast<std::uint32_t>(half_exponent) << 10) |
+            (mantissa >> 13);
+        const auto remainder = mantissa & 0x1fffu;
+        if (remainder > 0x1000u || (remainder == 0x1000u && (half & 1u))) {
+            ++half;
+        }
+        return static_cast<std::uint16_t>(half);
+    }
+
+    float ormi_half_value(std::uint16_t value) noexcept {
+        const auto sign = (static_cast<std::uint32_t>(value) & 0x8000u) << 16;
+        const auto exponent = (static_cast<std::uint32_t>(value) >> 10) & 0x1fu;
+        auto mantissa = static_cast<std::uint32_t>(value) & 0x03ffu;
+        std::uint32_t bits;
+
+        if (exponent == 0) {
+            if (mantissa == 0) {
+                bits = sign;
+            } else {
+                std::int32_t normalized_exponent = -14;
+                while ((mantissa & 0x0400u) == 0) {
+                    mantissa <<= 1;
+                    --normalized_exponent;
+                }
+                mantissa &= 0x03ffu;
+                bits = sign |
+                    (static_cast<std::uint32_t>(normalized_exponent + 127) << 23) |
+                    (mantissa << 13);
+            }
+        } else if (exponent == 0x1fu) {
+            bits = sign | 0x7f800000u | (mantissa << 13);
+        } else {
+            bits = sign | ((exponent + 112u) << 23) | (mantissa << 13);
+        }
+        return std::bit_cast<float>(bits);
+    }
+
+    float ormi_half_round(float value) noexcept {
+        return ormi_half_value(ormi_half_bits(value));
+    }
+}
+
+)";
+            source << R"(#if defined(ORMI_USE_F16C)
+namespace {
+    __m128i ormi_half_bits8(__m256 value) noexcept {
+        auto bits = _mm256_cvtps_ph(
+            value,
+            _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC
+        );
+        const auto sign = _mm_and_si128(bits, _mm_set1_epi16(-32768));
+        const auto magnitude = _mm_and_si128(bits, _mm_set1_epi16(0x7fff));
+        const auto nan = _mm_cmpgt_epi16(magnitude, _mm_set1_epi16(0x7c00));
+        const auto canonical = _mm_or_si128(sign, _mm_set1_epi16(0x7e00));
+        return _mm_blendv_epi8(bits, canonical, nan);
+    }
+
+    __m256 ormi_half_round8(__m256 value) noexcept {
+        return _mm256_cvtph_ps(ormi_half_bits8(value));
+    }
+
+    __m256 ormi_half_load8(const std::uint16_t* values) noexcept {
+        return _mm256_cvtph_ps(
+            _mm_loadu_si128(reinterpret_cast<const __m128i*>(values))
+        );
+    }
+}
+#endif
+
+)";
+        }
+
+        void emit_math_support(std::ostringstream& source) {
+            source << R"(
+#if defined(ORMI_USE_DIRECT_VECMATH)
+namespace {
+    using ormi_unary8 = __m256 (*)(__m256);
+#if defined(_MSC_VER)
+    struct ormi_sincos8_result {
+        __m256 sine;
+        __m256 cosine;
+    };
+    using ormi_sincos8_fn = ormi_sincos8_result (__vectorcall *)(__m256);
+#else
+    using ormi_sincos8_fn = void (*)(__m256*, __m256*, __m256);
+#endif
+
+    struct ormi_math_table {
+        ormi_unary8 unary[4];
+        ormi_sincos8_fn sincos;
+    };
+
+    __m256 ormi_math8(
+        const void* functions,
+        unsigned int operation,
+        __m256 input
+    ) {
+        const auto* math = static_cast<const ormi_math_table*>(functions);
+        return math->unary[operation](input);
+    }
+
+    void ormi_sincos8(
+        const void* functions,
+        __m256 input,
+        __m256& sine,
+        __m256& cosine
+    ) {
+        const auto* math = static_cast<const ormi_math_table*>(functions);
+#if defined(_MSC_VER)
+        const auto result = math->sincos(input);
+        sine = result.sine;
+        cosine = result.cosine;
+#else
+        math->sincos(&sine, &cosine, input);
+#endif
+    }
+}
+#elif defined(ORMI_USE_VECMATH)
+namespace {
+    using ormi_unary8 = void (*)(float*, const float*);
+    using ormi_sincos8_fn = void (*)(float*, float*, const float*);
+
+    struct ormi_math_table {
+        ormi_unary8 unary[4];
+        ormi_sincos8_fn sincos;
+    };
+
+    __m256 ormi_math8(
+        const void* functions,
+        unsigned int operation,
+        __m256 input
+    ) {
+        const auto* math = static_cast<const ormi_math_table*>(functions);
+        alignas(32) float buffered_input[8];
+        alignas(32) float buffered_output[8];
+        _mm256_storeu_ps(buffered_input, input);
+        math->unary[operation](buffered_output, buffered_input);
+        return _mm256_loadu_ps(buffered_output);
+    }
+
+    void ormi_sincos8(
+        const void* functions,
+        __m256 input,
+        __m256& sine,
+        __m256& cosine
+    ) {
+        const auto* math = static_cast<const ormi_math_table*>(functions);
+        alignas(32) float buffered_input[8];
+        alignas(32) float buffered_sine[8];
+        alignas(32) float buffered_cosine[8];
+        _mm256_storeu_ps(buffered_input, input);
+        math->sincos(buffered_sine, buffered_cosine, buffered_input);
+        sine = _mm256_loadu_ps(buffered_sine);
+        cosine = _mm256_loadu_ps(buffered_cosine);
+    }
+}
+#endif
+
+)";
+        }
+
+        void emit_signature(
+            std::ostringstream& source,
+            const core::runtime::fusion::Expr& expression,
+            const Loop& loop,
+            std::string_view symbol
+        ) {
+            const auto output_type = loop.partial
+                ? codegen::value_type(expression.dtype)
+                : codegen::storage_type(expression.dtype);
+            source
+                << "extern \"C\" ORMI_EXPORT void " << symbol << "(\n"
+                << "    void* const* output_ptrs,\n"
+                << "    const void* const* input_ptrs,\n"
+                << "    unsigned long long elements,\n"
+                << "    unsigned long long begin,\n"
+                << "    unsigned long long end,\n"
+                << "    const void* math_ptr\n"
+                << ") {\n";
+
+            if (loop.vectorized && !loop.partial) {
+                source
+                    << "    if (elements == 0) {\n"
+                    << "        return;\n"
+                    << "    }\n\n"
+                    << "    auto* ORMI_RESTRICT output = "
+                    << "ormi_assume_aligned(\n"
+                    << "        static_cast<"
+                    << output_type
+                    << "*>(output_ptrs[0])\n"
+                    << "    );\n";
+            } else {
+                source
+                    << "    auto* output = static_cast<"
+                    << output_type
+                    << "*>(output_ptrs[0]);\n";
+            }
+
+            for (
+                std::size_t i = 0;
+                i < expression.auxiliary_outputs.size();
+                ++i
+            ) {
+                const auto output = expression.auxiliary_outputs[i];
+                const auto type = codegen::storage_type(
+                    expression.nodes[output].dtype
+                );
+                if (loop.vectorized && !loop.partial) {
+                    source
+                        << "    auto* ORMI_RESTRICT output" << i + 1
+                        << " = ormi_assume_aligned(\n"
+                        << "        static_cast<" << type
+                        << "*>(output_ptrs[" << i + 1 << "])\n"
+                        << "    );\n";
+                } else {
+                    source
+                        << "    auto* output" << i + 1
+                        << " = static_cast<" << type
+                        << "*>(output_ptrs[" << i + 1 << "]);\n";
+                }
+            }
+
+            for (
+                std::size_t i = 0;
+                i < expression.inputs.size();
+                ++i
+            ) {
+                if (loop.vectorized) {
+                    source
+                        << "    const auto* input" << i
+                        << " = ormi_assume_aligned(\n"
+                        << "        static_cast<const "
+                        << codegen::storage_type(
+                            expression.inputs[i]->dtype()
+                        )
+                        << "*>(input_ptrs[" << i << "])\n"
+                        << "    );\n";
+                } else {
+                    source
+                        << "    const auto* input" << i
+                        << " = static_cast<const "
+                        << codegen::storage_type(
+                            expression.inputs[i]->dtype()
+                        )
+                        << "*>(input_ptrs[" << i << "]);\n";
+                }
+            }
+
+            if (loop.vectorized) {
+                for (std::size_t i = 0; i < loop.inputs.size(); ++i) {
+                    if (loop.inputs[i] == Access::scalar) {
+                        source
+                            << "    const "
+                            << codegen::storage_type(
+                                expression.inputs[i]->dtype()
+                            )
+                            << " input" << i << "_scalar = input" << i
+                            << "[0];\n";
+                    }
+                }
+            }
+        }
+
+        void validate(const core::runtime::fusion::Expr& expression) {
+            if (
+                expression.nodes.empty() ||
+                expression.output >= expression.nodes.size() ||
+                std::any_of(
+                    expression.auxiliary_outputs.begin(),
+                    expression.auxiliary_outputs.end(),
+                    [&expression](const auto output) {
+                        return output >= expression.nodes.size();
+                    }
+                )
+            ) {
+                ORMI_THROW(
+                    OperationError,
+                    "Cannot generate code for an empty or malformed fusion expression."
+                );
+            }
+
+            if (expression.reduction && !expression.auxiliary_outputs.empty()) {
+                ORMI_THROW(
+                    OperationError,
+                    "CPU fusion does not support auxiliary reduction outputs."
+                );
+            }
+
+            if (
+                expression.reduction &&
+                expression.reduction->op != core::ops::ReduceOp::sum &&
+                expression.reduction->op != core::ops::ReduceOp::mean
+            ) {
+                ORMI_THROW(
+                    OperationError,
+                    "CPU fusion received an unsupported reduction."
+                );
+            }
+        }
+
+        void emit_kernel(
+            std::ostringstream& source,
+            const core::runtime::fusion::Expr& expression,
+            const Loop& loop,
+            std::string_view symbol
+        ) {
+            emit_signature(source, expression, loop, symbol);
+
+            codegen::Code code{source, expression, loop};
+            if (expression.reduction) {
+                codegen::emit_reduction(code);
+            } else {
+                codegen::emit_map(code);
+            }
+            source << "}\n";
         }
     }
 
-    std::string emit(const core::runtime::fusion::Expr& expression) {
-        if (expression.nodes.empty() || expression.output >= expression.nodes.size()) {
-            ORMI_THROW(OperationError, "Cannot generate code for an empty or malformed fusion expression.");
-        }
+    std::string emit(
+        const core::runtime::fusion::Expr& expression,
+        const Loop& loop
+    ) {
+        validate(expression);
 
-        const auto scalar = type(expression.dtype);
+        const bool float16 = codegen::uses_float16(expression);
         std::ostringstream source;
-        // TODO: Add explicit aliasing, alignment, SIMD, and vector-math policies after
-        // strict and relaxed floating-point modes are part of the public contract.
-        source
-            << "#include <cmath>\n\n"
-            << "#if defined(_WIN32)\n"
-            << "#define ORMI_EXPORT __declspec(dllexport)\n"
-            << "#else\n"
-            << "#define ORMI_EXPORT __attribute__((visibility(\"default\")))\n"
-            << "#endif\n\n"
-            << "extern \"C\" ORMI_EXPORT void ormi_kernel(\n"
-            << "    void* output_ptr,\n"
-            << "    const void* const* input_ptrs,\n"
-            << "    unsigned long long elements\n"
-            << ") {\n"
-            << "    auto* output = static_cast<" << scalar << "*>(output_ptr);\n";
-
-        for (std::size_t i = 0; i < expression.inputs.size(); ++i) {
-            source
-                << "    const auto* input" << i << " = static_cast<const "
-                << scalar << "*>(input_ptrs[" << i << "]);\n";
+        emit_headers(
+            source,
+            float16,
+            uses_transcendentals(expression),
+            uses_intrinsics(expression, loop, float16),
+            loop.vectorized
+        );
+        if (float16) {
+            emit_float16_support(source);
         }
-
-        source << "\n    for (unsigned long long i = 0; i < elements; ++i) {\n";
-
-        for (std::size_t i = 0; i < expression.nodes.size(); ++i) {
-            source << "        const " << scalar << " "
-                   << value(static_cast<core::runtime::fusion::Index>(i)) << " = ";
-            const auto& node = expression.nodes[i];
-
-            if (const auto* input = std::get_if<core::runtime::fusion::Input>(&node)) {
-                if (input->index >= expression.inputs.size()) {
-                    ORMI_THROW(OperationError, "Fusion expression references an invalid input.");
-                }
-                source << "input" << input->index << "[i]";
-
-            } else if (const auto* constant = std::get_if<core::runtime::fusion::Constant>(&node)) {
-                source << literal(expression.dtype, *constant);
-
-            } else if (const auto* unary_node = std::get_if<core::runtime::fusion::Unary>(&node)) {
-                require_prior(unary_node->input, i);
-                source << unary(unary_node->op, value(unary_node->input));
-
-            } else if (const auto* binary_node = std::get_if<core::runtime::fusion::Binary>(&node)) {
-                require_prior(binary_node->lhs, i);
-                require_prior(binary_node->rhs, i);
-                source
-                    << value(binary_node->lhs) << " "
-                    << binary(binary_node->op) << " "
-                    << value(binary_node->rhs);
-            }
-
-            source << ";\n";
+        if (loop.math) {
+            emit_math_support(source);
         }
-
-        source
-            << "        output[i] = " << value(expression.output) << ";\n"
-            << "    }\n"
-            << "}\n";
-
+        emit_kernel(source, expression, loop, "ormi_kernel");
         return source.str();
+    }
+
+    std::string emit(
+        std::span<const core::runtime::fusion::Expr* const> expressions,
+        std::span<const Loop> loops
+    ) {
+        if (expressions.empty() || expressions.size() != loops.size()) {
+            ORMI_THROW(
+                OperationError,
+                "CPU JIT batch requires one loop plan per expression."
+            );
+        }
+
+        bool float16 = false;
+        bool transcendental = false;
+        bool intrinsics = false;
+        bool math = false;
+        bool vectorized = false;
+        for (std::size_t i = 0; i < expressions.size(); ++i) {
+            if (!expressions[i]) {
+                ORMI_THROW(OperationError, "CPU JIT batch contains a null expression.");
+            }
+            validate(*expressions[i]);
+            const bool expression_float16 =
+                codegen::uses_float16(*expressions[i]);
+            float16 = float16 || expression_float16;
+            transcendental = transcendental ||
+                uses_transcendentals(*expressions[i]);
+            intrinsics = intrinsics || uses_intrinsics(
+                *expressions[i],
+                loops[i],
+                expression_float16
+            );
+            math = math || loops[i].math;
+            vectorized = vectorized || loops[i].vectorized;
+        }
+
+        std::ostringstream source;
+        emit_headers(
+            source,
+            float16,
+            transcendental,
+            intrinsics,
+            vectorized
+        );
+        if (float16) {
+            emit_float16_support(source);
+        }
+        if (math) {
+            emit_math_support(source);
+        }
+        for (std::size_t i = 0; i < expressions.size(); ++i) {
+            emit_kernel(
+                source,
+                *expressions[i],
+                loops[i],
+                "ormi_kernel_" + std::to_string(i)
+            );
+        }
+        return source.str();
+    }
+
+    std::string emit(const core::runtime::fusion::Expr& expression) {
+        return emit(expression, plan(expression));
     }
 }

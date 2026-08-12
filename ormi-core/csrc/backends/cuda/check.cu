@@ -2,6 +2,7 @@
 #include <string_view>
 
 #include <cublas_v2.h>
+#include <cuda.h>
 #include <cuda_runtime_api.h>
 
 #include <ormi/core/error.h>
@@ -38,6 +39,24 @@ namespace ormi::backends::cuda {
         }
     }
 
+    void check_driver(CUresult status, std::string_view operation) {
+        if (status == CUDA_SUCCESS) {
+            return;
+        }
+
+        const char* error_name = nullptr;
+        const char* error_description = nullptr;
+        (void)cuGetErrorName(status, &error_name);
+        (void)cuGetErrorString(status, &error_description);
+
+        ORMI_THROW(
+            BackendError,
+            std::string(operation) + " failed with " +
+                (error_name ? error_name : "unknown CUDA driver error") + ": " +
+                (error_description ? error_description : "no description available")
+        );
+    }
+
     void check(cudaError_t status, std::string_view operation) {
         if (status == cudaSuccess) {
             return;
@@ -47,7 +66,7 @@ namespace ormi::backends::cuda {
         const char* error_description = cudaGetErrorString(status);
 
         ORMI_THROW(
-            cudaError,
+            BackendError,
             std::string(operation) + " failed with " +
                 (error_name ? error_name : "unknown CUDA error") + ": " +
                 (error_description ? error_description : "no description available")
@@ -60,7 +79,7 @@ namespace ormi::backends::cuda {
         }
 
         ORMI_THROW(
-            cudaError,
+            BackendError,
             std::string(operation) + " failed with " + cublas_status_name(status) + "."
         );
     }

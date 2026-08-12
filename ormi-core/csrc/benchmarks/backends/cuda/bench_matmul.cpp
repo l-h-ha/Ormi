@@ -1,14 +1,14 @@
 #include <cstdint>
-
 #include <benchmark/benchmark.h>
 #include <cuda_runtime_api.h>
 
 #include <ormi/core/device.h>
 #include <ormi/core/ops/creation.h>
 #include <ormi/core/ops/linalg.h>
-#include <ormi/core/runtime/dispatch/device.h>
 #include <ormi/core/shape.h>
 #include <ormi/core/tensor.h>
+
+#include "core/runtime/dispatch/device.h"
 
 namespace {
     bool require_cuda(benchmark::State& state) {
@@ -35,7 +35,7 @@ namespace {
 
         const auto batches = state.range(0);
         const auto side = state.range(1);
-        const auto device = ormi::core::Device::cuda();
+        const auto device = ormi::core::Device::from("cuda");
         const auto shape = ormi::core::Shape{batches, side, side};
         const auto lhs = ormi::core::ops::full(shape, 1.0f, device);
         const auto rhs = ormi::core::ops::full(shape, 1.0f, device);
@@ -81,7 +81,7 @@ namespace {
 
         const auto batch_axis = state.range(0);
         const auto side = state.range(1);
-        const auto device = ormi::core::Device::cuda();
+        const auto device = ormi::core::Device::from("cuda");
         const auto lhs = ormi::core::ops::full(
             {batch_axis, 1, side, side},
             1.0f,

@@ -1,5 +1,7 @@
 #pragma once
+#include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <variant>
 #include <vector>
 
@@ -21,5 +23,25 @@ namespace ormi::core {
         double step_size;
     };
 
-    using Attrs = std::variant<std::monostate, Reduce, Permute, SGD, Scalar>;
+    struct Caputo {
+        struct Coefficients {
+            std::vector<double> forward;
+            std::vector<double> adjoint;
+        };
+
+        double alpha;
+        double spacing;
+        std::int64_t axis;
+        std::size_t count;
+        std::shared_ptr<const Coefficients> coefficients;
+    };
+
+    using Attrs = std::variant<
+        std::monostate,
+        Reduce,
+        Permute,
+        SGD,
+        Caputo,
+        Scalar
+    >;
 }

@@ -40,7 +40,7 @@ namespace {
 
         const auto bytes = static_cast<std::size_t>(state.range(0));
         ormi::core::memory::Buffer host(ormi::core::Device::cpu(), bytes);
-        ormi::core::memory::Buffer device(ormi::core::Device::cuda(), bytes);
+        ormi::core::memory::Buffer device(ormi::core::Device::from("cuda"), bytes);
         ormi::core::memory::copy(device, host);
 
         for (auto _ : state) {
@@ -57,7 +57,7 @@ namespace {
 
         const auto bytes = static_cast<std::size_t>(state.range(0));
         ormi::core::memory::Buffer host(ormi::core::Device::cpu(), bytes);
-        ormi::core::memory::Buffer device(ormi::core::Device::cuda(), bytes);
+        ormi::core::memory::Buffer device(ormi::core::Device::from("cuda"), bytes);
         ormi::core::memory::copy(device, host);
 
         for (auto _ : state) {
@@ -73,8 +73,8 @@ namespace {
         }
 
         const auto bytes = static_cast<std::size_t>(state.range(0));
-        ormi::core::memory::Buffer source(ormi::core::Device::cuda(), bytes);
-        ormi::core::memory::Buffer destination(ormi::core::Device::cuda(), bytes);
+        ormi::core::memory::Buffer source(ormi::core::Device::from("cuda"), bytes);
+        ormi::core::memory::Buffer destination(ormi::core::Device::from("cuda"), bytes);
         ormi::core::memory::fill(source, 0x5a);
         ormi::core::memory::copy(destination, source);
 

@@ -13,6 +13,8 @@
 #include <ormi/core/error.h>
 
 #include "backends/cpu/jit/compiler.h"
+#include "backends/cpu/jit/math.h"
+#include "backends/cpu/jit/target.h"
 #include "platform/platform.h"
 
 namespace ormi::backends::cpu::jit {
@@ -88,12 +90,6 @@ namespace ormi::backends::cpu::jit {
             return std::nullopt;
         }
 
-        std::vector<std::string> probe_arguments(CXX id) {
-            return id == CXX::msvc
-                ? std::vector<std::string>{"/Bv"}
-                : std::vector<std::string>{"--version"};
-        }
-
         std::chrono::milliseconds compiler_timeout() {
             const char* configured = std::getenv("ORMI_CPU_JIT_TIMEOUT_MS");
             std::uintmax_t value = default_timeout_ms;
@@ -127,41 +123,10 @@ namespace ormi::backends::cpu::jit {
             return std::chrono::milliseconds(static_cast<Rep>(value));
         }
 
-        std::optional<Toolchain> probe(
+        std::optional<Toolchain> inspect_wrapper(
             const std::filesystem::path& executable,
-            std::optional<CXX> requested,
-            bool trust_requested,
             std::vector<std::string> environment = {}
         ) {
-            const auto named = from_name(executable);
-            if (requested && !trust_requested && named && *requested != *named) {
-                return std::nullopt;
-            }
-
-            auto id = requested ? requested : named;
-
-            if (id) {
-                const auto result = platform::run(
-                    executable,
-                    probe_arguments(*id),
-                    environment,
-                    compiler_timeout()
-                );
-                if (result.state != platform::Process::State::exited) {
-                    return std::nullopt;
-                }
-                if (result.code == 0 || !result.output.empty()) {
-                    if (!trust_requested) {
-                        const auto detected = named ? named : from_output(result.output);
-                        if (!detected || *detected != *id) {
-                            return std::nullopt;
-                        }
-                    }
-                    return Toolchain{executable, *id, std::move(environment)};
-                }
-                return std::nullopt;
-            }
-
             const auto result = platform::run(
                 executable,
                 std::vector<std::string>{"--version"},
@@ -171,9 +136,13 @@ namespace ormi::backends::cpu::jit {
             if (result.state != platform::Process::State::exited) {
                 return std::nullopt;
             }
-            id = from_output(result.output);
+            const auto id = from_output(result.output);
             return id
-                ? std::optional<Toolchain>(Toolchain{executable, *id, std::move(environment)})
+                ? std::optional<Toolchain>(Toolchain{
+                    executable,
+                    *id,
+                    std::move(environment)
+                })
                 : std::nullopt;
         }
 
@@ -185,7 +154,6 @@ namespace ormi::backends::cpu::jit {
         std::vector<std::string> msvc_environment(
             const std::filesystem::path& executable
         ) {
-#if defined(_WIN32)
             if (
                 !nonempty_environment("INCLUDE").empty() &&
                 !nonempty_environment("LIB").empty()
@@ -207,10 +175,69 @@ namespace ormi::backends::cpu::jit {
                 return {};
             }
             return std::move(configured->environment);
-#else
-            (void)executable;
-            return {};
-#endif
+        }
+
+        std::vector<std::string> command(
+            const Toolchain& compiler,
+            Target target,
+            Math functions,
+            const std::filesystem::path& source,
+            const std::filesystem::path& output
+        ) {
+            const bool vector_math = functions.functions != nullptr;
+            const bool direct_math =
+                vector_math && functions.abi == MathABI::direct;
+
+            if (compiler.id == CXX::msvc || compiler.id == CXX::clang_cl) {
+                auto object = source;
+                object.replace_extension(".obj");
+                std::vector<std::string> arguments{
+                    "/nologo",
+                    "/std:c++20",
+                    "/O2"
+                };
+                if (vector_math) {
+                    arguments.emplace_back("/DORMI_USE_VECMATH=1");
+                }
+                if (direct_math) {
+                    arguments.emplace_back("/DORMI_USE_DIRECT_VECMATH=1");
+                }
+                const auto flags = target_flags(compiler.id, target);
+                arguments.insert(arguments.end(), flags.begin(), flags.end());
+                const std::vector<std::string> remainder{
+                    "/LD", "/EHsc",
+                    "/Fo:" + object.string(),
+                    source.string(),
+                    "/Fe:" + output.string(),
+                    "/link", "/NOIMPLIB"
+                };
+                arguments.insert(
+                    arguments.end(),
+                    remainder.begin(),
+                    remainder.end()
+                );
+                return arguments;
+            }
+
+            std::vector<std::string> arguments{
+                "-std=c++20",
+                "-O3",
+                "-DNDEBUG"
+            };
+            if (vector_math) {
+                arguments.emplace_back("-DORMI_USE_VECMATH=1");
+            }
+            if (direct_math) {
+                arguments.emplace_back("-DORMI_USE_DIRECT_VECMATH=1");
+            }
+            const auto flags = target_flags(compiler.id, target);
+            arguments.insert(arguments.end(), flags.begin(), flags.end());
+            const auto shared = platform::shared_flags();
+            arguments.insert(arguments.end(), shared.begin(), shared.end());
+            arguments.push_back("-o");
+            arguments.push_back(output.string());
+            arguments.push_back(source.string());
+            return arguments;
         }
     }
 
@@ -281,24 +308,26 @@ namespace ormi::backends::cpu::jit {
                 );
             }
 
-            auto environment =
-                (requested == CXX::msvc || from_name(*executable) == CXX::msvc)
+            const auto named = from_name(*executable);
+            const auto id = requested ? requested : named;
+            auto environment = id == CXX::msvc
                 ? msvc_environment(*executable)
                 : std::vector<std::string>{};
-            const auto toolchain = probe(
-                *executable,
-                requested,
-                requested.has_value(),
-                std::move(environment)
-            );
-            if (!toolchain) {
-                ORMI_THROW(
-                    jitError,
-                    "ORMI_CPU_JIT_CXX is not a usable C++ compiler: " +
-                        executable->string()
-                );
+            if (id) {
+                return Toolchain{*executable, *id, std::move(environment)};
             }
-            return *toolchain;
+            if (auto inspected = inspect_wrapper(
+                *executable,
+                std::move(environment)
+            )) {
+                return *inspected;
+            }
+            ORMI_THROW(
+                jitError,
+                "ORMI cannot identify the compiler syntax for " +
+                    executable->string() +
+                    ". Set ORMI_CPU_JIT_CXX_ID to gcc, clang, clang-cl, or msvc."
+            );
         }
 
         for (const auto name : platform::cxx_candidates()) {
@@ -307,30 +336,23 @@ namespace ormi::backends::cpu::jit {
                 continue;
             }
 
-            auto environment = from_name(*executable) == CXX::msvc
+            const auto id = from_name(*executable);
+            if (!id || (requested && *requested != *id)) {
+                continue;
+            }
+            auto environment = *id == CXX::msvc
                 ? msvc_environment(*executable)
                 : std::vector<std::string>{};
-            const auto toolchain = probe(
-                *executable,
-                requested,
-                false,
-                std::move(environment)
-            );
-            if (toolchain) {
-                return *toolchain;
-            }
+            return Toolchain{*executable, *id, std::move(environment)};
         }
 
         if (!requested || *requested == CXX::msvc) {
             if (auto configured = platform::configured_msvc()) {
-                if (auto toolchain = probe(
+                return Toolchain{
                     configured->executable,
                     CXX::msvc,
-                    false,
                     std::move(configured->environment)
-                )) {
-                    return *toolchain;
-                }
+                };
             }
         }
 
@@ -338,6 +360,41 @@ namespace ormi::backends::cpu::jit {
             jitError,
             "No supported CPU JIT compiler was found. Install a supported "
             "compiler or set ORMI_CPU_JIT_CXX."
+        );
+    }
+
+    const Toolchain& toolchain() {
+        static const Toolchain value = resolve();
+        return value;
+    }
+
+    void build(
+        const Toolchain& compiler,
+        Target target,
+        Math functions,
+        const std::filesystem::path& source,
+        const std::filesystem::path& output
+    ) {
+        const auto result = run(
+            compiler,
+            command(compiler, target, functions, source, output)
+        );
+        auto object = source;
+        object.replace_extension(".obj");
+        std::error_code ignored;
+        std::filesystem::remove(object, ignored);
+
+        if (result.code == 0 && std::filesystem::is_regular_file(output)) {
+            return;
+        }
+
+        ORMI_THROW(
+            jitError,
+            "CPU JIT compiler failed with exit code " +
+                std::to_string(result.code) +
+                ".\nCompiler: " + compiler.executable.string() +
+                "\nTarget: " + to_string(target) +
+                "\n" + result.output
         );
     }
 }

@@ -4,15 +4,20 @@
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
+#include <thread>
+#include <utility>
 #include <vector>
 
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <sched.h>
 #include <signal.h>
 #include <sys/file.h>
 #include <sys/types.h>
@@ -68,7 +73,7 @@ namespace ormi::platform {
     FileLock::FileLock(const std::filesystem::path& path, Lock mode) {
         const auto handle = open(path.c_str(), O_CREAT | O_RDWR, 0600);
         if (handle < 0) {
-            ORMI_THROW(jitError, "Cannot open CPU JIT cache lock: " + path.string());
+            ORMI_THROW(jitError, "Cannot open cache lock: " + path.string());
         }
 
         const auto operation = mode == Lock::exclusive ? LOCK_EX : LOCK_SH;
@@ -77,7 +82,7 @@ namespace ormi::platform {
                 close(handle);
                 ORMI_THROW(
                     jitError,
-                    "Cannot lock CPU JIT cache entry: " + path.string()
+                    "Cannot lock cache entry: " + path.string()
                 );
             }
         }
@@ -338,6 +343,76 @@ namespace ormi::platform {
 
         const auto filename = "lib" + std::string(stem) + ".so";
         return std::filesystem::absolute(module.dli_fname).parent_path() / filename;
+    }
+
+    bool supports_avx2() noexcept {
+#if (defined(__x86_64__) || defined(__i386__)) && \
+    (defined(__GNUC__) || defined(__clang__))
+        __builtin_cpu_init();
+        return __builtin_cpu_supports("avx2");
+#else
+        return false;
+#endif
+    }
+
+    bool supports_fma() noexcept {
+#if (defined(__x86_64__) || defined(__i386__)) && \
+    (defined(__GNUC__) || defined(__clang__))
+        __builtin_cpu_init();
+        return __builtin_cpu_supports("avx2") &&
+            __builtin_cpu_supports("fma");
+#else
+        return false;
+#endif
+    }
+
+    bool supports_f16c() noexcept {
+#if (defined(__x86_64__) || defined(__i386__)) && \
+    (defined(__GNUC__) || defined(__clang__))
+        __builtin_cpu_init();
+        return __builtin_cpu_supports("avx2") &&
+            __builtin_cpu_supports("f16c");
+#else
+        return false;
+#endif
+    }
+
+    std::size_t cpu_cores() {
+        cpu_set_t allowed;
+        CPU_ZERO(&allowed);
+        if (sched_getaffinity(0, sizeof(allowed), &allowed) != 0) {
+            return std::max<std::size_t>(
+                std::thread::hardware_concurrency(),
+                1
+            );
+        }
+
+        std::set<std::pair<int, int>> cores;
+        for (int cpu = 0; cpu < CPU_SETSIZE; ++cpu) {
+            if (!CPU_ISSET(cpu, &allowed)) {
+                continue;
+            }
+
+            const auto topology =
+                std::filesystem::path("/sys/devices/system/cpu") /
+                ("cpu" + std::to_string(cpu)) /
+                "topology";
+            std::ifstream package_file(topology / "physical_package_id");
+            std::ifstream core_file(topology / "core_id");
+            int package = 0;
+            int core = 0;
+            if (package_file >> package && core_file >> core) {
+                cores.emplace(package, core);
+            }
+        }
+
+        if (!cores.empty()) {
+            return cores.size();
+        }
+        return std::max<std::size_t>(
+            std::thread::hardware_concurrency(),
+            1
+        );
     }
 
     unsigned long long process_id() {

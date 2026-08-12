@@ -5,6 +5,7 @@
 #include <ormi/core/autograd.h>
 #include <ormi/core/device.h>
 #include <ormi/core/dtype.h>
+#include <ormi/core/float16.h>
 #include <ormi/core/ops/pointwise.h>
 #include <ormi/core/ops/reduction.h>
 #include <ormi/core/shape.h>
@@ -50,5 +51,40 @@ namespace {
 
         EXPECT_DOUBLE_EQ(data[0], 3.0);
         EXPECT_DOUBLE_EQ(data[1], 5.0);
+    }
+
+    TEST(AutogradReductionTest, differentiatesMeanTwiceLazily) {
+        const auto input = std::make_shared<ormi::core::Tensor>(
+            ormi::core::Device::cpu(),
+            ormi::core::Shape{2},
+            ormi::core::DType::float32
+        );
+        auto* values = static_cast<float*>(input->data());
+        values[0] = 1.5f;
+        values[1] = 2.5f;
+
+        const auto output = ormi::core::ops::mean(ormi::core::ops::mul(input, input));
+        const auto first = ormi::core::grad(output, input);
+        const auto second = ormi::core::grad(ormi::core::ops::sum(first), input);
+        const auto* first_values = static_cast<const float*>(first->data());
+        const auto* second_values = static_cast<const float*>(second->data());
+
+        EXPECT_FLOAT_EQ(first_values[0], 1.5f);
+        EXPECT_FLOAT_EQ(first_values[1], 2.5f);
+        EXPECT_FLOAT_EQ(second_values[0], 1.0f);
+        EXPECT_FLOAT_EQ(second_values[1], 1.0f);
+    }
+
+    TEST(AutogradReductionTest, preservesRepresentableFloat16MeanGradient) {
+        const auto input = std::make_shared<ormi::core::Tensor>(
+            ormi::core::Device::cpu(),
+            ormi::core::Shape{65536},
+            ormi::core::DType::float16
+        );
+        const auto gradient = ormi::core::grad(ormi::core::ops::mean(input), input);
+        const auto* values = static_cast<const ormi::core::Float16*>(gradient->data());
+
+        EXPECT_EQ(values[0].bits(), ormi::core::Float16{1.0f / 65536.0f}.bits());
+        EXPECT_NE(values[0].bits(), ormi::core::Float16{0.0f}.bits());
     }
 }

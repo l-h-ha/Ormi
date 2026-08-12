@@ -12,9 +12,9 @@
 #include <ormi/core/ops/pointwise.h>
 #include <ormi/core/optim/grad_scaler.h>
 #include <ormi/core/optim/sgd.h>
-#include <ormi/core/runtime/dispatch/finite.h>
 #include <ormi/core/tensor.h>
 
+#include "core/runtime/dispatch/finite.h"
 #include "core/optim/sgd_detail.h"
 
 namespace ormi::core::optim {

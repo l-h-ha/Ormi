@@ -1,5 +1,6 @@
 from ._ext._C import (
     Autocast,
+    BackendError,
     BufferError,
     DType,
     DTypeError,
@@ -8,12 +9,12 @@ from ._ext._C import (
     MemoryError,
     OperationError,
     OrmiError,
+    Plan,
+    Replay,
     ShapeError,
     Tensor,
     bool_,
     cpu,
-    cuda,
-    cudaError,
     diff,
     dtype_name,
     dtype_size,
@@ -40,10 +41,11 @@ sgd = optim.sgd
 GradScaler = optim.GradScaler
 ScalePolicy = optim.ScalePolicy
 
-__version__ = "0.1.0a5"
+__version__ = "0.1.0a6"
 
 __all__ = [
     "Autocast",
+    "BackendError",
     "BufferError",
     "DType",
     "DTypeError",
@@ -53,14 +55,14 @@ __all__ = [
     "MemoryError",
     "OperationError",
     "OrmiError",
+    "Plan",
+    "Replay",
     "ScalePolicy",
     "ShapeError",
     "Tensor",
     "autocast",
     "bool_",
     "cpu",
-    "cuda",
-    "cudaError",
     "diff",
     "dtype_name",
     "dtype_size",

@@ -46,15 +46,16 @@ namespace ormi::backends::cpu {
         void cast_typed(core::Tensor& out, const core::Tensor& input) {
             auto* out_data = static_cast<To*>(out.data());
             const auto* input_data = static_cast<const From*>(input.data());
+            const auto elements = out.numel();
 
             if (input.is_contiguous()) {
-                for (std::size_t i = 0; i < out.numel(); ++i) {
+                for (std::size_t i = 0; i < elements; ++i) {
                     out_data[i] = convert<To>(input_data[i]);
                 }
                 return;
             }
 
-            for (std::size_t i = 0; i < out.numel(); ++i) {
+            for (std::size_t i = 0; i < elements; ++i) {
                 out_data[i] = convert<To>(input_data[storage_offset(i, input)]);
             }
         }

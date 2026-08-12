@@ -5,7 +5,7 @@
 #include <ormi/core/device.h>
 #include <ormi/core/error.h>
 #include <ormi/core/memory/buffer.h>
-#include <ormi/core/runtime/backend_id.h>
+#include <ormi/backend/id.h>
 
 namespace {
     TEST(MemoryBufferTest, cpuBufferOwnsAllocatedMemory) {
@@ -14,7 +14,7 @@ namespace {
         EXPECT_EQ(buffer.bytes(), 128u);
         EXPECT_NE(buffer.data(), nullptr);
         EXPECT_NE(buffer.allocator(), nullptr);
-        EXPECT_EQ(buffer.device().backend_id(), ormi::core::runtime::backend_id_cpu);
+        EXPECT_TRUE(buffer.device().is_host());
     }
 
     TEST(MemoryBufferTest, zeroByteCpuBufferDoesNotAllocate) {

@@ -1,52 +1,27 @@
 #pragma once
-#include <cstddef>
-#include <cstdint>
 #include <optional>
-#include <variant>
-#include <vector>
+#include <span>
+#include <unordered_set>
 
-#include <ormi/core/dtype.h>
-#include <ormi/core/ops/kind.h>
+#include <ormi/backend/fusion.h>
 #include <ormi/core/tensor.h>
 
 namespace ormi::core::runtime::fusion {
-    using Index = std::uint32_t;
-
-    struct Input {
-        std::size_t index;
-
-        bool operator==(const Input&) const = default;
-    };
-
-    enum class Constant {
-        zero,
-        one
-    };
-
-    struct Unary {
-        ops::UnaryOp op;
-        Index input;
-
-        bool operator==(const Unary&) const = default;
-    };
-
-    struct Binary {
-        ops::BinaryOp op;
-        Index lhs;
-        Index rhs;
-
-        bool operator==(const Binary&) const = default;
-    };
-
-    using Node = std::variant<Input, Constant, Unary, Binary>;
-
-    struct Expr {
-        DType dtype;
-        std::vector<Node> nodes;
-        std::vector<Tensor*> inputs;
-        Index output;
-        std::size_t operations;
-    };
+    bool eligible(Tensor& output);
+    bool groupable(Tensor& output);
 
     std::optional<Expr> build(Tensor& root);
+    std::optional<Expr> build(
+        Tensor& root,
+        const std::unordered_set<const Tensor*>& boundaries
+    );
+    std::optional<Expr> build(
+        Tensor& root,
+        std::span<Tensor* const> auxiliary_outputs
+    );
+    std::optional<Expr> build(
+        Tensor& root,
+        std::span<Tensor* const> auxiliary_outputs,
+        const std::unordered_set<const Tensor*>& boundaries
+    );
 }

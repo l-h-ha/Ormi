@@ -1,4 +1,5 @@
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include <ormi/core/autograd.h>
@@ -9,9 +10,10 @@
 #include <ormi/core/ops/creation.h>
 #include <ormi/core/ops/kind.h>
 #include <ormi/core/ops/pointwise.h>
-#include <ormi/core/runtime/dispatch/pointwise.h>
 #include <ormi/core/shape.h>
 #include <ormi/core/tensor.h>
+
+#include "core/runtime/dispatch/pointwise.h"
 
 namespace ormi::core::ops {
     namespace {
@@ -164,7 +166,7 @@ namespace ormi::core::ops {
                 ORMI_THROW(DTypeError, "Pointwise binary operations require numeric tensors.");
             }
 
-            const auto shape = broadcast(lhs->shape(), rhs->shape());
+            auto shape = broadcast(lhs->shape(), rhs->shape());
 
             if (&op == &mul_op) {
                 if (is_one(*lhs) && rhs->shape() == shape) {
@@ -184,7 +186,7 @@ namespace ormi::core::ops {
                 op,
                 std::vector<std::shared_ptr<Tensor>>{lhs, rhs},
                 lhs_device,
-                shape,
+                std::move(shape),
                 lhs_dtype
             );
         }

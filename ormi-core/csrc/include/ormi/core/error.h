@@ -14,9 +14,9 @@ namespace ormi {
     class OperationError : public OrmiError { using OrmiError::OrmiError; };
     class BufferError : public OrmiError { using OrmiError::OrmiError; };
     class MemoryError : public OrmiError { using OrmiError::OrmiError; };
+    class BackendError : public DeviceError { using DeviceError::DeviceError; };
 
     class jitError : public OrmiError { using OrmiError::OrmiError; };
-    class cudaError : public DeviceError { using DeviceError::DeviceError; };
 
     namespace detail {
         template <typename ExceptionType>

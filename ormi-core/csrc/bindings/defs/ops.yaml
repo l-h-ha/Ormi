@@ -2,6 +2,7 @@ includes:
   - bindings/glue.h
   - ormi/core/ops/cast.h
   - ormi/core/ops/creation.h
+  - ormi/core/ops/fractional.h
   - ormi/core/ops/linalg.h
   - ormi/core/ops/pointwise.h
   - ormi/core/ops/reduction.h
@@ -62,10 +63,29 @@ functions:
   - {python: log, module: ops, namespace: ormi::core::ops, cpp: log, args: [{name: input, py_type: Tensor}], returns: Tensor}
   - {python: sin, module: ops, namespace: ormi::core::ops, cpp: sin, args: [{name: input, py_type: Tensor}], returns: Tensor}
   - {python: cos, module: ops, namespace: ormi::core::ops, cpp: cos, args: [{name: input, py_type: Tensor}], returns: Tensor}
+  - python: caputo
+    module: ops
+    namespace: ormi::core::ops
+    cpp: caputo
+    args:
+      - {name: input, py_type: Tensor}
+      - {name: alpha, py_type: float}
+      - {name: spacing, py_type: float}
+      - {name: axis, py_type: int, default: -1}
+      - {name: initial_derivative, py_type: Tensor | None, default: null}
+    returns: Tensor
   - {python: matmul, module: ops, namespace: ormi::core::ops, cpp: matmul, args: [{name: lhs, py_type: Tensor}, {name: rhs, py_type: Tensor}], returns: Tensor}
   - python: sum
     module: ops
     binding: ormi::bindings::tensor_sum
+    args:
+      - {name: input, py_type: Tensor}
+      - {name: axes, py_type: "Sequence[int] | None", default: py::none(), py_default: None}
+      - {name: keepdims, py_type: bool, default: false}
+    returns: Tensor
+  - python: mean
+    module: ops
+    binding: ormi::bindings::tensor_mean
     args:
       - {name: input, py_type: Tensor}
       - {name: axes, py_type: "Sequence[int] | None", default: py::none(), py_default: None}

@@ -65,7 +65,7 @@ namespace {
         ) {
             const auto bytes = values.size() * sizeof(T);
             auto device_buffer = std::make_shared<ormi::core::memory::Buffer>(
-                ormi::core::Device::cuda(),
+                ormi::core::Device::from("cuda"),
                 bytes
             );
             ormi::core::memory::Buffer host(ormi::core::Device::cpu(), bytes);
@@ -215,12 +215,12 @@ namespace {
         const auto parameter = ormi::core::ops::full(
             {0},
             1.0f,
-            ormi::core::Device::cuda()
+            ormi::core::Device::from("cuda")
         );
         const auto gradient = ormi::core::ops::full(
             {0},
             2.0f,
-            ormi::core::Device::cuda()
+            ormi::core::Device::from("cuda")
         );
         auto next = ormi::core::optim::sgd(parameter, gradient, 0.1);
 
@@ -236,7 +236,7 @@ namespace {
             ormi::core::ops::full(
                 ormi::core::Shape{},
                 2.0f,
-                ormi::core::Device::cuda()
+                ormi::core::Device::from("cuda")
             ),
             ormi::core::Shape{dims}
         );
@@ -244,7 +244,7 @@ namespace {
             ormi::core::ops::full(
                 ormi::core::Shape{},
                 1.0f,
-                ormi::core::Device::cuda()
+                ormi::core::Device::from("cuda")
             ),
             ormi::core::Shape{dims}
         );
@@ -253,12 +253,12 @@ namespace {
             ormi::core::ops::full(
                 ormi::core::Shape{std::vector<std::int64_t>(65, 1)},
                 2.0f,
-                ormi::core::Device::cuda()
+                ormi::core::Device::from("cuda")
             ),
             ormi::core::ops::full(
                 ormi::core::Shape{std::vector<std::int64_t>(65, 1)},
                 1.0f,
-                ormi::core::Device::cuda()
+                ormi::core::Device::from("cuda")
             ),
             0.1
         );

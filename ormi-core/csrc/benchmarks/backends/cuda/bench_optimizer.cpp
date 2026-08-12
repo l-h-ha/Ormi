@@ -1,7 +1,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-
 #include <benchmark/benchmark.h>
 #include <cuda_runtime_api.h>
 
@@ -10,9 +9,10 @@
 #include <ormi/core/ops/pointwise.h>
 #include <ormi/core/optim/grad_scaler.h>
 #include <ormi/core/optim/sgd.h>
-#include <ormi/core/runtime/dispatch/device.h>
 #include <ormi/core/shape.h>
 #include <ormi/core/tensor.h>
+
+#include "core/runtime/dispatch/device.h"
 
 namespace {
     bool requireCUDA(benchmark::State& state) {
@@ -38,7 +38,7 @@ namespace {
         }
 
         const auto elements = state.range(0);
-        const auto device = ormi::core::Device::cuda();
+        const auto device = ormi::core::Device::from("cuda");
         const auto parameter = ormi::core::ops::full({elements}, 1.0f, device);
         const auto gradient = ormi::core::ops::full(
             {elements},
@@ -88,7 +88,7 @@ namespace {
         }
 
         const auto elements = state.range(0);
-        const auto device = ormi::core::Device::cuda();
+        const auto device = ormi::core::Device::from("cuda");
         const auto parameter = ormi::core::ops::full({elements}, 1.0f, device);
         const auto gradient = ormi::core::ops::full({elements}, 256.0f, device);
         parameter->realize();
@@ -121,7 +121,7 @@ namespace {
         }
 
         const auto elements = state.range(0);
-        const auto device = ormi::core::Device::cuda();
+        const auto device = ormi::core::Device::from("cuda");
         const auto parameter = ormi::core::ops::full({elements}, 1.0f, device);
         const auto gradient = ormi::core::ops::full({elements}, 256.0f, device);
         ormi::core::optim::GradScaler scaler(

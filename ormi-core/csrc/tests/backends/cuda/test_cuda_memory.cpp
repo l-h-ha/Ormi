@@ -2,7 +2,6 @@
 #include <cstdint>
 #include <cstring>
 #include <vector>
-
 #include <cuda_runtime_api.h>
 #include <gtest/gtest.h>
 
@@ -10,7 +9,8 @@
 #include <ormi/core/error.h>
 #include <ormi/core/memory/buffer.h>
 #include <ormi/core/memory/ops.h>
-#include <ormi/core/runtime/dispatch/device.h>
+
+#include "core/runtime/dispatch/device.h"
 
 namespace {
     class CUDAMemoryTest : public ::testing::Test {
@@ -40,7 +40,7 @@ namespace {
         const std::size_t bytes = expected.size() * sizeof(expected.front());
 
         ormi::core::memory::Buffer host_input(ormi::core::Device::cpu(), bytes);
-        ormi::core::memory::Buffer device(ormi::core::Device::cuda(), bytes);
+        ormi::core::memory::Buffer device(ormi::core::Device::from("cuda"), bytes);
         ormi::core::memory::Buffer host_output(ormi::core::Device::cpu(), bytes);
 
         std::memcpy(host_input.data(), expected.data(), bytes);
@@ -60,8 +60,8 @@ namespace {
         const std::size_t bytes = expected.size() * sizeof(expected.front());
 
         ormi::core::memory::Buffer host_input(ormi::core::Device::cpu(), bytes);
-        ormi::core::memory::Buffer first(ormi::core::Device::cuda(), bytes);
-        ormi::core::memory::Buffer second(ormi::core::Device::cuda(), bytes);
+        ormi::core::memory::Buffer first(ormi::core::Device::from("cuda"), bytes);
+        ormi::core::memory::Buffer second(ormi::core::Device::from("cuda"), bytes);
         ormi::core::memory::Buffer host_output(ormi::core::Device::cpu(), bytes);
 
         std::memcpy(host_input.data(), expected.data(), bytes);
@@ -76,7 +76,7 @@ namespace {
         constexpr std::size_t bytes = 257;
         constexpr unsigned char value = 0xa5;
 
-        ormi::core::memory::Buffer device(ormi::core::Device::cuda(), bytes);
+        ormi::core::memory::Buffer device(ormi::core::Device::from("cuda"), bytes);
         ormi::core::memory::Buffer host_output(ormi::core::Device::cpu(), bytes);
 
         ormi::core::memory::fill(device, value);
@@ -92,7 +92,7 @@ namespace {
         constexpr std::size_t elements = 1024;
         constexpr std::size_t bytes = elements * sizeof(float);
         constexpr float expected = 3.25f;
-        const auto device_id = ormi::core::Device::cuda();
+        const auto device_id = ormi::core::Device::from("cuda");
         ormi::core::memory::Buffer device(device_id, bytes);
         ormi::core::memory::Buffer host(ormi::core::Device::cpu(), bytes);
 
@@ -116,14 +116,14 @@ namespace {
     TEST_F(CUDAMemoryTest, zeroByteOperationsAcceptNullPointers) {
         EXPECT_NO_THROW(ormi::core::memory::copy(
             nullptr,
-            ormi::core::Device::cuda(),
+            ormi::core::Device::from("cuda"),
             nullptr,
             ormi::core::Device::cpu(),
             0
         ));
         EXPECT_NO_THROW(ormi::core::memory::fill(
             nullptr,
-            ormi::core::Device::cuda(),
+            ormi::core::Device::from("cuda"),
             0xff,
             0
         ));
@@ -131,16 +131,16 @@ namespace {
 
     TEST_F(CUDAMemoryTest, synchronizesSelectedDevice) {
         EXPECT_NO_THROW(
-            ormi::core::runtime::device::synchronize(ormi::core::Device::cuda())
+            ormi::core::runtime::device::synchronize(ormi::core::Device::from("cuda"))
         );
     }
 
     TEST_F(CUDAMemoryTest, rejectsUnavailableDeviceDuringSynchronization) {
         EXPECT_THROW(
             ormi::core::runtime::device::synchronize(
-                ormi::core::Device::cuda(device_count_)
+                ormi::core::Device::from("cuda", device_count_)
             ),
-            ormi::cudaError
+            ormi::BackendError
         );
     }
 
@@ -153,8 +153,8 @@ namespace {
         constexpr std::size_t bytes = sizeof(expected);
 
         ormi::core::memory::Buffer host_input(ormi::core::Device::cpu(), bytes);
-        ormi::core::memory::Buffer first(ormi::core::Device::cuda(0), bytes);
-        ormi::core::memory::Buffer second(ormi::core::Device::cuda(1), bytes);
+        ormi::core::memory::Buffer first(ormi::core::Device::from("cuda", 0), bytes);
+        ormi::core::memory::Buffer second(ormi::core::Device::from("cuda", 1), bytes);
         ormi::core::memory::Buffer host_output(ormi::core::Device::cpu(), bytes);
 
         std::memcpy(host_input.data(), &expected, bytes);

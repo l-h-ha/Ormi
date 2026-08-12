@@ -1,4 +1,6 @@
+#include <algorithm>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <vector>
 
@@ -10,6 +12,7 @@
 #include <ormi/core/float16.h>
 #include <ormi/core/op.h>
 #include <ormi/core/ops/linalg.h>
+#include <ormi/core/ops/view.h>
 #include <ormi/core/shape.h>
 #include <ormi/core/tensor.h>
 
@@ -122,6 +125,34 @@ namespace {
         EXPECT_FLOAT_EQ(data[1], -2.0f);
         EXPECT_FLOAT_EQ(data[2], -2.0f);
         EXPECT_FLOAT_EQ(data[3], -2.0f);
+    }
+
+    TEST(CPULinalgTest, realizesTransposedMatrixVectorProduct) {
+        const auto storage = floatTensor({3, 2});
+        auto* storage_data = static_cast<float*>(storage->data());
+        const float values[] = {
+            1.0f, 4.0f,
+            2.0f, 5.0f,
+            3.0f, 6.0f
+        };
+        std::copy(std::begin(values), std::end(values), storage_data);
+
+        const auto matrix = ormi::core::ops::transpose(
+            storage,
+            {1, 0}
+        );
+        const auto vector = floatTensor({3});
+        auto* vector_data = static_cast<float*>(vector->data());
+        vector_data[0] = 1.0f;
+        vector_data[1] = 2.0f;
+        vector_data[2] = 3.0f;
+
+        const auto result = ormi::core::ops::matmul(matrix, vector);
+        const auto* data = static_cast<const float*>(result->data());
+
+        EXPECT_EQ(result->shape(), (ormi::core::Shape{2}));
+        EXPECT_FLOAT_EQ(data[0], 14.0f);
+        EXPECT_FLOAT_EQ(data[1], 32.0f);
     }
 
     TEST(CPULinalgTest, realizesStridedVectorDotProduct) {
@@ -311,6 +342,175 @@ namespace {
         EXPECT_FLOAT_EQ(data[3], 30.0f);
         EXPECT_FLOAT_EQ(data[4], 60.0f);
         EXPECT_FLOAT_EQ(data[5], 90.0f);
+    }
+
+    TEST(CPULinalgTest, realizesSmallBatchedMatmulWithTransposedLhs) {
+        const auto lhs_storage = floatTensor({2, 5, 4});
+        const auto lhs = ormi::core::ops::transpose(
+            lhs_storage,
+            {0, 2, 1}
+        );
+        const auto rhs = floatTensor({1, 5, 4});
+        auto* lhs_data = static_cast<float*>(lhs_storage->data());
+        auto* rhs_data = static_cast<float*>(rhs->data());
+        for (std::size_t i = 0; i < lhs_storage->numel(); ++i) {
+            lhs_data[i] = static_cast<float>(i % 7 + 1);
+        }
+        for (std::size_t i = 0; i < rhs->numel(); ++i) {
+            rhs_data[i] = static_cast<float>(i % 5 + 1);
+        }
+
+        const auto result = ormi::core::ops::matmul(lhs, rhs);
+        const auto* data = static_cast<const float*>(result->data());
+
+        EXPECT_EQ(result->shape(), (ormi::core::Shape{2, 4, 4}));
+        for (std::size_t batch = 0; batch < 2; ++batch) {
+            for (std::size_t row = 0; row < 4; ++row) {
+                for (std::size_t column = 0; column < 4; ++column) {
+                    float expected = 0.0f;
+                    for (std::size_t k = 0; k < 5; ++k) {
+                        expected += lhs_data[batch * 20 + k * 4 + row] *
+                            rhs_data[k * 4 + column];
+                    }
+                    EXPECT_FLOAT_EQ(
+                        data[batch * 16 + row * 4 + column],
+                        expected
+                    );
+                }
+            }
+        }
+    }
+
+    TEST(CPULinalgTest, realizesLargerContiguousAndTransposedProducts) {
+        constexpr std::size_t rows = 17;
+        constexpr std::size_t inner = 33;
+        constexpr std::size_t columns = 42;
+
+        const auto lhs = floatTensor({rows, inner});
+        const auto lhs_storage = floatTensor({inner, rows});
+        const auto transposed_lhs = ormi::core::ops::transpose(
+            lhs_storage,
+            {1, 0}
+        );
+        const auto rhs = floatTensor({inner, columns});
+        auto* lhs_data = static_cast<float*>(lhs->data());
+        auto* lhs_storage_data = static_cast<float*>(lhs_storage->data());
+        auto* rhs_data = static_cast<float*>(rhs->data());
+
+        for (std::size_t i = 0; i < lhs->numel(); ++i) {
+            lhs_data[i] = static_cast<float>(static_cast<int>(i % 13) - 6) * 0.125f;
+        }
+        for (std::size_t i = 0; i < lhs_storage->numel(); ++i) {
+            lhs_storage_data[i] =
+                static_cast<float>(static_cast<int>(i % 17) - 8) * 0.0625f;
+        }
+        for (std::size_t i = 0; i < rhs->numel(); ++i) {
+            rhs_data[i] = static_cast<float>(static_cast<int>(i % 11) - 5) * 0.25f;
+        }
+
+        const auto contiguous = ormi::core::ops::matmul(lhs, rhs);
+        const auto transposed = ormi::core::ops::matmul(transposed_lhs, rhs);
+        const auto* contiguous_data = static_cast<const float*>(contiguous->data());
+        const auto* transposed_data = static_cast<const float*>(transposed->data());
+
+        for (std::size_t row = 0; row < rows; ++row) {
+            for (std::size_t column = 0; column < columns; ++column) {
+                float contiguous_expected = 0.0f;
+                float transposed_expected = 0.0f;
+                for (std::size_t k = 0; k < inner; ++k) {
+                    contiguous_expected +=
+                        lhs_data[row * inner + k] * rhs_data[k * columns + column];
+                    transposed_expected +=
+                        lhs_storage_data[k * rows + row] * rhs_data[k * columns + column];
+                }
+
+                const auto index = row * columns + column;
+                EXPECT_FLOAT_EQ(contiguous_data[index], contiguous_expected);
+                EXPECT_FLOAT_EQ(transposed_data[index], transposed_expected);
+            }
+        }
+    }
+
+    TEST(CPULinalgTest, realizesParallelContiguousAndTransposedProducts) {
+        const auto contiguous_lhs = floatTensor({1024, 64});
+        const auto contiguous_rhs = floatTensor({64, 32});
+        const auto transposed_storage = floatTensor({1024, 64});
+        const auto transposed_lhs = ormi::core::ops::transpose(
+            transposed_storage,
+            {1, 0}
+        );
+        const auto transposed_rhs = floatTensor({1024, 32});
+
+        std::fill_n(
+            static_cast<float*>(contiguous_lhs->data()),
+            contiguous_lhs->numel(),
+            0.125f
+        );
+        std::fill_n(
+            static_cast<float*>(contiguous_rhs->data()),
+            contiguous_rhs->numel(),
+            0.25f
+        );
+        std::fill_n(
+            static_cast<float*>(transposed_storage->data()),
+            transposed_storage->numel(),
+            0.125f
+        );
+        std::fill_n(
+            static_cast<float*>(transposed_rhs->data()),
+            transposed_rhs->numel(),
+            0.25f
+        );
+
+        const auto contiguous = ormi::core::ops::matmul(
+            contiguous_lhs,
+            contiguous_rhs
+        );
+        const auto transposed = ormi::core::ops::matmul(
+            transposed_lhs,
+            transposed_rhs
+        );
+        const auto* contiguous_data = static_cast<const float*>(
+            contiguous->data()
+        );
+        const auto* transposed_data = static_cast<const float*>(
+            transposed->data()
+        );
+
+        for (std::size_t i = 0; i < contiguous->numel(); ++i) {
+            EXPECT_FLOAT_EQ(contiguous_data[i], 2.0f);
+        }
+        for (std::size_t i = 0; i < transposed->numel(); ++i) {
+            EXPECT_FLOAT_EQ(transposed_data[i], 32.0f);
+        }
+    }
+
+    TEST(CPULinalgTest, realizesLargerContiguousMatrixVectorProduct) {
+        constexpr std::size_t rows = 129;
+        constexpr std::size_t inner = 33;
+        const auto lhs = floatTensor({rows, inner});
+        const auto rhs = floatTensor({inner});
+        auto* lhs_data = static_cast<float*>(lhs->data());
+        auto* rhs_data = static_cast<float*>(rhs->data());
+
+        for (std::size_t i = 0; i < lhs->numel(); ++i) {
+            lhs_data[i] =
+                static_cast<float>(static_cast<int>(i % 13) - 6) * 0.125f;
+        }
+        for (std::size_t i = 0; i < rhs->numel(); ++i) {
+            rhs_data[i] =
+                static_cast<float>(static_cast<int>(i % 11) - 5) * 0.25f;
+        }
+
+        const auto result = ormi::core::ops::matmul(lhs, rhs);
+        const auto* data = static_cast<const float*>(result->data());
+        for (std::size_t row = 0; row < rows; ++row) {
+            float expected = 0.0f;
+            for (std::size_t k = 0; k < inner; ++k) {
+                expected += lhs_data[row * inner + k] * rhs_data[k];
+            }
+            EXPECT_FLOAT_EQ(data[row], expected);
+        }
     }
 
     TEST(LinalgTest, rejectsInvalidMatmulShapes) {

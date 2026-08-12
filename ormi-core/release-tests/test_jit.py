@@ -31,3 +31,13 @@ def test_lazy_autograd_from_the_installed_wheel():
 
     assert not y.realized
     assert derivative.item() == 12.0
+
+
+def test_float32_vector_math_and_scalar_tail():
+    oc.jit.clear()
+
+    values = np.linspace(-0.9, 0.9, 32 * 1024 + 3, dtype=np.float32)
+    result = oc.Tensor(values).exp().log().sin().cos()
+
+    expected = np.cos(np.sin(np.log(np.exp(values))))
+    np.testing.assert_allclose(result.numpy(), expected, rtol=1e-6, atol=1e-6)

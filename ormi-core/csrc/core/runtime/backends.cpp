@@ -6,45 +6,21 @@
 #include <utility>
 
 #include <ormi/core/error.h>
-#include <ormi/core/runtime/backends.h>
-#include <ormi/core/runtime/plugin.h>
+#include <ormi/backend/plugin.h>
 
-#include "backends/cpu/backend.h"
+#include "core/runtime/backend.h"
+#include "core/runtime/backends.h"
 #include "platform/platform.h"
 
 namespace ormi::core::runtime {
     namespace {
         const char core_anchor = 0;
 
-        void validate(const Backend& backend, BackendId id) {
-            if (backend.abi != backend_abi) {
-                ORMI_THROW(DeviceError, "Backend ABI is incompatible with this ORMI core.");
+        const catalog::Entry& entry(BackendId id) {
+            if (id >= catalog::entries.size()) {
+                ORMI_THROW(DeviceError, "Invalid backend id.");
             }
-
-            if (backend.id != id) {
-                ORMI_THROW(DeviceError, "Backend returned the wrong id.");
-            }
-
-            if (
-                backend.name.empty() ||
-                !backend.allocator ||
-                !backend.copy ||
-                !backend.fill ||
-                !backend.fill_scalar ||
-                !backend.cast ||
-                !backend.sgd ||
-                !backend.matmul ||
-                !backend.reduce ||
-                !backend.all_finite ||
-                !backend.pointwise_binary ||
-                !backend.pointwise_unary ||
-                !backend.synchronize
-            ) {
-                ORMI_THROW(
-                    DeviceError,
-                    std::string(backend.name) + " backend returned an incomplete function table."
-                );
-            }
+            return catalog::entries[id];
         }
     }
 
@@ -64,30 +40,27 @@ namespace ormi::core::runtime {
             backend.store(nullptr, std::memory_order_relaxed);
         }
 
-        init_cpu();
+        for (std::size_t id = 0; id < catalog::entries.size(); ++id) {
+            const auto& entry = catalog::entries[id];
+            if (entry.init) {
+                init(static_cast<BackendId>(id));
+            }
+        }
     }
 
     Backends::~Backends() = default;
 
     BackendId Backends::find(std::string_view name) const {
-        if (name == "cpu") {
-            return backend_id_cpu;
-        }
-        if (name == "cuda") {
-            return backend_id_cuda;
-        }
-        return backend_invalid;
+        return catalog::find(name);
     }
 
     bool Backends::available(BackendId id) const {
-        return id < backend_count &&
+        return id < catalog::entries.size() &&
             resolved_[id].load(std::memory_order_acquire) != nullptr;
     }
 
     const Backend& Backends::require(BackendId id) {
-        if (id >= backend_count) {
-            ORMI_THROW(DeviceError, "Invalid backend id.");
-        }
+        const auto& expected = entry(id);
 
         if (const auto* backend = resolved_[id].load(std::memory_order_acquire)) {
             return *backend;
@@ -104,11 +77,11 @@ namespace ormi::core::runtime {
         }
 
         try {
-            if (id == backend_id_cuda) {
-                load_cuda();
-            }
+            init(id);
         } catch (const OrmiError& error) {
-            errors_[id] = "Cannot load backend 'cuda'.\n" + std::string(error.what());
+            errors_[id] =
+                "Cannot load backend '" + std::string(expected.name) +
+                "'.\n" + error.what();
             ORMI_THROW(DeviceError, errors_[id]);
         }
 
@@ -119,34 +92,45 @@ namespace ormi::core::runtime {
         return *backend;
     }
 
-    void Backends::init_cpu() {
-        const auto backend = ormi::backends::cpu::init();
-        validate(backend, backend_id_cpu);
+    void Backends::init(BackendId id) {
+        const auto& expected = entry(id);
 
-        backends_[backend_id_cpu] = backend;
-        resolved_[backend_id_cpu].store(
-            &*backends_[backend_id_cpu],
-            std::memory_order_release
-        );
-    }
-
-    void Backends::load_cuda() {
-        auto loaded = std::make_unique<Plugin>(
-            platform::library_path(&core_anchor, "ormi_cuda_backend")
-        );
-        const auto init = reinterpret_cast<plugin::Init>(
-            loaded->library.symbol(plugin::entry)
-        );
-        const auto* backend = init();
-        if (!backend) {
-            ORMI_THROW(DeviceError, "CUDA backend initialization returned no function table.");
+        if (expected.init) {
+            install(id, expected.init());
+            return;
         }
 
-        validate(*backend, backend_id_cuda);
-        backends_[backend_id_cuda] = *backend;
-        plugins_[backend_id_cuda] = std::move(loaded);
-        resolved_[backend_id_cuda].store(
-            &*backends_[backend_id_cuda],
+        auto loaded = std::make_unique<Plugin>(
+            platform::library_path(&core_anchor, expected.library)
+        );
+        const auto plugin_init = reinterpret_cast<plugin::Init>(
+            loaded->library.symbol(plugin::entry)
+        );
+        const auto* backend = plugin_init();
+        if (!backend) {
+            ORMI_THROW(
+                DeviceError,
+                "Backend initialization returned no function table."
+            );
+        }
+        if (backend->abi != backend_abi) {
+            ORMI_THROW(DeviceError, "Backend ABI is incompatible with this ORMI core.");
+        }
+
+        install(id, *backend, std::move(loaded));
+    }
+
+    void Backends::install(
+        BackendId id,
+        Backend backend,
+        std::unique_ptr<Plugin> plugin
+    ) {
+        backend = normalize(std::move(backend), entry(id).name);
+
+        backends_[id] = std::move(backend);
+        plugins_[id] = std::move(plugin);
+        resolved_[id].store(
+            &*backends_[id],
             std::memory_order_release
         );
     }

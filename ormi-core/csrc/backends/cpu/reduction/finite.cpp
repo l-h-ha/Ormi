@@ -34,12 +34,17 @@ namespace ormi::backends::cpu {
         template <typename T>
         bool tensor_all_finite(const core::Tensor& input) {
             const auto* data = static_cast<const T*>(input.data());
+            const auto elements = input.numel();
 
             if (input.is_contiguous()) {
                 constexpr std::size_t block_size = 256;
 
-                for (std::size_t block = 0; block < input.numel(); block += block_size) {
-                    const auto end = std::min(block + block_size, input.numel());
+                for (
+                    std::size_t block = 0;
+                    block < elements;
+                    block += block_size
+                ) {
+                    const auto end = std::min(block + block_size, elements);
                     bool valid = true;
 
                     for (std::size_t i = block; i < end; ++i) {
@@ -54,7 +59,7 @@ namespace ormi::backends::cpu {
                 return true;
             }
 
-            for (std::size_t i = 0; i < input.numel(); ++i) {
+            for (std::size_t i = 0; i < elements; ++i) {
                 if (!finite(data[storage_offset(i, input)])) {
                     return false;
                 }

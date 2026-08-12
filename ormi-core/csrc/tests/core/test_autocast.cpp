@@ -93,17 +93,22 @@ namespace {
             const ormi::core::Autocast autocast;
             const auto exponential = ormi::core::ops::exp(input);
             const auto total = ormi::core::ops::sum(input);
+            const auto average = ormi::core::ops::mean(input);
 
             EXPECT_EQ(exponential->dtype(), ormi::core::DType::float32);
             EXPECT_EQ(total->dtype(), ormi::core::DType::float32);
+            EXPECT_EQ(average->dtype(), ormi::core::DType::float32);
             ASSERT_NE(exponential->parents()[0]->op(), nullptr);
             ASSERT_NE(total->parents()[0]->op(), nullptr);
+            ASSERT_NE(average->parents()[0]->op(), nullptr);
             EXPECT_EQ(exponential->parents()[0]->op()->name, "cast");
             EXPECT_EQ(total->parents()[0]->op()->name, "cast");
+            EXPECT_EQ(average->parents()[0]->op()->name, "cast");
         }
 
         EXPECT_EQ(ormi::core::ops::exp(input)->dtype(), ormi::core::DType::float16);
         EXPECT_EQ(ormi::core::ops::sum(input)->dtype(), ormi::core::DType::float16);
+        EXPECT_EQ(ormi::core::ops::mean(input)->dtype(), ormi::core::DType::float16);
     }
 
     TEST(CPUAutocastTest, preservesPointwiseAndExplicitCastDTypes) {

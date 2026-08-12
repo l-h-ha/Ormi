@@ -3,7 +3,8 @@
 #include <ormi/core/error.h>
 #include <ormi/core/memory/allocator.h>
 #include <ormi/core/memory/buffer.h>
-#include <ormi/core/runtime/dispatch/device.h>
+
+#include "core/runtime/dispatch/device.h"
 
 namespace ormi::core::memory {
     Buffer::Buffer(Device device, std::size_t bytes)

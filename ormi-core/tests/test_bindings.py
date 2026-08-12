@@ -10,17 +10,30 @@ import ormi_core as oc
 
 
 def test_alpha_version_and_generated_submodules():
-    assert oc.__version__ == "0.1.0a5"
+    assert oc.__version__ == "0.1.0a6"
     assert callable(oc.ops.matmul)
+    assert callable(oc.ops.mean)
     assert callable(oc.optim.sgd)
     assert callable(oc.jit.info)
+    assert oc.Plan.__name__ == "Plan"
+    assert oc.Replay.__name__ == "Replay"
 
 
 def test_exception_hierarchy_is_public():
     with pytest.raises(oc.DeviceError):
         oc.Device("not-a-device")
     assert issubclass(oc.DeviceError, oc.OrmiError)
-    assert issubclass(oc.cudaError, oc.DeviceError)
+    assert issubclass(oc.BackendError, oc.DeviceError)
+
+
+def test_device_surface_is_backend_independent():
+    device = oc.cpu()
+
+    assert device.name == "cpu"
+    assert device.index == 0
+    assert not device.indexed
+    assert device.is_host
+    assert not hasattr(oc, "cuda")
 
 
 def test_generated_stub_modules_are_valid_python():

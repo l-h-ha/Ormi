@@ -1,11 +1,11 @@
 #include <cstdint>
-
 #include <gtest/gtest.h>
 
 #include <ormi/core/device.h>
 #include <ormi/core/error.h>
 #include <ormi/core/memory/allocator.h>
-#include <ormi/core/runtime/dispatch/device.h>
+
+#include "core/runtime/dispatch/device.h"
 
 namespace {
     TEST(MemoryAllocatorTest, cpuAllocatorIsHostVisible) {
