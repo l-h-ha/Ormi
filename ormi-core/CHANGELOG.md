@@ -24,6 +24,13 @@
   ms, while the complete dense forward-and-backward plan decreased from 10.94
   to 8.63 ms. The transposed benchmark now covers intermediate inner depths
   so the cache policy is measured beyond one training shape.
+- Contiguous AVX2 matrix multiplication now reuses each 16-column right-hand
+  panel across six output rows, while retaining the previous two-row kernel
+  for short matrices and final row tails. In the package-matched MSVC build,
+  median `512x512x512` wall time at six threads decreased from 0.908 to 0.647
+  ms, `512x2048x512` decreased from 7.68 to 4.34 ms, and the complete dense
+  plan decreased from 8.45 to 7.52 ms. The row-oriented kernels now live in a
+  separate source file instead of extending the shared AVX2 implementation.
 - CPU matrix-multiplication benchmarks now measure wall time, so rates include
   work performed by ORMI and BLAS worker threads.
 - The CPU benchmark suite can now decompose a complete dense forward-and-
