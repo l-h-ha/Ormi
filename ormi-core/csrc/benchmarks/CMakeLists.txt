@@ -41,6 +41,7 @@ add_executable(ormi_runtime_bench
     memory/bench_memory.cpp
     optim/bench_grad_scaler.cpp
     optim/bench_sgd.cpp
+    training/bench_dense.cpp
     training/bench_step.cpp
     runtime/fusion/bench_build.cpp
     runtime/fusion/bench_expr.cpp

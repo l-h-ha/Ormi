@@ -19,6 +19,8 @@
   ms, and the framework dense-compute plan improved from 19.52 to 17.26 ms.
 - CPU matrix-multiplication benchmarks now measure wall time, so rates include
   work performed by ORMI and BLAS worker threads.
+- The CPU benchmark suite can now decompose a complete dense forward-and-
+  backward plan into ordered per-step median timings.
 
 ## 0.1.0a6 - 2026-08-12
 
