@@ -11,6 +11,6 @@ namespace ormi::core::runtime::schedule {
         Tensor& root,
         std::unordered_set<const Tensor*>& completed,
         std::vector<Step>& steps,
-        const fusion::Groups& groups = {}
+        const fusion::Candidates& candidates = {}
     );
 }

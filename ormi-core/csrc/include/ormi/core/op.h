@@ -119,4 +119,26 @@ namespace ormi::core {
         ScalarOp scalar;
         Precision precision = Precision::preserve;
     };
+
+    class OpRef final {
+    public:
+        constexpr const Op* get() const noexcept {
+            return op_;
+        }
+
+    private:
+        constexpr explicit OpRef(const Op* op) noexcept : op_(op) {}
+
+        template <const Op&>
+        friend consteval OpRef op_ref() noexcept;
+
+        const Op* op_;
+    };
+
+    template <const Op& op>
+    consteval OpRef op_ref() noexcept {
+        return OpRef(&op);
+    }
+
+    static_assert(sizeof(OpRef) == sizeof(const Op*));
 }

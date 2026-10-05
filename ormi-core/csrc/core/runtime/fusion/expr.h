@@ -7,9 +7,6 @@
 #include <ormi/core/tensor.h>
 
 namespace ormi::core::runtime::fusion {
-    bool eligible(Tensor& output);
-    bool groupable(Tensor& output);
-
     std::optional<Expr> build(Tensor& root);
     std::optional<Expr> build(
         Tensor& root,

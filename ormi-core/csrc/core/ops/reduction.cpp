@@ -228,7 +228,7 @@ namespace ormi::core::ops {
         }
 
         return std::make_shared<Tensor>(
-            all_finite_op,
+            op_ref<all_finite_op>(),
             std::vector<std::shared_ptr<Tensor>>{input},
             input->device(),
             Shape{},
@@ -254,7 +254,7 @@ namespace ormi::core::ops {
 
         if (!precision::state.enabled) {
             return std::make_shared<Tensor>(
-                sum_op,
+                op_ref<sum_op>(),
                 Reduce{std::move(axes), keepdims},
                 std::vector<std::shared_ptr<Tensor>>{input},
                 input->device(),
@@ -267,7 +267,7 @@ namespace ormi::core::ops {
         const auto parent = input->dtype() == dtype ? input : cast(input, dtype);
 
         return std::make_shared<Tensor>(
-            sum_op,
+            op_ref<sum_op>(),
             Reduce{std::move(axes), keepdims},
             std::vector<std::shared_ptr<Tensor>>{parent},
             input->device(),
@@ -311,7 +311,7 @@ namespace ormi::core::ops {
         const auto parent = input->dtype() == dtype ? input : cast(input, dtype);
 
         return std::make_shared<Tensor>(
-            mean_op,
+            op_ref<mean_op>(),
             Reduce{std::move(axes), keepdims},
             std::vector<std::shared_ptr<Tensor>>{parent},
             input->device(),

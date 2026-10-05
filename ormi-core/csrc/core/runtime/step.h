@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <optional>
 #include <span>
 #include <vector>
@@ -12,19 +13,23 @@
 namespace ormi::core::runtime {
     class Step final {
     public:
-        Step(
+        static Step alias(Tensor& output);
+        static Step compute(
             Tensor& output,
             Compute compute,
-            Setup setup,
-            FusionFn fusion,
-            std::optional<fusion::Expr> expression,
+            Setup setup = {}
+        );
+        static Step fusion(
+            Tensor& output,
+            FusionFn execute,
+            fusion::Expr expression,
             std::vector<Tensor*> auxiliary_outputs = {}
         );
-        Step(
+        static Step deferred_fusion(
             Tensor& output,
             PrepareFusionFn prepare,
             PrepareFusionsFn prepare_many,
-            FusionFn fusion,
+            FusionFn execute,
             fusion::Expr expression,
             std::vector<Tensor*> auxiliary_outputs = {}
         );
@@ -48,15 +53,38 @@ namespace ormi::core::runtime {
     private:
         friend void prepare(std::span<Step> steps);
 
+        enum class Kind : std::uint8_t {
+            alias,
+            compute,
+            fusion
+        };
+
+        enum class FusionState : std::uint8_t {
+            direct,
+            pending,
+            prepared
+        };
+
+        explicit Step(Tensor& output) noexcept;
+        Step(Tensor& output, Compute compute, Setup setup) noexcept;
+        Step(
+            Tensor& output,
+            FusionFn execute,
+            fusion::Expr expression,
+            std::vector<Tensor*> auxiliary_outputs
+        ) noexcept;
+
         FusionJob job() noexcept;
         void prepared() noexcept;
 
         Tensor* output_;
-        Compute compute_;
+        Kind kind_;
+        FusionState fusion_state_ = FusionState::direct;
+        Compute compute_ = nullptr;
         Setup setup_;
         PrepareFusionFn fusion_prepare_ = nullptr;
         PrepareFusionsFn fusion_prepare_many_ = nullptr;
-        FusionFn fusion_;
+        FusionFn fusion_ = nullptr;
         std::optional<fusion::Expr> expression_;
         std::vector<Tensor*> auxiliary_outputs_;
     };

@@ -132,14 +132,14 @@ namespace {
             ormi::core::Device::cpu()
         );
         const auto shared = std::make_shared<ormi::core::Tensor>(
-            shared_dependency_op,
+            ormi::core::op_ref<shared_dependency_op>(),
             std::vector<Tensor>{input},
             input->device(),
             input->shape(),
             input->dtype()
         );
         const auto output = std::make_shared<ormi::core::Tensor>(
-            add_parents_op,
+            ormi::core::op_ref<add_parents_op>(),
             std::vector<Tensor>{shared, shared},
             shared->device(),
             shared->shape(),
@@ -190,7 +190,7 @@ namespace {
         const auto negative = ormi::core::ops::neg(mapped);
         const auto exponential = ormi::core::ops::exp(mapped);
         const auto output = std::make_shared<ormi::core::Tensor>(
-            add_parents_op,
+            ormi::core::op_ref<add_parents_op>(),
             std::vector<Tensor>{negative, exponential},
             input->device(),
             input->shape(),
@@ -212,7 +212,7 @@ namespace {
             ormi::core::Device::cpu()
         );
         const auto output = std::make_shared<ormi::core::Tensor>(
-            failing_op,
+            ormi::core::op_ref<failing_op>(),
             std::vector<Tensor>{input},
             input->device(),
             input->shape(),
@@ -227,7 +227,7 @@ namespace {
     TEST(ScheduleTest, leavesFailedReadyOutputLazy) {
         const auto input = scalar(2.0f);
         const auto output = std::make_shared<ormi::core::Tensor>(
-            failing_op,
+            ormi::core::op_ref<failing_op>(),
             std::vector<Tensor>{input},
             input->device(),
             input->shape(),

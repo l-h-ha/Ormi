@@ -50,7 +50,7 @@ namespace ormi::core::ops {
         }
 
         return std::make_shared<Tensor>(
-            cast_op,
+            op_ref<cast_op>(),
             std::vector<std::shared_ptr<Tensor>>{input},
             input->device(),
             input->shape(),

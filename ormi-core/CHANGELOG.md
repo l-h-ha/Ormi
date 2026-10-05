@@ -4,6 +4,21 @@
 
 ### Changed
 
+- Lazy `Tensor` construction now accepts `op_ref<descriptor>()` instead of a
+  bare `Op&`. The descriptor must have static storage, so C++ extensions
+  cannot leave a tensor with dangling operation metadata. `OpRef` remains one
+  pointer wide and tensors retain direct pointer identity for dispatch.
+- Runtime lowering now constructs named alias, compute, direct-fusion, or
+  deferred-fusion steps. `Step` execution and fusion preparation use explicit
+  states instead of inferring behavior from combinations of nullable hooks.
+  No allocation was added to lowering; repeated schedule benchmarks remained
+  within measured run variation.
+- Fusion candidate discovery now only identifies compatible shared-parent
+  outputs. The expression builder decides whether a candidate can be
+  represented, and lowering checks backend support before creating a
+  fusion step. This removes duplicate policy without moving the common path
+  out of `lower.cpp`; an out-of-line prototype made schedule construction
+  roughly 23-28% slower by preventing useful specialization.
 - CPU AVX2 matrix multiplication now divides output rows among every useful
   configured CPU worker instead of exposing only two row partitions. The
   kernel tile boundaries remain intact, including partial final tiles, and

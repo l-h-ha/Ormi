@@ -120,12 +120,12 @@ namespace ormi::core::ops {
             .precision = Precision::float32
         };
 
-        std::shared_ptr<Tensor> unary(const Op& op, const std::shared_ptr<Tensor>& input) {
+        std::shared_ptr<Tensor> unary(OpRef op, const std::shared_ptr<Tensor>& input) {
             if (!input) {
                 ORMI_THROW(OperationError, "Pointwise unary operations require a tensor.");
             }
 
-            if (&op == &neg_op) {
+            if (op.get() == &neg_op) {
                 if (!is_numeric(input->dtype())) {
                     ORMI_THROW(DTypeError, "Negation requires a numeric tensor.");
                 }
@@ -153,7 +153,7 @@ namespace ormi::core::ops {
                 );
             }
 
-            const auto dtype = precision::apply(op.precision, input->dtype());
+            const auto dtype = precision::apply(op.get()->precision, input->dtype());
             const auto parent = input->dtype() == dtype ? input : cast(input, dtype);
 
             return std::make_shared<Tensor>(
@@ -167,22 +167,22 @@ namespace ormi::core::ops {
     }
 
     std::shared_ptr<Tensor> neg(const std::shared_ptr<Tensor>& input) {
-        return unary(neg_op, input);
+        return unary(op_ref<neg_op>(), input);
     }
 
     std::shared_ptr<Tensor> exp(const std::shared_ptr<Tensor>& input) {
-        return unary(exp_op, input);
+        return unary(op_ref<exp_op>(), input);
     }
 
     std::shared_ptr<Tensor> log(const std::shared_ptr<Tensor>& input) {
-        return unary(log_op, input);
+        return unary(op_ref<log_op>(), input);
     }
 
     std::shared_ptr<Tensor> sin(const std::shared_ptr<Tensor>& input) {
-        return unary(sin_op, input);
+        return unary(op_ref<sin_op>(), input);
     }
 
     std::shared_ptr<Tensor> cos(const std::shared_ptr<Tensor>& input) {
-        return unary(cos_op, input);
+        return unary(op_ref<cos_op>(), input);
     }
 }

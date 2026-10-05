@@ -84,7 +84,7 @@ namespace {
 
     Tensor setup_tensor(const Tensor& input) {
         return std::make_shared<ormi::core::Tensor>(
-            setup_op,
+            ormi::core::op_ref<setup_op>(),
             std::vector<Tensor>{input},
             input->device(),
             input->shape(),

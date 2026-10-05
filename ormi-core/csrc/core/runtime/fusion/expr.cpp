@@ -55,6 +55,15 @@ namespace ormi::core::runtime::fusion {
             return is_reduction(output) ? output.parents()[0].get() : &output;
         }
 
+        bool eligible(Tensor& output) {
+            const auto* root = pointwise_root(output);
+            return
+                !output.realized() &&
+                supported_dtype(root->dtype()) &&
+                root->is_contiguous() &&
+                operation(*root);
+        }
+
         Iteration iteration(
             const Tensor& input,
             const std::vector<std::int64_t>& reduced_axes,
@@ -317,19 +326,6 @@ namespace ormi::core::runtime::fusion {
             };
             std::pmr::unordered_map<const Tensor*, Index> indices_{&scratch_};
         };
-    }
-
-    bool eligible(Tensor& output) {
-        const auto* root = pointwise_root(output);
-        return
-            !output.realized() &&
-            supported_dtype(root->dtype()) &&
-            root->is_contiguous() &&
-            operation(*root);
-    }
-
-    bool groupable(Tensor& output) {
-        return eligible(output) && !is_reduction(output);
     }
 
     namespace {

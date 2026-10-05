@@ -39,7 +39,7 @@ namespace {
             ormi::core::DType::float32
         );
         ormi::core::Tensor alias(
-            alias_op,
+            ormi::core::op_ref<alias_op>(),
             std::monostate{},
             parent,
             parent->shape(),
@@ -48,6 +48,7 @@ namespace {
         );
 
         EXPECT_FALSE(alias.realized());
+        EXPECT_EQ(alias.op(), &alias_op);
         alias.realize();
         EXPECT_TRUE(alias.realized());
         EXPECT_EQ(alias.buffer(), parent->buffer());
@@ -70,7 +71,7 @@ namespace {
 
         EXPECT_THROW(
             (void)ormi::core::Tensor(
-                malformed,
+                ormi::core::op_ref<malformed>(),
                 std::vector<std::shared_ptr<ormi::core::Tensor>>{parent},
                 parent->device(),
                 parent->shape(),

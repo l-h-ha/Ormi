@@ -6,7 +6,7 @@
 #include <ormi/core/tensor.h>
 
 namespace ormi::core::runtime::fusion {
-    using Groups = std::unordered_map<const Tensor*, std::vector<Tensor*>>;
+    using Candidates = std::unordered_map<const Tensor*, std::vector<Tensor*>>;
 
-    Groups groups(std::span<Tensor* const> roots);
+    Candidates find_candidates(std::span<Tensor* const> roots);
 }

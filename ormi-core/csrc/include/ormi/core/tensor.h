@@ -34,14 +34,14 @@ namespace ormi::core {
             std::size_t offset_bytes = 0
         );
         Tensor(
-            const Op& op,
+            OpRef op,
             std::vector<std::shared_ptr<Tensor>> parents,
             Device device,
             Shape shape,
             DType dtype
         );
         Tensor(
-            const Op& op,
+            OpRef op,
             Attrs attrs,
             std::vector<std::shared_ptr<Tensor>> parents,
             Device device,
@@ -49,7 +49,7 @@ namespace ormi::core {
             DType dtype
         );
         Tensor(
-            const Op& op,
+            OpRef op,
             Attrs attrs,
             std::shared_ptr<Tensor> parent,
             Shape shape,

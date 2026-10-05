@@ -74,8 +74,8 @@ namespace {
         }
 
         for (auto _ : state) {
-            auto grouped = ormi::core::runtime::fusion::groups(roots);
-            benchmark::DoNotOptimize(grouped);
+            auto candidates = ormi::core::runtime::fusion::find_candidates(roots);
+            benchmark::DoNotOptimize(candidates);
         }
     }
 

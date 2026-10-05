@@ -93,14 +93,14 @@ namespace {
             roots.push_back(gradient.get());
         }
 
-        const auto groups = ormi::core::runtime::fusion::groups(roots);
+        const auto candidates = ormi::core::runtime::fusion::find_candidates(roots);
         std::unordered_set<const ormi::core::Tensor*> completed;
         for (auto* root : roots) {
             ormi::core::runtime::schedule::append(
                 *root,
                 completed,
                 result.steps,
-                groups
+                candidates
             );
         }
         ormi::core::runtime::prepare(result.steps);

@@ -95,15 +95,15 @@ namespace ormi::core::runtime::schedule {
             return;
         }
 
-        const auto grouped = fusion::groups(dependencies);
+        const auto candidates = fusion::find_candidates(dependencies);
         walk(
             std::move(root_step),
             [](const Tensor& tensor) {
                 return tensor.realized();
             },
-            [&grouped](Tensor& tensor) {
-                const auto group = grouped.find(&tensor);
-                if (group != grouped.end()) {
+            [&candidates](Tensor& tensor) {
+                const auto group = candidates.find(&tensor);
+                if (group != candidates.end()) {
                     if (auto step = lower_group(tensor, group->second)) {
                         return std::move(*step);
                     }
@@ -120,7 +120,7 @@ namespace ormi::core::runtime::schedule {
         Tensor& root,
         std::unordered_set<const Tensor*>& completed,
         std::vector<Step>& steps,
-        const fusion::Groups& groups
+        const fusion::Candidates& candidates
     ) {
         walk(
             root,
@@ -129,9 +129,9 @@ namespace ormi::core::runtime::schedule {
                     tensor.realized() ||
                     completed.contains(&tensor);
             },
-            [&completed, &groups](Tensor& tensor) {
-                const auto group = groups.find(&tensor);
-                if (group != groups.end()) {
+            [&completed, &candidates](Tensor& tensor) {
+                const auto group = candidates.find(&tensor);
+                if (group != candidates.end()) {
                     if (auto step = lower_group(tensor, group->second, completed)) {
                         return std::move(*step);
                     }

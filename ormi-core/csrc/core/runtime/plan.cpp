@@ -169,13 +169,13 @@ namespace ormi::core {
             root_tensors.push_back(update.value.get());
         }
 
-        const auto grouped = runtime::fusion::groups(root_tensors);
+        const auto candidates = runtime::fusion::find_candidates(root_tensors);
         for (const auto& output : outputs_) {
             runtime::schedule::append(
                 *output,
                 planned,
                 steps_,
-                grouped
+                candidates
             );
         }
         for (const auto& update : updates_) {
@@ -183,7 +183,7 @@ namespace ormi::core {
                 *update.value,
                 planned,
                 steps_,
-                grouped
+                candidates
             );
         }
 
