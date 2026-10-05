@@ -19,6 +19,17 @@
   fusion step. This removes duplicate policy without moving the common path
   out of `lower.cpp`; an out-of-line prototype made schedule construction
   roughly 23-28% slower by preventing useful specialization.
+- Automatic CPU JIT compiler discovery now syntax-checks a small C++20 source
+  before accepting a candidate. This prevents an installed compiler with an
+  incompatible standard library or SDK from breaking the first fused kernel;
+  discovery continues to the next supported compiler instead. Successful and
+  rejected probes are cached by compiler, binary timestamp, and toolchain
+  environment, and `jit.clear()` invalidates those records. Explicit
+  `ORMI_CPU_JIT_CXX` selections remain authoritative and are not probed. On the
+  development machine, rejecting stale clang-cl and accepting GCC took 561.9
+  ms from an empty cache; cached resolution measured 5.44 ms versus 2.86 ms
+  before compatibility checks. Toolchain selection is process-cached and does
+  not enter kernel execution.
 - CPU AVX2 matrix multiplication now divides output rows among every useful
   configured CPU worker instead of exposing only two row partitions. The
   kernel tile boundaries remain intact, including partial final tiles, and

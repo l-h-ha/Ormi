@@ -14,6 +14,7 @@ target_sources(ormi_core PRIVATE
     backends/cpu/jit/codegen/reduction.cpp
     backends/cpu/jit/codegen/value.cpp
     backends/cpu/jit/compile.cpp
+    backends/cpu/jit/compatibility.cpp
     backends/cpu/jit/compiler.cpp
     backends/cpu/jit/execute.cpp
     backends/cpu/jit/kernel.cpp

@@ -12,6 +12,7 @@
 
 #include <ormi/core/error.h>
 
+#include "backends/cpu/jit/compatibility.h"
 #include "backends/cpu/jit/compiler.h"
 #include "backends/cpu/jit/math.h"
 #include "backends/cpu/jit/target.h"
@@ -239,6 +240,16 @@ namespace ormi::backends::cpu::jit {
             arguments.push_back(source.string());
             return arguments;
         }
+
+        void append_rejection(
+            std::string& diagnostics,
+            const Toolchain& compiler,
+            std::string_view reason
+        ) {
+            diagnostics += "\n- " + compiler.executable.string() + " (" +
+                std::string(to_string(compiler.id)) + "): " +
+                std::string(reason);
+        }
     }
 
     std::string_view to_string(CXX id) {
@@ -330,36 +341,65 @@ namespace ormi::backends::cpu::jit {
             );
         }
 
+        std::string diagnostics;
         for (const auto name : platform::cxx_candidates()) {
             const auto executable = platform::find(name);
             if (!executable) {
                 continue;
             }
 
-            const auto id = from_name(*executable);
-            if (!id || (requested && *requested != *id)) {
+            auto id = from_name(*executable);
+            std::optional<Toolchain> compiler;
+            if (id) {
+                auto environment = *id == CXX::msvc
+                    ? msvc_environment(*executable)
+                    : std::vector<std::string>{};
+                compiler = Toolchain{
+                    *executable,
+                    *id,
+                    std::move(environment)
+                };
+            } else {
+                compiler = inspect_wrapper(*executable);
+            }
+            if (!compiler || (requested && *requested != compiler->id)) {
                 continue;
             }
-            auto environment = *id == CXX::msvc
-                ? msvc_environment(*executable)
-                : std::vector<std::string>{};
-            return Toolchain{*executable, *id, std::move(environment)};
+            if (const auto reason = compatibility::check(
+                *compiler,
+                compiler_timeout()
+            )) {
+                append_rejection(diagnostics, *compiler, *reason);
+                continue;
+            }
+            return std::move(*compiler);
         }
 
         if (!requested || *requested == CXX::msvc) {
             if (auto configured = platform::configured_msvc()) {
-                return Toolchain{
+                Toolchain compiler{
                     configured->executable,
                     CXX::msvc,
                     std::move(configured->environment)
                 };
+                if (const auto reason = compatibility::check(
+                    compiler,
+                    compiler_timeout()
+                )) {
+                    append_rejection(diagnostics, compiler, *reason);
+                } else {
+                    return compiler;
+                }
             }
         }
 
         ORMI_THROW(
             jitError,
-            "No supported CPU JIT compiler was found. Install a supported "
-            "compiler or set ORMI_CPU_JIT_CXX."
+            "No compatible CPU JIT compiler was found. Install a supported "
+            "compiler or set ORMI_CPU_JIT_CXX." +
+                (diagnostics.empty()
+                    ? std::string{}
+                    : "\nRejected candidates:" + diagnostics)
         );
     }
 
