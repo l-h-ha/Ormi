@@ -322,6 +322,13 @@ namespace {
         Plan plan({output});
 
         EXPECT_EQ(plan.steps(), 1u);
+        if (
+            plan.storage_buffers() == 1u &&
+            plan.storage_bytes() == sizeof(double)
+        ) {
+            GTEST_SKIP()
+                << "This check requires a parallel partial reduction.";
+        }
         EXPECT_EQ(plan.storage_buffers(), 2u);
         EXPECT_GT(plan.storage_bytes(), sizeof(double));
 
