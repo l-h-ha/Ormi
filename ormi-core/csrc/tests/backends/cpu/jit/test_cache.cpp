@@ -264,6 +264,23 @@ namespace {
         EXPECT_FALSE(std::filesystem::exists(cache.path));
     }
 
+    TEST(CPUJITCacheTest, clearsCompilerProbeRecords) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        const auto compilers = cache.path / "compilers";
+        std::filesystem::create_directories(compilers);
+        const auto accepted = compilers / "accepted.ok";
+        const auto rejected = compilers / "rejected.fail";
+        std::ofstream(accepted) << "accepted";
+        std::ofstream(rejected) << "rejected";
+
+        const auto info = ormi::core::jit::clear();
+
+        EXPECT_EQ(info.entries, 0);
+        EXPECT_FALSE(std::filesystem::exists(accepted));
+        EXPECT_FALSE(std::filesystem::exists(rejected));
+    }
+
     TEST(CPUJITCacheTest, clearWaitsForArtifactLease) {
         Directory cache;
         environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());

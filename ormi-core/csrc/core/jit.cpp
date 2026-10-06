@@ -1,6 +1,7 @@
 #include <ormi/core/jit.h>
 
 #include "backends/cpu/jit/cache.h"
+#include "backends/cpu/jit/compatibility.h"
 
 namespace ormi::core::jit {
     namespace {
@@ -19,6 +20,8 @@ namespace ormi::core::jit {
     }
 
     CacheInfo clear() {
-        return public_info(backends::cpu::jit::cache::clear());
+        const auto info = backends::cpu::jit::cache::clear();
+        backends::cpu::jit::compatibility::clear();
+        return public_info(info);
     }
 }

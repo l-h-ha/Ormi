@@ -127,7 +127,7 @@ namespace ormi::core::ops {
             .scalar = std::monostate{}
         };
 
-        std::shared_ptr<Tensor> like(const Op& op, const std::shared_ptr<Tensor>& input) {
+        std::shared_ptr<Tensor> like(OpRef op, const std::shared_ptr<Tensor>& input) {
             if (!input) {
                 ORMI_THROW(OperationError, "Tensor creation requires an input tensor.");
             }
@@ -146,7 +146,7 @@ namespace ormi::core::ops {
         const auto dtype = scalar_dtype(value);
 
         return std::make_shared<Tensor>(
-            full_op,
+            op_ref<full_op>(),
             Attrs{std::move(value)},
             std::vector<std::shared_ptr<Tensor>>{},
             device,
@@ -156,11 +156,11 @@ namespace ormi::core::ops {
     }
 
     std::shared_ptr<Tensor> zeros_like(const std::shared_ptr<Tensor>& input) {
-        return like(zeros_op, input);
+        return like(op_ref<zeros_op>(), input);
     }
 
     std::shared_ptr<Tensor> ones_like(const std::shared_ptr<Tensor>& input) {
-        return like(ones_op, input);
+        return like(op_ref<ones_op>(), input);
     }
 
     bool is_zero(const Tensor& tensor) {

@@ -12,6 +12,7 @@
 #include <ormi/core/error.h>
 
 #include "backends/cpu/jit/compiler.h"
+#include "platform/platform.h"
 
 namespace {
     void environment(const char* name, const char* value) {
@@ -44,6 +45,35 @@ namespace {
     private:
         const char* name_;
         std::optional<std::string> value_;
+    };
+
+    class TemporaryDirectory {
+    public:
+        TemporaryDirectory()
+            : path_(
+                std::filesystem::temp_directory_path() /
+                ("ormi-compiler-test-" +
+                    std::to_string(ormi::platform::process_id()))
+            ) {
+            std::error_code ignored;
+            std::filesystem::remove_all(path_, ignored);
+            std::filesystem::create_directories(path_);
+        }
+
+        ~TemporaryDirectory() {
+            std::error_code ignored;
+            std::filesystem::remove_all(path_, ignored);
+        }
+
+        TemporaryDirectory(const TemporaryDirectory&) = delete;
+        TemporaryDirectory& operator=(const TemporaryDirectory&) = delete;
+
+        const std::filesystem::path& path() const noexcept {
+            return path_;
+        }
+
+    private:
+        std::filesystem::path path_;
     };
 
     TEST(CPUJITCompilerTest, autoDetectsBuilderCompiler) {
@@ -102,6 +132,46 @@ namespace {
         environment("ORMI_CPU_JIT_CXX_ID", "gcc");
 
         EXPECT_THROW((void)ormi::backends::cpu::jit::resolve(), ormi::jitError);
+    }
+
+    TEST(CPUJITCompilerTest, rejectsIncompatibleAutomaticCompiler) {
+        const EnvironmentGuard path_guard("PATH");
+        const EnvironmentGuard compiler_guard("ORMI_CPU_JIT_CXX");
+        const EnvironmentGuard id_guard("ORMI_CPU_JIT_CXX_ID");
+        TemporaryDirectory temporary;
+#if defined(_WIN32)
+        const auto candidate = temporary.path() / "clang++.exe";
+#else
+        const auto candidate = temporary.path() / "clang++";
+#endif
+        std::filesystem::copy_file(
+            ORMI_PROCESS_HELPER,
+            candidate,
+            std::filesystem::copy_options::overwrite_existing
+        );
+#if !defined(_WIN32)
+        std::filesystem::permissions(
+            candidate,
+            std::filesystem::perms::owner_exec,
+            std::filesystem::perm_options::add
+        );
+#endif
+        environment("PATH", temporary.path().string().c_str());
+        environment("ORMI_CPU_JIT_CXX", "");
+        environment("ORMI_CPU_JIT_CXX_ID", "clang");
+
+        try {
+            (void)ormi::backends::cpu::jit::resolve();
+            FAIL() << "Expected automatic compiler compatibility rejection.";
+        } catch (const ormi::jitError& error) {
+            const std::string message(error.what());
+            EXPECT_NE(
+                message.find("No compatible CPU JIT compiler was found"),
+                std::string::npos
+            );
+            EXPECT_NE(message.find(candidate.string()), std::string::npos);
+            EXPECT_NE(message.find("probe"), std::string::npos) << message;
+        }
     }
 
     TEST(CPUJITCompilerTest, timesOutCompilerProcess) {

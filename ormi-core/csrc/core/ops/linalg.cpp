@@ -188,7 +188,7 @@ namespace ormi::core::ops {
 
         if (!precision::state.enabled && lhs_dtype == rhs_dtype) {
             return std::make_shared<Tensor>(
-                matmul_op,
+                op_ref<matmul_op>(),
                 std::vector<std::shared_ptr<Tensor>>{lhs, rhs},
                 lhs_device,
                 std::move(shape.output),
@@ -204,7 +204,7 @@ namespace ormi::core::ops {
         const auto promoted_rhs = rhs_dtype == dtype ? rhs : cast(rhs, dtype);
 
         return std::make_shared<Tensor>(
-            matmul_op,
+            op_ref<matmul_op>(),
             std::vector<std::shared_ptr<Tensor>>{promoted_lhs, promoted_rhs},
             lhs_device,
             std::move(shape.output),

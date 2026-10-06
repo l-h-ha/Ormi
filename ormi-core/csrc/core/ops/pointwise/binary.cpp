@@ -114,7 +114,7 @@ namespace ormi::core::ops {
         };
 
         std::shared_ptr<Tensor> binary(
-            const Op& op,
+            OpRef op,
             const std::shared_ptr<Tensor>& lhs,
             const std::shared_ptr<Tensor>& rhs
         ) {
@@ -143,7 +143,7 @@ namespace ormi::core::ops {
                 const auto dtype = promote(lhs_dtype, rhs_dtype);
                 const auto shape = broadcast(lhs->shape(), rhs->shape());
 
-                if (&op == &mul_op) {
+                if (op.get() == &mul_op) {
                     if (is_one(*lhs) && rhs->shape() == shape) {
                         return rhs_dtype == dtype ? rhs : cast(rhs, dtype);
                     }
@@ -153,7 +153,7 @@ namespace ormi::core::ops {
                     }
                 }
 
-                if (&op == &div_op && is_one(*rhs) && lhs->shape() == shape) {
+                if (op.get() == &div_op && is_one(*rhs) && lhs->shape() == shape) {
                     return lhs_dtype == dtype ? lhs : cast(lhs, dtype);
                 }
 
@@ -168,7 +168,7 @@ namespace ormi::core::ops {
 
             auto shape = broadcast(lhs->shape(), rhs->shape());
 
-            if (&op == &mul_op) {
+            if (op.get() == &mul_op) {
                 if (is_one(*lhs) && rhs->shape() == shape) {
                     return rhs;
                 }
@@ -178,7 +178,7 @@ namespace ormi::core::ops {
                 }
             }
 
-            if (&op == &div_op && is_one(*rhs) && lhs->shape() == shape) {
+            if (op.get() == &div_op && is_one(*rhs) && lhs->shape() == shape) {
                 return lhs;
             }
 
@@ -196,27 +196,27 @@ namespace ormi::core::ops {
         const std::shared_ptr<Tensor>& lhs,
         const std::shared_ptr<Tensor>& rhs
     ) {
-        return binary(add_op, lhs, rhs);
+        return binary(op_ref<add_op>(), lhs, rhs);
     }
 
     std::shared_ptr<Tensor> sub(
         const std::shared_ptr<Tensor>& lhs,
         const std::shared_ptr<Tensor>& rhs
     ) {
-        return binary(sub_op, lhs, rhs);
+        return binary(op_ref<sub_op>(), lhs, rhs);
     }
 
     std::shared_ptr<Tensor> mul(
         const std::shared_ptr<Tensor>& lhs,
         const std::shared_ptr<Tensor>& rhs
     ) {
-        return binary(mul_op, lhs, rhs);
+        return binary(op_ref<mul_op>(), lhs, rhs);
     }
 
     std::shared_ptr<Tensor> div(
         const std::shared_ptr<Tensor>& lhs,
         const std::shared_ptr<Tensor>& rhs
     ) {
-        return binary(div_op, lhs, rhs);
+        return binary(op_ref<div_op>(), lhs, rhs);
     }
 }

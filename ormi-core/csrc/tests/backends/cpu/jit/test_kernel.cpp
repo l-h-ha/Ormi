@@ -125,21 +125,19 @@ namespace {
         );
         ASSERT_TRUE(expression.has_value());
 
-        auto setup = ormi::backends::cpu::jit::prepare(
+        auto step = ormi::core::runtime::Step::deferred_fusion(
             *sine,
-            auxiliaries,
-            *expression
-        );
-        ormi::core::runtime::Step step(
-            *sine,
+            static_cast<ormi::core::runtime::PrepareFusionFn>(
+                ormi::backends::cpu::jit::prepare
+            ),
             nullptr,
-            std::move(setup),
             static_cast<ormi::core::runtime::FusionFn>(
                 ormi::backends::cpu::jit::execute
             ),
-            std::move(expression),
+            std::move(*expression),
             {cosine.get()}
         );
+        step.prepare();
 
         EXPECT_EQ(step.output_count(), 2u);
         EXPECT_EQ(&step.output(0), sine.get());

@@ -24,7 +24,7 @@ namespace ormi::core::ops::fractional {
         std::shared_ptr<Tensor> unary(
             const std::shared_ptr<Tensor>& input,
             Caputo attrs,
-            const Op& op,
+            OpRef op,
             Shape shape
         ) {
             return std::make_shared<Tensor>(
@@ -129,7 +129,7 @@ namespace ormi::core::ops::fractional {
                 unary(
                     upstream,
                     std::get<Caputo>(node->attrs()),
-                    adjoint_op,
+                    op_ref<adjoint_op>(),
                     node->parents()[0]->shape()
                 )
             );
@@ -146,7 +146,7 @@ namespace ormi::core::ops::fractional {
                 unary(
                     upstream,
                     std::get<Caputo>(node->attrs()),
-                    initial_adjoint_op,
+                    op_ref<initial_adjoint_op>(),
                     node->parents()[1]->shape()
                 )
             );
@@ -162,7 +162,7 @@ namespace ormi::core::ops::fractional {
                 unary(
                     upstream,
                     std::get<Caputo>(node->attrs()),
-                    history_op,
+                    op_ref<history_op>(),
                     node->parents()[0]->shape()
                 )
             );
@@ -178,7 +178,7 @@ namespace ormi::core::ops::fractional {
                 unary(
                     upstream,
                     std::get<Caputo>(node->attrs()),
-                    initial_adjoint_op,
+                    op_ref<initial_adjoint_op>(),
                     node->parents()[0]->shape()
                 )
             );
@@ -194,7 +194,7 @@ namespace ormi::core::ops::fractional {
                 unary(
                     upstream,
                     std::get<Caputo>(node->attrs()),
-                    initial_op,
+                    op_ref<initial_op>(),
                     node->parents()[0]->shape()
                 )
             );
@@ -265,7 +265,7 @@ namespace ormi::core::ops::fractional {
         const std::shared_ptr<Tensor>& input,
         Caputo attrs
     ) {
-        return unary(input, std::move(attrs), l1_op, input->shape());
+        return unary(input, std::move(attrs), op_ref<l1_op>(), input->shape());
     }
 
     std::shared_ptr<Tensor> l2(
@@ -274,7 +274,7 @@ namespace ormi::core::ops::fractional {
         Caputo attrs
     ) {
         return std::make_shared<Tensor>(
-            l2_op,
+            op_ref<l2_op>(),
             std::move(attrs),
             std::vector<std::shared_ptr<Tensor>>{
                 input,

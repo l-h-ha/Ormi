@@ -14,6 +14,7 @@ target_sources(ormi_core PRIVATE
     backends/cpu/jit/codegen/reduction.cpp
     backends/cpu/jit/codegen/value.cpp
     backends/cpu/jit/compile.cpp
+    backends/cpu/jit/compatibility.cpp
     backends/cpu/jit/compiler.cpp
     backends/cpu/jit/execute.cpp
     backends/cpu/jit/kernel.cpp
@@ -45,6 +46,7 @@ if(ORMI_CPU_PROCESSOR MATCHES "^(amd64|x86_64|x64)$")
         target_sources(ormi_core PRIVATE
             backends/cpu/matmul/avx2.cpp
             backends/cpu/matmul/parallel.cpp
+            backends/cpu/matmul/row_gemm.cpp
             backends/cpu/reduction/avx2.cpp
         )
         set_property(
@@ -54,7 +56,9 @@ if(ORMI_CPU_PROCESSOR MATCHES "^(amd64|x86_64|x64)$")
             APPEND PROPERTY COMPILE_DEFINITIONS ORMI_HAS_AVX2_KERNELS
         )
         set_property(
-            SOURCE backends/cpu/matmul/avx2.cpp
+            SOURCE
+                backends/cpu/matmul/avx2.cpp
+                backends/cpu/matmul/row_gemm.cpp
             APPEND PROPERTY COMPILE_OPTIONS
                 ${ORMI_CPU_AVX2_FLAG}
                 ${ORMI_CPU_FMA_FLAG}

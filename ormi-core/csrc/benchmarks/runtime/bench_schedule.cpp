@@ -56,14 +56,14 @@ namespace {
         ormi::core::Tensor& root,
         std::span<ormi::core::Tensor* const> roots
     ) {
-        const auto groups = ormi::core::runtime::fusion::groups(roots);
+        const auto candidates = ormi::core::runtime::fusion::find_candidates(roots);
         std::unordered_set<const ormi::core::Tensor*> completed;
         std::vector<ormi::core::runtime::Step> steps;
         ormi::core::runtime::schedule::append(
             root,
             completed,
             steps,
-            groups
+            candidates
         );
         return steps;
     }

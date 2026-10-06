@@ -131,7 +131,7 @@ namespace ormi::core {
     }
 
     Tensor::Tensor(
-        const Op& op,
+        OpRef op,
         std::vector<std::shared_ptr<Tensor>> parents,
         Device device,
         Shape shape,
@@ -147,14 +147,14 @@ namespace ormi::core {
           ) {}
 
     Tensor::Tensor(
-        const Op& op,
+        OpRef op,
         Attrs attrs,
         std::vector<std::shared_ptr<Tensor>> parents,
         Device device,
         Shape shape,
         DType dtype
     )
-        : op_(&op),
+        : op_(op.get()),
           attrs_(std::move(attrs)),
           parents_(std::move(parents)),
           buffer_(nullptr),
@@ -192,14 +192,14 @@ namespace ormi::core {
     }
 
     Tensor::Tensor(
-        const Op& op,
+        OpRef op,
         Attrs attrs,
         std::shared_ptr<Tensor> parent,
         Shape shape,
         std::vector<std::int64_t> strides,
         std::size_t offset_bytes
     )
-        : op_(&op),
+        : op_(op.get()),
           attrs_(std::move(attrs)),
           parents_{require_parent(std::move(parent))},
           buffer_(nullptr),

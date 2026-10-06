@@ -3,6 +3,9 @@
 #include <cstdint>
 
 namespace ormi::backends::cpu::avx2 {
+    inline constexpr std::size_t row_gemm_tile = 6;
+    inline constexpr std::size_t column_lhs_tile = 6;
+
     void row_gemv(
         float* out,
         const float* lhs,

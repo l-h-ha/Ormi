@@ -6,7 +6,6 @@
 
 #include <ormi/core/tensor.h>
 
-#include "core/runtime/fusion/expr.h"
 #include "core/runtime/fusion/group.h"
 
 namespace ormi::core::runtime::fusion {
@@ -40,7 +39,7 @@ namespace ormi::core::runtime::fusion {
         }
     }
 
-    Groups groups(std::span<Tensor* const> roots) {
+    Candidates find_candidates(std::span<Tensor* const> roots) {
         std::vector<Tensor*> stack;
         stack.reserve(roots.size());
         for (auto root = roots.rbegin(); root != roots.rend(); ++root) {
@@ -50,8 +49,8 @@ namespace ormi::core::runtime::fusion {
         }
 
         std::unordered_set<const Tensor*> visited;
-        std::unordered_map<const Tensor*, Primaries> candidates;
-        Groups result;
+        std::unordered_map<const Tensor*, Primaries> primaries;
+        Candidates result;
 
         while (!stack.empty()) {
             auto* tensor = stack.back();
@@ -63,9 +62,9 @@ namespace ormi::core::runtime::fusion {
                 continue;
             }
 
-            if (tensor->parents().size() == 1 && groupable(*tensor)) {
+            if (tensor->parents().size() == 1) {
                 const auto parent = tensor->parents()[0].get();
-                const auto [entry, inserted] = candidates.try_emplace(
+                const auto [entry, inserted] = primaries.try_emplace(
                     parent,
                     Primaries{tensor, {}}
                 );

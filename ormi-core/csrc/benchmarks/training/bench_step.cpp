@@ -263,27 +263,27 @@ namespace {
         result.updates = training.updates(result.gradients);
 
         std::unordered_set<const ormi::core::Tensor*> planned;
-        ormi::core::runtime::fusion::Groups grouped;
+        ormi::core::runtime::fusion::Candidates candidates;
         if (group_outputs) {
             std::vector<ormi::core::Tensor*> roots{result.loss.get()};
             roots.reserve(1 + result.updates.size());
             for (const auto& update : result.updates) {
                 roots.push_back(update.get());
             }
-            grouped = ormi::core::runtime::fusion::groups(roots);
+            candidates = ormi::core::runtime::fusion::find_candidates(roots);
         }
         ormi::core::runtime::schedule::append(
             *result.loss,
             planned,
             result.steps,
-            grouped
+            candidates
         );
         for (const auto& update : result.updates) {
             ormi::core::runtime::schedule::append(
                 *update,
                 planned,
                 result.steps,
-                grouped
+                candidates
             );
         }
         return result;

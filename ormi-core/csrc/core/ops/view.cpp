@@ -175,7 +175,7 @@ namespace ormi::core::ops {
         }
 
         return std::make_shared<Tensor>(
-            reshape_op,
+            op_ref<reshape_op>(),
             std::monostate{},
             input,
             std::move(shape),
@@ -204,7 +204,7 @@ namespace ormi::core::ops {
         }
 
         return std::make_shared<Tensor>(
-            transpose_op,
+            op_ref<transpose_op>(),
             Permute{std::move(axes)},
             input,
             Shape(std::move(dims)),
@@ -239,7 +239,7 @@ namespace ormi::core::ops {
         }
 
         return std::make_shared<Tensor>(
-            expand_op,
+            op_ref<expand_op>(),
             std::monostate{},
             input,
             std::move(shape),

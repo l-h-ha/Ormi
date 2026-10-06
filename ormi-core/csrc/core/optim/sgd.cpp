@@ -101,7 +101,7 @@ namespace ormi::core::optim {
             }
 
             return std::make_shared<Tensor>(
-                sgd_op,
+                op_ref<sgd_op>(),
                 SGD{step_size},
                 std::vector<std::shared_ptr<Tensor>>{parameter, gradient},
                 parameter->device(),
