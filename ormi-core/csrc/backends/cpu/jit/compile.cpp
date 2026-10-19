@@ -39,15 +39,12 @@ namespace ormi::backends::cpu::jit {
         struct Unit {
             explicit Unit(const core::runtime::fusion::Expr& value)
                 : expression(&value),
-                  key(value),
-                  loop(plan(value)),
-                  launch_plan(launch(value, loop)),
-                  generated(emit(value, loop)) {}
+                  key(value) {}
 
             const core::runtime::fusion::Expr* expression;
             core::runtime::fusion::Key key;
             Loop loop;
-            artifact::Kernel launch_plan;
+            artifact::Kernel launch_plan{};
             std::string generated;
             std::shared_ptr<Compiled> compiled;
         };
@@ -131,7 +128,7 @@ namespace ormi::backends::cpu::jit {
             return entry->compiled;
         }
 
-        void compile(std::span<Unit* const> units) {
+        void compile_missing(std::span<Unit* const> units) {
             if (units.size() == 1) {
                 const std::array kernels{units[0]->launch_plan};
                 units[0]->compiled = artifact::get(
@@ -186,8 +183,8 @@ namespace ormi::backends::cpu::jit {
         std::lock_guard lock(cache_mutex);
         auto current = published.load(std::memory_order_acquire);
         std::vector<Unit> units;
-        std::vector<std::size_t> unit_for(expressions.size(), expressions.size());
 
+        // Recheck the in-memory cache under the lock, then collect unique misses.
         for (std::size_t i = 0; i < expressions.size(); ++i) {
             const auto hash = core::runtime::fusion::Key::hash(*expressions[i]);
             if (const auto* entry = find_entry(*current, *expressions[i], hash)) {
@@ -195,21 +192,29 @@ namespace ormi::backends::cpu::jit {
                 continue;
             }
 
-            for (std::size_t unit = 0; unit < units.size(); ++unit) {
+            bool duplicate = false;
+            for (const auto& unit : units) {
                 if (
-                    units[unit].key.hash() == hash &&
-                    units[unit].key.matches(*expressions[i])
+                    unit.key.hash() == hash &&
+                    unit.key.matches(*expressions[i])
                 ) {
-                    unit_for[i] = unit;
+                    duplicate = true;
                     break;
                 }
             }
-            if (unit_for[i] == expressions.size()) {
-                unit_for[i] = units.size();
+            if (!duplicate) {
                 units.emplace_back(*expressions[i]);
             }
         }
 
+        // Planning and source generation happen only after duplicate requests are removed.
+        for (auto& unit : units) {
+            unit.loop = plan(*unit.expression);
+            unit.launch_plan = launch(*unit.expression, unit.loop);
+            unit.generated = emit(*unit.expression, unit.loop);
+        }
+
+        // Load cached libraries from disk before compiling the remaining kernels.
         std::vector<Unit*> missing;
         for (auto& unit : units) {
             unit.compiled = artifact::find(
@@ -221,9 +226,10 @@ namespace ormi::backends::cpu::jit {
             }
         }
         if (!missing.empty()) {
-            compile(missing);
+            compile_missing(missing);
         }
 
+        // Replace the shared cache table only after every requested kernel has loaded.
         auto next = std::make_shared<Cache>(*current);
         for (const auto& unit : units) {
             (*next)[unit.key.hash()].emplace_back(
@@ -233,6 +239,7 @@ namespace ormi::backends::cpu::jit {
         }
         published.store(next, std::memory_order_release);
 
+        // Return kernels in request order, including duplicates and prior memory hits.
         for (std::size_t i = 0; i < expressions.size(); ++i) {
             const auto hash = core::runtime::fusion::Key::hash(*expressions[i]);
             const auto* entry = find_entry(*next, *expressions[i], hash);

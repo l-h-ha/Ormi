@@ -49,9 +49,13 @@ add_executable(ormi_runtime_bench
     runtime/fusion/bench_key.cpp
     runtime/fusion/bench_transcendental.cpp
     runtime/jit/bench_stages.cpp
+    runtime/jit/bench_execution.cpp
+    runtime/jit/bench_loop.cpp
+    runtime/jit/bench_reduction.cpp
     runtime/bench_plan.cpp
     runtime/bench_runtime.cpp
     runtime/bench_schedule.cpp
+    runtime/bench_step.cpp
 )
 
 target_compile_features(ormi_runtime_bench PRIVATE cxx_std_20)

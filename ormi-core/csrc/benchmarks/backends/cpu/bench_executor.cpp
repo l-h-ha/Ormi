@@ -25,10 +25,9 @@ namespace {
         ++counters.values[slot].value;
     }
 
-    void bmCPUExecutorSubmit(benchmark::State& state) {
+    void bmCPUExecutorSubmit(benchmark::State& state, std::size_t work) {
         constexpr std::size_t range = 1024;
         constexpr std::size_t unit = 1;
-        constexpr std::size_t work = 512 * 1024;
         const auto slots = ormi::backends::cpu::executor::slots(
             range,
             unit,
@@ -47,10 +46,24 @@ namespace {
             benchmark::ClobberMemory();
         }
 
+        for (const auto& counter : counters.values) {
+            if (counter.value != static_cast<std::uint64_t>(state.iterations())) {
+                state.SkipWithError("Executor did not visit every selected slot exactly once.");
+                break;
+            }
+        }
         state.counters["participants"] = static_cast<double>(slots);
     }
 }
 
-BENCHMARK(bmCPUExecutorSubmit)
+BENCHMARK_CAPTURE(bmCPUExecutorSubmit, parallel, 512 * 1024)
     ->Name("runtime/cpu_executor/submit")
+    ->UseRealTime();
+
+BENCHMARK_CAPTURE(bmCPUExecutorSubmit, serial, 0)
+    ->Name("runtime/cpu_executor/serial_submit")
+    ->UseRealTime();
+
+BENCHMARK_CAPTURE(bmCPUExecutorSubmit, full, 6 * 192 * 1024)
+    ->Name("runtime/cpu_executor/full_submit")
     ->UseRealTime();

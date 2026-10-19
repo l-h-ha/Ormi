@@ -1,5 +1,7 @@
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -33,6 +35,8 @@ namespace {
     int setup_runs = 0;
     int setup_drops = 0;
     int fallback_runs = 0;
+    std::size_t reported_buffers = 0;
+    std::size_t reported_bytes = 0;
 
     void run_setup(void* state, ormi::core::Tensor& out) {
         auto& current = *static_cast<SetupState*>(state);
@@ -72,6 +76,29 @@ namespace {
         .scalar = std::monostate{}
     };
 
+    ormi::core::Setup prepare_reported_storage(ormi::core::Tensor&) {
+        ++setup_creates;
+        return ormi::core::Setup(
+            new SetupState{&setup_runs, &setup_drops},
+            [](void* state, ormi::core::Tensor&) {
+                ++*static_cast<SetupState*>(state)->runs;
+            },
+            drop_setup,
+            reported_buffers,
+            reported_bytes
+        );
+    }
+
+    const ormi::core::Op storage_op{
+        .name = "reported_storage_test",
+        .output = ormi::core::Output::allocate,
+        .parents = 1,
+        .compute = run_fallback,
+        .prepare = prepare_reported_storage,
+        .adjoint = nullptr,
+        .scalar = std::monostate{}
+    };
+
     Tensor scalar(float value) {
         auto result = ormi::core::ops::full(
             {},
@@ -90,6 +117,114 @@ namespace {
             input->shape(),
             input->dtype()
         );
+    }
+
+    Tensor storage_tensor(const Tensor& input, ormi::core::Shape shape) {
+        return std::make_shared<ormi::core::Tensor>(
+            ormi::core::op_ref<storage_op>(), std::vector<Tensor>{input},
+            input->device(), std::move(shape), input->dtype()
+        );
+    }
+
+    TEST(CPUPlanTest, reportsNoStorageForAliasOnlyPlan) {
+        const auto input = ormi::core::ops::full({2, 3}, 1.0f, ormi::core::Device::cpu());
+        input->realize();
+        const auto output = ormi::core::ops::transpose(input, {1, 0});
+        Plan plan({output});
+
+        EXPECT_EQ(plan.steps(), 1u);
+        EXPECT_EQ(plan.storage_buffers(), 0u);
+        EXPECT_EQ(plan.storage_bytes(), 0u);
+        plan.run();
+        EXPECT_EQ(output->buffer(), input->buffer());
+        EXPECT_EQ(plan.storage_buffers(), 0u);
+        EXPECT_EQ(plan.storage_bytes(), 0u);
+    }
+
+    TEST(CPUPlanTest, skipsEmptyOutputAndCountsPreparedWorkspace) {
+        setup_creates = setup_runs = setup_drops = 0;
+        reported_buffers = 2;
+        reported_bytes = 96;
+        const auto output = storage_tensor(scalar(1.0f), {0, 7});
+        {
+            Plan plan({output});
+            EXPECT_EQ(setup_creates, 1);
+            EXPECT_EQ(setup_runs, 0);
+            EXPECT_EQ(plan.storage_buffers(), 2u);
+            EXPECT_EQ(plan.storage_bytes(), 96u);
+            EXPECT_FALSE(output->realized());
+            plan.run();
+            EXPECT_TRUE(output->realized());
+            EXPECT_EQ(setup_runs, 1);
+            EXPECT_EQ(plan.storage_buffers(), 2u);
+            EXPECT_EQ(plan.storage_bytes(), 96u);
+        }
+        EXPECT_EQ(setup_drops, 1);
+    }
+
+    TEST(CPUPlanTest, acceptsMaximumReportedStorageForEmptyOutput) {
+        setup_creates = setup_runs = setup_drops = 0;
+        reported_buffers = std::numeric_limits<std::size_t>::max();
+        reported_bytes = std::numeric_limits<std::size_t>::max();
+        {
+            Plan plan({storage_tensor(scalar(1.0f), {0})});
+            EXPECT_EQ(plan.storage_buffers(), reported_buffers);
+            EXPECT_EQ(plan.storage_bytes(), reported_bytes);
+            EXPECT_EQ(setup_creates, 1);
+            EXPECT_EQ(setup_runs, 0);
+        }
+        EXPECT_EQ(setup_drops, 1);
+    }
+
+    TEST(CPUPlanTest, rejectsAggregateStorageOverflowAndReleasesPreparedStates) {
+        const auto input = scalar(1.0f);
+        for (const bool buffers : {true, false}) {
+            SCOPED_TRACE(buffers ? "buffer count" : "byte count");
+            setup_creates = setup_runs = setup_drops = 0;
+            const auto count = std::numeric_limits<std::size_t>::max() / 2 + 1;
+            reported_buffers = buffers ? count : 0;
+            reported_bytes = buffers ? 0 : count;
+            const auto first = storage_tensor(input, {0});
+            const auto second = storage_tensor(input, {0});
+
+            EXPECT_THROW(Plan({first, second}), ormi::MemoryError);
+            EXPECT_EQ(setup_creates, 2);
+            EXPECT_EQ(setup_drops, 2);
+            EXPECT_EQ(setup_runs, 0);
+            EXPECT_FALSE(first->realized());
+            EXPECT_FALSE(second->realized());
+        }
+    }
+
+    TEST(CPUPlanTest, rejectsOutputAndWorkspaceStorageOverflow) {
+        const auto input = scalar(1.0f);
+        for (const bool buffers : {true, false}) {
+            SCOPED_TRACE(buffers ? "buffer count" : "byte count");
+            setup_creates = setup_runs = setup_drops = 0;
+            reported_buffers = buffers ? std::numeric_limits<std::size_t>::max() : 0;
+            reported_bytes = buffers ? 0 : std::numeric_limits<std::size_t>::max();
+            const auto output = storage_tensor(input, {});
+
+            EXPECT_THROW(Plan({output}), ormi::MemoryError);
+            EXPECT_EQ(setup_creates, 1);
+            EXPECT_EQ(setup_drops, 1);
+            EXPECT_EQ(setup_runs, 0);
+            EXPECT_FALSE(output->realized());
+        }
+    }
+
+    TEST(CPUPlanTest, releasesPreparedStateAfterTensorByteOverflow) {
+        setup_creates = setup_runs = setup_drops = 0;
+        reported_buffers = 2;
+        reported_bytes = 96;
+        const auto output = storage_tensor(scalar(1.0f),
+            {static_cast<std::int64_t>(std::numeric_limits<std::size_t>::max() / sizeof(float) + 1)});
+
+        EXPECT_THROW(Plan({output}), ormi::ShapeError);
+        EXPECT_EQ(setup_creates, 1);
+        EXPECT_EQ(setup_drops, 1);
+        EXPECT_EQ(setup_runs, 0);
+        EXPECT_FALSE(output->realized());
     }
 
     TEST(CPUPlanTest, ownsPreparedStateAndReportsItsStorage) {
@@ -259,6 +394,20 @@ namespace {
             EXPECT_FLOAT_EQ(negative_values[i], -expected);
             EXPECT_FLOAT_EQ(exponential_values[i], std::exp(expected));
         }
+
+        const auto negative_buffer = negative->buffer();
+        const auto exponential_buffer = exponential->buffer();
+        values[0] = 0.25f;
+        values[1] = 1.0f;
+        values[2] = 1.5f;
+        plan.run();
+        EXPECT_EQ(negative->buffer(), negative_buffer);
+        EXPECT_EQ(exponential->buffer(), exponential_buffer);
+        for (std::size_t i = 0; i < input->numel(); ++i) {
+            const auto expected = 2.0f * values[i];
+            EXPECT_FLOAT_EQ(negative_values[i], -expected);
+            EXPECT_FLOAT_EQ(exponential_values[i], std::exp(expected));
+        }
     }
 
     TEST(CPUPlanTest, replaysPairedTrigGradient) {
@@ -412,6 +561,8 @@ namespace {
         Plan plan({output});
 
         EXPECT_EQ(plan.steps(), 2u);
+        EXPECT_EQ(plan.storage_buffers(), 1u);
+        EXPECT_EQ(plan.storage_bytes(), output->bytes());
         plan.run();
 
         const auto* first = static_cast<const float*>(output->data());
@@ -679,6 +830,11 @@ namespace {
             static_cast<void>(plan.record()),
             ormi::OperationError
         );
+
+        plan.run();
+        EXPECT_THROW(static_cast<void>(plan.record()), ormi::OperationError);
+        plan.run();
+        EXPECT_FLOAT_EQ(*static_cast<const float*>(output->data()), 4.0f);
     }
 
     TEST(CPUPlanTest, rejectsNullOutput) {

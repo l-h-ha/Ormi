@@ -57,7 +57,7 @@ namespace ormi::backends::cuda {
         private:
             int device_;
             cudaStream_t stream_;
-            cudaGraph_t graph_;
+            cudaGraph_t graph_ = nullptr;
             cudaGraphExec_t executable_ = nullptr;
         };
 

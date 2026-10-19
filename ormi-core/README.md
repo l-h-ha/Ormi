@@ -55,9 +55,14 @@ Compiler lookup happens only when an uncached fused CPU kernel is needed:
 4. Failure raises `jitError` at fused realization. Import and non-fused CPU
    operations still work.
 
-`ORMI_CPU_JIT_CXX_ID` can select the compiler syntax independently of its
-filename. Values are case-insensitive: `gcc`, `clang`, `clang-cl`, and `msvc`;
-`cl` is an alias for `msvc`.
+Automatic candidates must pass a C++20 syntax and standard-library header
+probe. Setting `ORMI_CPU_JIT_CXX` skips that probe; if the specified compiler
+fails, ORMI does not fall back to another compiler.
+
+With `ORMI_CPU_JIT_CXX` set, `ORMI_CPU_JIT_CXX_ID` specifies its command-line
+syntax. Without `ORMI_CPU_JIT_CXX`, it restricts automatic selection to that
+compiler family. Values are case-insensitive: `gcc`, `clang`, `clang-cl`, and
+`msvc`; `cl` is an alias for `msvc`.
 
 `ORMI_CPU_JIT_TARGET` selects the generated CPU instruction set. Its default,
 `auto`, uses AVX2 when the CPU and operating system support it and otherwise
@@ -66,8 +71,8 @@ case-insensitive overrides; requesting unsupported AVX2 raises `jitError` only
 when a fused CPU kernel is first compiled.
 
 On AVX2 CPUs with F16C, ORMI also uses packed Float16 conversion and arithmetic
-for eligible fused kernels. F16C is detected automatically and is not a runtime
-prerequisite; unsupported CPUs use the scalar Float16 path.
+for eligible fused kernels. F16C is detected automatically and is not required;
+CPUs without F16C use the scalar Float16 path.
 
 Published wheels use SLEEF 3.9.0 for eight-lane Float32 `exp`, `log`, `sin`,
 and `cos` inside eligible AVX2 fused kernels. ORMI passes these functions to
@@ -97,7 +102,7 @@ Compiler installers and instructions:
 | Sanitizers | Windows x64: Visual Studio 2022 MSVC with [C++ AddressSanitizer](https://learn.microsoft.com/en-us/cpp/sanitizers/asan?view=msvc-170). Linux: Clang with [AddressSanitizer](https://clang.llvm.org/docs/AddressSanitizer.html) and [UndefinedBehaviorSanitizer](https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html). |
 | OpenBLAS | Optional; exactly [OpenBLAS 0.3.33](https://github.com/OpenMathLib/OpenBLAS/releases/tag/v0.3.33) with a discoverable CMake package. |
 | SLEEF | Optional; exactly [SLEEF 3.9.0](https://github.com/shibatch/sleef/releases/tag/3.9.0) with a discoverable CMake package. |
-| CUDA | Optional; [CUDA Toolkit 12.4](https://developer.nvidia.com/cuda-toolkit-archive), C++20-capable NVCC, CUDA Runtime, CUDA Driver import library, cuBLAS, and NVRTC. |
+| CUDA | Optional; [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit-archive) with C++20-capable NVCC, CUDA Runtime, CUDA Driver import library, cuBLAS, and NVRTC. Release wheels use Toolkit 12.4. |
 
 Only Windows and Linux have platform implementations.
 
@@ -187,8 +192,8 @@ python -m pip wheel ./ormi-cuda
 ```
 
 For C++, use CMake `add_subdirectory` and link `ormi::core`. When CUDA is
-enabled, direct CUDA consumers may also link `ormi::cuda`. A
-`find_package(ormi)` package is not installed yet.
+enabled, C++ applications that call the CUDA backend directly may also link
+`ormi::cuda`. A `find_package(ormi)` package is not installed yet.
 
 ## Runtime Settings
 

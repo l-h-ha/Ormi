@@ -65,7 +65,7 @@ def artifact_delta(
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(
         description=(
-            "Compare ORMI, PyTorch, and TensorFlow on deterministic workloads."
+            "Compare ORMI, PyTorch, and TensorFlow using the same seeded inputs."
         )
     )
     result.add_argument("--suite", choices=("quick", "full"), default="quick")
@@ -114,7 +114,7 @@ def parser() -> argparse.ArgumentParser:
         "--jit-cache",
         type=Path,
         help=(
-            "ORMI JIT cache directory. By default, each invocation gets a "
+            "ORMI CPU JIT cache directory. By default, each invocation gets a "
             "new directory below .benchmarks/framework-jit."
         ),
     )
@@ -227,10 +227,10 @@ def main() -> None:
         f"suite {arguments.suite}; rounds {arguments.rounds}; "
         f"calls/round {arguments.calls_per_round}"
     )
-    print(f"ORMI JIT cache {jit_cache}")
+    print(f"ORMI CPU JIT cache {jit_cache}")
     print(
         "Preparation, first execution, and warmed execution are reported "
-        "separately. Full numerical results are checked before timing."
+        "separately. Complete numerical outputs are checked before warmup."
     )
 
     all_results = []

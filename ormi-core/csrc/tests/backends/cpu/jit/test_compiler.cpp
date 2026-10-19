@@ -1,11 +1,14 @@
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdlib>
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -76,6 +79,22 @@ namespace {
         std::filesystem::path path_;
     };
 
+    std::filesystem::path copy_compiler(const TemporaryDirectory& directory, std::string_view name) {
+        auto executable = directory.path() / std::string(name);
+#if defined(_WIN32)
+        executable += ".exe";
+#endif
+        std::filesystem::copy_file(ORMI_PROCESS_HELPER, executable);
+#if !defined(_WIN32)
+        std::filesystem::permissions(
+            executable,
+            std::filesystem::perms::owner_exec,
+            std::filesystem::perm_options::add
+        );
+#endif
+        return executable;
+    }
+
     TEST(CPUJITCompilerTest, autoDetectsBuilderCompiler) {
         environment("ORMI_CPU_JIT_CXX", "");
         environment("ORMI_CPU_JIT_CXX_ID", "");
@@ -111,6 +130,105 @@ namespace {
 
         EXPECT_EQ(compiler.executable, std::filesystem::path(ORMI_PROCESS_HELPER));
         EXPECT_EQ(compiler.id, ormi::backends::cpu::jit::CXX::gcc);
+    }
+
+    TEST(CPUJITCompilerTest, recognizesExplicitCompilerNamesWithoutProbing) {
+        const EnvironmentGuard compiler_guard("ORMI_CPU_JIT_CXX");
+        const EnvironmentGuard id_guard("ORMI_CPU_JIT_CXX_ID");
+        const EnvironmentGuard timeout_guard("ORMI_CPU_JIT_TIMEOUT_MS");
+        const EnvironmentGuard include_guard("INCLUDE");
+        const EnvironmentGuard lib_guard("LIB");
+        TemporaryDirectory temporary;
+        environment("ORMI_CPU_JIT_CXX_ID", "");
+        environment("ORMI_CPU_JIT_TIMEOUT_MS", "invalid");
+        environment("INCLUDE", "inherited include");
+        environment("LIB", "inherited lib");
+        using CXX = ormi::backends::cpu::jit::CXX;
+        const std::array cases{
+            std::pair{"g++", CXX::gcc},
+            std::pair{"clang++", CXX::clang},
+            std::pair{"clang-cl", CXX::clang_cl},
+            std::pair{"cl", CXX::msvc}
+        };
+        for (const auto& [name, id] : cases) {
+            const auto executable = copy_compiler(temporary, name);
+            environment("ORMI_CPU_JIT_CXX", executable.string().c_str());
+
+            const auto compiler = ormi::backends::cpu::jit::resolve();
+
+            EXPECT_EQ(compiler.executable, executable);
+            EXPECT_EQ(compiler.id, id);
+            EXPECT_TRUE(compiler.environment.empty());
+        }
+    }
+
+    TEST(CPUJITCompilerTest, explicitIdOverridesRecognizedCompilerNameWithoutProbing) {
+        const EnvironmentGuard compiler_guard("ORMI_CPU_JIT_CXX");
+        const EnvironmentGuard id_guard("ORMI_CPU_JIT_CXX_ID");
+        const EnvironmentGuard timeout_guard("ORMI_CPU_JIT_TIMEOUT_MS");
+        TemporaryDirectory temporary;
+        const auto executable = copy_compiler(temporary, "clang++");
+        environment("ORMI_CPU_JIT_CXX", executable.string().c_str());
+        environment("ORMI_CPU_JIT_CXX_ID", "GcC");
+        environment("ORMI_CPU_JIT_TIMEOUT_MS", "invalid");
+
+        const auto compiler = ormi::backends::cpu::jit::resolve();
+
+        EXPECT_EQ(compiler.executable, executable);
+        EXPECT_EQ(compiler.id, ormi::backends::cpu::jit::CXX::gcc);
+    }
+
+    TEST(CPUJITCompilerTest, idFilterDoesNotOverrideAutomaticCandidateSyntax) {
+        const EnvironmentGuard path_guard("PATH");
+        const EnvironmentGuard compiler_guard("ORMI_CPU_JIT_CXX");
+        const EnvironmentGuard id_guard("ORMI_CPU_JIT_CXX_ID");
+        const EnvironmentGuard timeout_guard("ORMI_CPU_JIT_TIMEOUT_MS");
+        TemporaryDirectory temporary;
+        (void)copy_compiler(temporary, "clang++");
+        environment("PATH", temporary.path().string().c_str());
+        environment("ORMI_CPU_JIT_CXX", "");
+        environment("ORMI_CPU_JIT_CXX_ID", "gcc");
+        environment("ORMI_CPU_JIT_TIMEOUT_MS", "invalid");
+
+        try {
+            (void)ormi::backends::cpu::jit::resolve();
+            FAIL() << "Expected unmatched automatic compiler syntax to be skipped.";
+        } catch (const ormi::jitError& error) {
+            EXPECT_NE(std::string(error.what()).find("No compatible CPU JIT compiler was found"),
+                std::string::npos) << error.what();
+        }
+    }
+
+    TEST(CPUJITCompilerTest, rejectsInvalidIdBeforeResolvingExplicitPath) {
+        const EnvironmentGuard compiler_guard("ORMI_CPU_JIT_CXX");
+        const EnvironmentGuard id_guard("ORMI_CPU_JIT_CXX_ID");
+        environment("ORMI_CPU_JIT_CXX", "Z:/ormi/missing/compiler.exe");
+        environment("ORMI_CPU_JIT_CXX_ID", "unknown");
+
+        try {
+            (void)ormi::backends::cpu::jit::resolve();
+            FAIL() << "Expected compiler id validation before executable lookup.";
+        } catch (const ormi::jitError& error) {
+            EXPECT_NE(std::string(error.what()).find("ORMI_CPU_JIT_CXX_ID must be"),
+                std::string::npos) << error.what();
+        }
+    }
+
+    TEST(CPUJITCompilerTest, unidentifiedExplicitWrapperDoesNotFallBackToAutomaticCompiler) {
+        const EnvironmentGuard compiler_guard("ORMI_CPU_JIT_CXX");
+        const EnvironmentGuard id_guard("ORMI_CPU_JIT_CXX_ID");
+        const EnvironmentGuard timeout_guard("ORMI_CPU_JIT_TIMEOUT_MS");
+        environment("ORMI_CPU_JIT_CXX", ORMI_PROCESS_HELPER);
+        environment("ORMI_CPU_JIT_CXX_ID", "");
+        environment("ORMI_CPU_JIT_TIMEOUT_MS", "5000");
+
+        try {
+            (void)ormi::backends::cpu::jit::resolve();
+            FAIL() << "Expected an unidentified explicit wrapper to be rejected.";
+        } catch (const ormi::jitError& error) {
+            EXPECT_NE(std::string(error.what()).find("ORMI cannot identify the compiler syntax"),
+                std::string::npos) << error.what();
+        }
     }
 
     TEST(CPUJITCompilerTest, idWithoutPathFiltersAutomaticDiscovery) {

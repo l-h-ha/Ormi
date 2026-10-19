@@ -172,12 +172,12 @@ namespace {
             group->second,
             (std::vector<ormi::core::Tensor*>{second.get()})
         );
-        EXPECT_FALSE(
-            ormi::core::runtime::lower_group(
-                *first,
-                group->second
-            ).has_value()
+        const auto step = ormi::core::runtime::lower(
+            *first, candidates, ormi::core::runtime::Preparation::direct
         );
+        EXPECT_FALSE(step.allocates());
+        EXPECT_EQ(step.output_count(), 1u);
+        EXPECT_EQ(&step.input(0), mapped.get());
     }
 
     TEST(FusionCandidateTest, stopsAtRealizedBoundary) {
@@ -195,7 +195,7 @@ namespace {
             input->shape(),
             input->dtype()
         );
-        auto step = ormi::core::runtime::lower(*root);
+        auto step = ormi::core::runtime::lower(*root, ormi::core::runtime::Preparation::direct);
         step.run();
         const std::array<ormi::core::Tensor*, 1> roots{root.get()};
 

@@ -3,7 +3,7 @@
 
 #include <ormi/backend/api.h>
 #include <ormi/backend/fusion.h>
-#include <ormi/core/op.h>
+#include <ormi/core/setup.h>
 #include <ormi/core/tensor.h>
 
 namespace ormi::backends::cpu::jit {

@@ -1,8 +1,8 @@
 #pragma once
 
 #include <ormi/core/attrs.h>
-#include <ormi/core/op.h>
 #include <ormi/core/ops/kind.h>
+#include <ormi/core/setup.h>
 #include <ormi/core/tensor.h>
 
 namespace ormi::backends::cuda {

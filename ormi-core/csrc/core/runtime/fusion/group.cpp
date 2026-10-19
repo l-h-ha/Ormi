@@ -19,8 +19,7 @@ namespace ormi::core::runtime::fusion {
             return
                 lhs.dtype() == rhs.dtype() &&
                 lhs.shape() == rhs.shape() &&
-                lhs.device().backend_id() == rhs.device().backend_id() &&
-                lhs.device().index() == rhs.device().index();
+                lhs.device() == rhs.device();
         }
 
         Tensor* match(const Primaries& primaries, const Tensor& output) {

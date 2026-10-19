@@ -79,7 +79,7 @@ namespace ormi::core::runtime::schedule {
             return;
         }
 
-        auto root_step = lower(root);
+        auto root_step = lower(root, Preparation::direct);
         std::vector<Tensor*> dependencies;
         for (std::size_t i = 0; i < root_step.input_count(); ++i) {
             auto& input = root_step.input(i);
@@ -102,13 +102,7 @@ namespace ormi::core::runtime::schedule {
                 return tensor.realized();
             },
             [&candidates](Tensor& tensor) {
-                const auto group = candidates.find(&tensor);
-                if (group != candidates.end()) {
-                    if (auto step = lower_group(tensor, group->second)) {
-                        return std::move(*step);
-                    }
-                }
-                return lower(tensor);
+                return lower(tensor, candidates, Preparation::direct);
             },
             [](Step step) {
                 step.run();
@@ -130,13 +124,7 @@ namespace ormi::core::runtime::schedule {
                     completed.contains(&tensor);
             },
             [&completed, &candidates](Tensor& tensor) {
-                const auto group = candidates.find(&tensor);
-                if (group != candidates.end()) {
-                    if (auto step = lower_group(tensor, group->second, completed)) {
-                        return std::move(*step);
-                    }
-                }
-                return lower(tensor, completed);
+                return lower(tensor, candidates, completed, Preparation::deferred);
             },
             [&completed, &steps](Step step) {
                 for (std::size_t i = 0; i < step.output_count(); ++i) {

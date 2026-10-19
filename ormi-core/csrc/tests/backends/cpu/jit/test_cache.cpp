@@ -4,7 +4,9 @@
 #include <filesystem>
 #include <fstream>
 #include <future>
+#include <iterator>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -78,6 +80,18 @@ namespace {
             );
     }
 
+    std::string read(const std::filesystem::path& path) {
+        std::ifstream file(path, std::ios::binary);
+        return std::string(std::istreambuf_iterator<char>(file), {});
+    }
+
+    void expect_no_staging(const Directory& cache) {
+        for (const auto& entry : std::filesystem::directory_iterator(cache.path)) {
+            EXPECT_EQ(entry.path().filename().string().find(".tmp"), std::string::npos)
+                << entry.path();
+        }
+    }
+
     TEST(CPUJITCacheTest, keysIncludeGeneratedSource) {
         const auto first = ormi::backends::cpu::jit::cache::key("first");
 
@@ -121,6 +135,144 @@ namespace {
         EXPECT_EQ(builds, 1);
         EXPECT_EQ(found->library, built.library);
         EXPECT_TRUE(found->cached);
+    }
+
+    TEST(CPUJITCacheTest, publishesStagedSourceAndLibrary) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        builds = 0;
+        const auto producer = [](const std::filesystem::path& staged_source,
+            const std::filesystem::path& staged_library) {
+            ++builds;
+            EXPECT_TRUE(staged_source.filename().string().ends_with(".tmp.cpp"));
+            EXPECT_EQ(staged_library.stem(), staged_source.stem());
+            EXPECT_EQ(staged_library.extension().string(), ormi::platform::shared_extension());
+            EXPECT_EQ(read(staged_source), "publication source");
+            std::ofstream(staged_library, std::ios::binary) << "published library";
+            auto object = staged_source;
+            object.replace_extension(".obj");
+            std::ofstream(object) << "compiler sidecar";
+        };
+
+        const auto artifact = ormi::backends::cpu::jit::cache::get("publication source", producer);
+
+        EXPECT_FALSE(artifact.cached);
+        EXPECT_EQ(artifact.library, library(cache, "publication source"));
+        EXPECT_EQ(read(source(cache, "publication source")), "publication source");
+        EXPECT_EQ(read(artifact.library), "published library");
+        expect_no_staging(cache);
+        EXPECT_TRUE(ormi::backends::cpu::jit::cache::get("publication source", producer).cached);
+        EXPECT_EQ(builds, 1);
+    }
+
+    TEST(CPUJITCacheTest, cleansStagingAndReleasesLockWhenBuildThrows) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        builds = 0;
+        const auto failing = [](const std::filesystem::path& staged_source,
+            const std::filesystem::path& staged_library) {
+            ++builds;
+            std::ofstream(staged_library, std::ios::binary) << "partial library";
+            auto sidecar = staged_source;
+            sidecar.replace_extension(".obj");
+            std::ofstream(sidecar) << "partial object";
+            sidecar.replace_extension(".pdb");
+            std::ofstream(sidecar) << "partial debug data";
+            throw std::runtime_error("compiler failed");
+        };
+
+        EXPECT_THROW(
+            ormi::backends::cpu::jit::cache::get("failed build", failing),
+            std::runtime_error
+        );
+        EXPECT_FALSE(std::filesystem::exists(source(cache, "failed build")));
+        EXPECT_FALSE(std::filesystem::exists(library(cache, "failed build")));
+        EXPECT_FALSE(ormi::backends::cpu::jit::cache::find("failed build", {}));
+        expect_no_staging(cache);
+
+        const auto retried = ormi::backends::cpu::jit::cache::get("failed build", build);
+        EXPECT_FALSE(retried.cached);
+        EXPECT_EQ(builds, 2);
+    }
+
+    TEST(CPUJITCacheTest, rejectsMissingLibraryAndCleansStaging) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        const auto missing = [](const std::filesystem::path& staged_source,
+            const std::filesystem::path&) {
+            auto object = staged_source;
+            object.replace_extension(".obj");
+            std::ofstream(object) << "object without library";
+        };
+
+        EXPECT_THROW(
+            ormi::backends::cpu::jit::cache::get("missing library", missing),
+            ormi::jitError
+        );
+        EXPECT_FALSE(std::filesystem::exists(source(cache, "missing library")));
+        EXPECT_FALSE(std::filesystem::exists(library(cache, "missing library")));
+        expect_no_staging(cache);
+        EXPECT_FALSE(ormi::backends::cpu::jit::cache::get("missing library", build).cached);
+    }
+
+    TEST(CPUJITCacheTest, cleansStagingWhenLibraryPublicationFails) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        const auto blocked = library(cache, "blocked library");
+        std::filesystem::create_directories(blocked);
+        const auto blocker = blocked / "keep";
+        std::ofstream(blocker) << "existing file";
+
+        EXPECT_THROW(
+            ormi::backends::cpu::jit::cache::get("blocked library", build),
+            ormi::jitError
+        );
+        EXPECT_EQ(read(blocker), "existing file");
+        EXPECT_FALSE(std::filesystem::exists(source(cache, "blocked library")));
+        expect_no_staging(cache);
+
+        std::filesystem::remove(blocker);
+        std::filesystem::remove(blocked);
+        EXPECT_FALSE(ormi::backends::cpu::jit::cache::get("blocked library", build).cached);
+    }
+
+    TEST(CPUJITCacheTest, doesNotAcceptLibraryWhenSourcePublicationFails) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        const auto blocked = source(cache, "blocked source");
+        std::filesystem::create_directories(blocked);
+        const auto blocker = blocked / "keep";
+        std::ofstream(blocker) << "existing file";
+
+        EXPECT_THROW(
+            ormi::backends::cpu::jit::cache::get("blocked source", build),
+            ormi::jitError
+        );
+        EXPECT_TRUE(std::filesystem::is_regular_file(library(cache, "blocked source")));
+        EXPECT_EQ(read(blocker), "existing file");
+        EXPECT_FALSE(ormi::backends::cpu::jit::cache::find("blocked source", {}));
+        expect_no_staging(cache);
+
+        std::filesystem::remove(blocker);
+        std::filesystem::remove(blocked);
+        const auto retried = ormi::backends::cpu::jit::cache::get("blocked source", build);
+        EXPECT_FALSE(retried.cached);
+        EXPECT_EQ(read(source(cache, "blocked source")), "blocked source");
+        expect_no_staging(cache);
+    }
+
+    TEST(CPUJITCacheTest, leavesOtherEntriesStagingFilesUntouched) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        std::filesystem::create_directories(cache.path);
+        const auto other = cache.path /
+            (ormi::backends::cpu::jit::cache::key("other entry") + ".123.tmp.obj");
+        std::ofstream(other) << "other compiler's output";
+
+        const auto artifact = ormi::backends::cpu::jit::cache::get("current entry", build);
+
+        EXPECT_FALSE(artifact.cached);
+        EXPECT_EQ(read(other), "other compiler's output");
     }
 
     TEST(CPUJITCacheTest, serializesConcurrentMisses) {
@@ -247,6 +399,225 @@ namespace {
         EXPECT_EQ(before.limit, 0);
         EXPECT_EQ(after.entries, 0);
         EXPECT_EQ(after.bytes, 0);
+    }
+
+    TEST(CPUJITCacheTest, discardRemovesCompletePairAndKeepsLock) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        std::filesystem::create_directories(cache.path);
+        std::ofstream(source(cache, "discard")) << "source";
+        std::ofstream(library(cache, "discard")) << "artifact";
+        auto lock = source(cache, "discard");
+        lock.replace_extension(".lock");
+
+        ormi::backends::cpu::jit::cache::discard("discard");
+
+        EXPECT_FALSE(std::filesystem::exists(library(cache, "discard")));
+        EXPECT_FALSE(std::filesystem::exists(source(cache, "discard")));
+        EXPECT_TRUE(std::filesystem::is_regular_file(lock));
+        EXPECT_EQ(ormi::core::jit::info().bytes, 0);
+    }
+
+    TEST(CPUJITCacheTest, discardKeepsSourceWhenLibraryIsMissing) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        std::filesystem::create_directories(cache.path);
+        std::ofstream(source(cache, "orphan")) << "source";
+
+        ormi::backends::cpu::jit::cache::discard("orphan");
+
+        EXPECT_EQ(read(source(cache, "orphan")), "source");
+        EXPECT_FALSE(std::filesystem::exists(library(cache, "orphan")));
+    }
+
+    TEST(CPUJITCacheTest, discardKeepsSourceWhenLibrarySizeFails) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        std::filesystem::create_directories(library(cache, "blocked"));
+        std::ofstream(source(cache, "blocked")) << "source";
+        const auto blocker = library(cache, "blocked") / "keep";
+        std::ofstream(blocker) << "existing file";
+
+        ormi::backends::cpu::jit::cache::discard("blocked");
+
+        EXPECT_EQ(read(source(cache, "blocked")), "source");
+        EXPECT_EQ(read(blocker), "existing file");
+    }
+
+    TEST(CPUJITCacheTest, discardAllowsPartialSourceCleanup) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        std::filesystem::create_directories(source(cache, "partial"));
+        std::ofstream(library(cache, "partial")) << "artifact";
+        const auto blocker = source(cache, "partial") / "keep";
+        std::ofstream(blocker) << "existing file";
+
+        ormi::backends::cpu::jit::cache::discard("partial");
+
+        EXPECT_FALSE(std::filesystem::exists(library(cache, "partial")));
+        EXPECT_EQ(read(blocker), "existing file");
+        EXPECT_EQ(ormi::core::jit::info().bytes, 0);
+    }
+
+    TEST(CPUJITCacheTest, clearRemovesOrphanedSourceAndKeepsLock) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        std::filesystem::create_directories(cache.path);
+        std::ofstream(source(cache, "orphan")) << "source";
+        auto lock = source(cache, "orphan");
+        lock.replace_extension(".lock");
+
+        const auto info = ormi::core::jit::clear();
+
+        EXPECT_EQ(info.entries, 0);
+        EXPECT_FALSE(std::filesystem::exists(source(cache, "orphan")));
+        EXPECT_TRUE(std::filesystem::is_regular_file(lock));
+    }
+
+    TEST(CPUJITCacheTest, clearKeepsSourceWhenLibraryRemovalFailsAndCleansStaging) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        std::filesystem::create_directories(library(cache, "blocked"));
+        std::ofstream(source(cache, "blocked")) << "source";
+        const auto blocker = library(cache, "blocked") / "keep";
+        std::ofstream(blocker) << "existing file";
+        const auto staged = cache.path /
+            (ormi::backends::cpu::jit::cache::key("blocked") + ".123.tmp.obj");
+        std::ofstream(staged) << "staged object";
+
+        const auto info = ormi::core::jit::clear();
+
+        EXPECT_EQ(info.entries, 0);
+        EXPECT_EQ(read(source(cache, "blocked")), "source");
+        EXPECT_EQ(read(blocker), "existing file");
+        EXPECT_FALSE(std::filesystem::exists(staged));
+    }
+
+    TEST(CPUJITCacheTest, clearLeavesUnrelatedFilesAndLockFiles) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        std::filesystem::create_directories(cache.path);
+        std::ofstream(source(cache, "complete")) << "source";
+        std::ofstream(library(cache, "complete")) << "artifact";
+        const auto unrelated = cache.path / "keep.txt";
+        std::ofstream(unrelated) << "unrelated file";
+        const auto key = ormi::backends::cpu::jit::cache::key("complete");
+        const auto lock = cache.path / (key + ".lock");
+        const auto staged = cache.path / (key + ".123.tmp.obj");
+        std::ofstream(staged) << "staged object";
+
+        const auto info = ormi::core::jit::clear();
+
+        EXPECT_EQ(info.entries, 0);
+        EXPECT_EQ(info.bytes, 0);
+        EXPECT_EQ(read(unrelated), "unrelated file");
+        EXPECT_FALSE(std::filesystem::exists(staged));
+        EXPECT_TRUE(std::filesystem::is_regular_file(lock));
+        EXPECT_TRUE(std::filesystem::is_regular_file(cache.path / ".maintenance.lock"));
+    }
+
+    TEST(CPUJITCacheTest, reportsCompleteEntriesAmongIncompleteFiles) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        std::filesystem::create_directories(cache.path);
+        std::ofstream(source(cache, "complete")) << "complete";
+        std::ofstream(library(cache, "complete")) << "artifact";
+        std::ofstream(source(cache, "source only")) << "incomplete";
+        std::ofstream(library(cache, "library only")) << "incomplete";
+        std::filesystem::create_directory(source(cache, "source directory"));
+        std::ofstream(library(cache, "source directory")) << "artifact";
+        std::ofstream(source(cache, "library directory")) << "incomplete";
+        std::filesystem::create_directory(library(cache, "library directory"));
+
+        const auto info = ormi::core::jit::info();
+
+        EXPECT_EQ(info.entries, 1);
+        EXPECT_EQ(info.bytes, 16);
+    }
+
+    TEST(CPUJITCacheTest, ignoresUnrelatedAndStagedFiles) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        std::filesystem::create_directories(cache.path);
+        const auto extension = std::string(ormi::platform::shared_extension());
+        for (const auto& stem : {std::string(32, 'z'), std::string(31, 'a'),
+            std::string("unrelated")}) {
+            std::ofstream(cache.path / (stem + ".cpp")) << "source";
+            std::ofstream(cache.path / (stem + extension)) << "library";
+        }
+        const auto key = ormi::backends::cpu::jit::cache::key("staged");
+        std::ofstream(cache.path / (key + ".123.tmp.cpp")) << "staged source";
+        std::ofstream(cache.path / (key + ".123.tmp" + extension)) << "staged library";
+        std::ofstream(cache.path / (key + ".lock")) << "lock";
+        std::ofstream(cache.path / (key + ".obj")) << "object";
+        const auto nested = cache.path / "compilers";
+        std::filesystem::create_directory(nested);
+        std::ofstream(nested / (key + ".cpp")) << "nested source";
+        std::ofstream(nested / (key + extension)) << "nested library";
+
+        const auto info = ormi::core::jit::info();
+
+        EXPECT_EQ(info.entries, 0);
+        EXPECT_EQ(info.bytes, 0);
+    }
+
+    TEST(CPUJITCacheTest, reportsZeroByteCompleteEntries) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        std::filesystem::create_directories(cache.path);
+        std::ofstream{source(cache, "empty")};
+        std::ofstream{library(cache, "empty")};
+
+        const auto info = ormi::core::jit::info();
+
+        EXPECT_EQ(info.entries, 1);
+        EXPECT_EQ(info.bytes, 0);
+    }
+
+    TEST(CPUJITCacheTest, reportsUppercaseHexKeys) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        std::filesystem::create_directories(cache.path);
+        const std::string key(32, 'A');
+        std::ofstream(cache.path / (key + ".cpp")) << "source";
+        std::ofstream(cache.path / (key + std::string(ormi::platform::shared_extension())))
+            << "library";
+
+        const auto info = ormi::core::jit::info();
+
+        EXPECT_EQ(info.entries, 1);
+        EXPECT_EQ(info.bytes, 13);
+    }
+
+    TEST(CPUJITCacheTest, pruningIgnoresIncompleteAndUnrelatedFiles) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        environment("ORMI_CPU_JIT_CACHE_MAX_BYTES", "0");
+        const auto producer = [](const std::filesystem::path&,
+            const std::filesystem::path& output) {
+            std::ofstream(output) << "artifact";
+        };
+        ormi::backends::cpu::jit::cache::get("old", producer);
+        std::filesystem::last_write_time(source(cache, "old"),
+            std::filesystem::file_time_type::clock::now() - std::chrono::hours(2));
+        const std::string contents(4096, 'x');
+        const auto incomplete = source(cache, "incomplete");
+        const auto unrelated = cache.path / "unrelated.cpp";
+        std::ofstream(incomplete) << contents;
+        std::ofstream(unrelated) << contents;
+        environment("ORMI_CPU_JIT_CACHE_MAX_BYTES", "11");
+
+        ormi::backends::cpu::jit::cache::get("new", producer);
+        const auto info = ormi::core::jit::info();
+
+        EXPECT_EQ(info.entries, 1);
+        EXPECT_EQ(info.bytes, 11);
+        EXPECT_FALSE(std::filesystem::exists(source(cache, "old")));
+        EXPECT_FALSE(std::filesystem::exists(library(cache, "old")));
+        EXPECT_TRUE(std::filesystem::is_regular_file(source(cache, "new")));
+        EXPECT_TRUE(std::filesystem::is_regular_file(library(cache, "new")));
+        EXPECT_EQ(read(incomplete), contents);
+        EXPECT_EQ(read(unrelated), contents);
     }
 
     TEST(CPUJITCacheTest, reportsMissingDirectoryAsEmpty) {

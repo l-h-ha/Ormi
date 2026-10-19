@@ -29,6 +29,10 @@ namespace ormi::core {
         bool indexed() const;
         bool is_host() const;
 
+        bool operator==(const Device& other) const noexcept {
+            return backend_id_ == other.backend_id_ && index_ == other.index_;
+        }
+
     private:
         friend const runtime::Backend& runtime::backend(const Device& device);
 

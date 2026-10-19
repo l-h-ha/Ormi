@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
@@ -344,6 +345,76 @@ namespace {
         }
         EXPECT_FALSE(square->realized());
         EXPECT_FALSE(added->realized());
+    }
+
+    TEST(CPUJITKernelTest, executesBroadcastSpansFromSharedAlignedStorage) {
+        Cache cache;
+        const auto storage = std::make_shared<ormi::core::Tensor>(
+            ormi::core::Device::cpu(), ormi::core::Shape{118}, ormi::core::DType::float32
+        );
+        auto* values = static_cast<float*>(storage->data());
+        for (std::size_t i = 0; i < storage->numel(); ++i) {
+            values[i] = static_cast<float>(i % 23) * 0.03125f;
+        }
+        const auto input = std::make_shared<ormi::core::Tensor>(
+            storage->buffer(), ormi::core::Shape{2, 3, 17}, ormi::core::DType::float32,
+            std::vector<std::int64_t>{}, 64
+        );
+        const auto row = std::make_shared<ormi::core::Tensor>(
+            storage->buffer(), ormi::core::Shape{3, 17}, ormi::core::DType::float32
+        );
+        const auto mapped = ormi::core::ops::add(ormi::core::ops::mul(input, row), input);
+        const auto output = ormi::core::ops::mul(mapped, input);
+        const auto* result = static_cast<const float*>(output->data());
+        for (std::size_t i = 0; i < output->numel(); ++i) {
+            const auto x = values[i + 16];
+            EXPECT_FLOAT_EQ(result[i], (x * values[i % 51] + x) * x) << i;
+        }
+        EXPECT_FALSE(mapped->realized());
+    }
+
+    TEST(CPUJITKernelTest, executesPreparedBroadcastSpansWithMixedDtypes) {
+        Cache cache;
+        const auto input = std::make_shared<ormi::core::Tensor>(
+            ormi::core::Device::cpu(), ormi::core::Shape{3, 19}, ormi::core::DType::float32
+        );
+        const auto row = std::make_shared<ormi::core::Tensor>(
+            ormi::core::Device::cpu(), ormi::core::Shape{19}, ormi::core::DType::float32
+        );
+        auto* values = static_cast<float*>(input->data());
+        auto* factors = static_cast<float*>(row->data());
+        for (std::size_t i = 0; i < input->numel(); ++i) {
+            values[i] = static_cast<float>(i % 17) * 0.0625f;
+        }
+        for (std::size_t i = 0; i < row->numel(); ++i) {
+            factors[i] = static_cast<float>(i + 1) * 0.03125f;
+        }
+        const auto mapped = ormi::core::ops::add(ormi::core::ops::mul(input, row), input);
+        const auto primary = ormi::core::ops::cast(mapped, ormi::core::DType::float64);
+        const auto auxiliary = ormi::core::ops::cast(
+            ormi::core::ops::mul(mapped, input), ormi::core::DType::float64
+        );
+        const std::array<ormi::core::Tensor*, 1> auxiliaries{auxiliary.get()};
+        const std::unordered_set<const ormi::core::Tensor*> boundaries;
+        auto expression = ormi::core::runtime::fusion::build(*primary, auxiliaries, boundaries);
+        ASSERT_TRUE(expression.has_value());
+        auto step = ormi::core::runtime::Step::deferred_fusion(
+            *primary,
+            static_cast<ormi::core::runtime::PrepareFusionFn>(ormi::backends::cpu::jit::prepare),
+            nullptr,
+            static_cast<ormi::core::runtime::FusionFn>(ormi::backends::cpu::jit::execute),
+            std::move(*expression), {auxiliary.get()}
+        );
+        step.prepare();
+        step.run();
+        const auto* actual_primary = static_cast<const double*>(primary->data());
+        const auto* actual_auxiliary = static_cast<const double*>(auxiliary->data());
+        for (std::size_t i = 0; i < input->numel(); ++i) {
+            const auto expected = values[i] * factors[i % 19] + values[i];
+            EXPECT_DOUBLE_EQ(actual_primary[i], static_cast<double>(expected)) << i;
+            EXPECT_DOUBLE_EQ(actual_auxiliary[i], static_cast<double>(expected * values[i])) << i;
+        }
+        EXPECT_FALSE(mapped->realized());
     }
 
     TEST(CPUJITKernelTest, executesVectorizedColumnBroadcastChain) {

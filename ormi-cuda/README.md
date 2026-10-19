@@ -15,17 +15,18 @@ NVIDIA GPU and an [NVIDIA driver](https://www.nvidia.com/Download/index.aspx/)
 version `550.54.14` or newer on Linux or `551.61` or newer on Windows. Users do
 not need the CUDA Toolkit.
 
-The plugin is loaded only when a CUDA device is requested. Installing it does
-not change CPU startup or require CUDA during `import ormi_core`.
+The plugin is loaded only when a CUDA device is requested. Importing
+`ormi_core` and using CPU tensors do not load the CUDA backend.
 
-Fused CUDA kernels are compiled on first use and stored as PTX in the user's
-cache. `ORMI_CUDA_JIT_CACHE_DIR` overrides the cache directory, and
+When a fused CUDA kernel needs compilation, NVRTC generates PTX and ORMI
+caches it on disk. Later processes can reuse matching PTX entries.
+`ORMI_CUDA_JIT_CACHE_DIR` overrides the cache directory, and
 `ORMI_CUDA_JIT_CACHE_MAX_BYTES` sets its byte budget. The default budget is
 `268435456`; `0` disables automatic eviction.
 
 ## Build
 
-Building requires the ORMI monorepo checkout, CMake 3.18 or newer, a C++20
+Building requires a checkout of the ORMI repository, CMake 3.18 or newer, a C++20
 compiler, and the [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit-archive)
 with NVCC, CUDA Runtime, CUDA Driver import library, cuBLAS, and NVRTC. Release
 wheels are built with CUDA Toolkit 12.4; CMake does not currently enforce an

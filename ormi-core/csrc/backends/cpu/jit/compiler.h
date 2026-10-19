@@ -1,4 +1,5 @@
 #pragma once
+#include <chrono>
 #include <filesystem>
 #include <span>
 #include <string>
@@ -25,12 +26,14 @@ namespace ormi::backends::cpu::jit {
     };
 
     std::string_view to_string(CXX id);
+    Toolchain resolve();
+    const Toolchain& toolchain();
+
+    std::chrono::milliseconds compiler_timeout();
     platform::Process run(
         const Toolchain& compiler,
         std::span<const std::string> arguments
     );
-    Toolchain resolve();
-    const Toolchain& toolchain();
     void build(
         const Toolchain& compiler,
         Target target,

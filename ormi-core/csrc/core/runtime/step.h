@@ -59,12 +59,6 @@ namespace ormi::core::runtime {
             fusion
         };
 
-        enum class FusionState : std::uint8_t {
-            direct,
-            pending,
-            prepared
-        };
-
         explicit Step(Tensor& output) noexcept;
         Step(Tensor& output, Compute compute, Setup setup) noexcept;
         Step(
@@ -75,11 +69,12 @@ namespace ormi::core::runtime {
         ) noexcept;
 
         FusionJob job() noexcept;
-        void prepared() noexcept;
+        void execute();
+        void allocate_group_and_run();
 
         Tensor* output_;
         Kind kind_;
-        FusionState fusion_state_ = FusionState::direct;
+        bool preparation_pending_ = false;
         Compute compute_ = nullptr;
         Setup setup_;
         PrepareFusionFn fusion_prepare_ = nullptr;

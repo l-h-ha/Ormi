@@ -5,7 +5,7 @@
 #include <cuda_runtime_api.h>
 
 #include <ormi/core/error.h>
-#include <ormi/core/op.h>
+#include <ormi/core/setup.h>
 #include <ormi/core/tensor.h>
 
 #include "backends/cuda/check.cuh"

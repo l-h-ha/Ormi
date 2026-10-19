@@ -16,9 +16,13 @@ if(ORMI_ENABLE_CUDA)
         backends/cuda/fractional/l2.cu
         backends/cuda/fusion/cache.cpp
         backends/cuda/fusion/codegen.cpp
+        backends/cuda/fusion/codegen/reduction.cpp
+        backends/cuda/fusion/codegen/value.cpp
         backends/cuda/fusion/compile.cu
         backends/cuda/fusion/execute.cu
         backends/cuda/fusion/kernel.cu
+        backends/cuda/fusion/module.cu
+        backends/cuda/fusion/nvrtc.cu
         backends/cuda/fusion/order.cpp
         backends/cuda/fusion/tile.cpp
         backends/cuda/matmul.cu

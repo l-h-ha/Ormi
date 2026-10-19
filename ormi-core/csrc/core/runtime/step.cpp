@@ -72,7 +72,7 @@ namespace ormi::core::runtime {
             std::move(expression),
             std::move(auxiliary_outputs)
         );
-        step.fusion_state_ = FusionState::pending;
+        step.preparation_pending_ = true;
         step.fusion_prepare_ = prepare;
         step.fusion_prepare_many_ = prepare_many;
         return step;
@@ -126,32 +126,22 @@ namespace ormi::core::runtime {
         };
     }
 
-    void Step::prepared() noexcept {
-        fusion_state_ = setup_
-            ? FusionState::prepared
-            : FusionState::direct;
-    }
-
     void Step::prepare() {
-        if (
-            kind_ != Kind::fusion ||
-            fusion_state_ != FusionState::pending
-        ) {
+        if (!preparation_pending_) {
             return;
         }
 
-        if (!fusion_prepare_) {
-            fusion_state_ = FusionState::direct;
-            return;
+        if (fusion_prepare_) {
+            setup_ = fusion_prepare_(
+                *output_,
+                auxiliary_outputs_,
+                *expression_
+            );
+        } else {
+            // A failed batch may have installed a setup before direct fallback.
+            setup_ = {};
         }
-
-        auto setup = fusion_prepare_(
-            *output_,
-            auxiliary_outputs_,
-            *expression_
-        );
-        setup_ = std::move(setup);
-        prepared();
+        preparation_pending_ = false;
     }
 
     void prepare(std::span<Step> steps) {
@@ -164,8 +154,7 @@ namespace ormi::core::runtime {
         std::vector<Batch> batches;
         for (auto& step : steps) {
             if (
-                step.kind_ != Step::Kind::fusion ||
-                step.fusion_state_ != Step::FusionState::pending ||
+                !step.preparation_pending_ ||
                 !step.fusion_prepare_many_
             ) {
                 step.prepare();
@@ -190,8 +179,46 @@ namespace ormi::core::runtime {
         for (auto& batch : batches) {
             batch.prepare(batch.jobs);
             for (auto* step : batch.steps) {
-                step->prepared();
+                step->preparation_pending_ = false;
             }
+        }
+    }
+
+    void Step::execute() {
+        if (setup_) {
+            setup_.run(*output_);
+        } else if (kind_ == Kind::fusion) {
+            fusion_(*output_, auxiliary_outputs_, *expression_);
+        } else {
+            compute_(*output_);
+        }
+    }
+
+    void Step::allocate_group_and_run() {
+        std::vector<Tensor*> allocated;
+        allocated.reserve(output_count());
+        const auto allocate = [&allocated](Tensor& output) {
+            if (output.buffer_) {
+                return;
+            }
+            output.buffer_ = std::make_shared<memory::Buffer>(
+                output.device_,
+                output.bytes()
+            );
+            allocated.push_back(&output);
+        };
+
+        try {
+            allocate(*output_);
+            for (auto* output : auxiliary_outputs_) {
+                allocate(*output);
+            }
+            execute();
+        } catch (...) {
+            for (auto* output : allocated) {
+                output->buffer_.reset();
+            }
+            throw;
         }
     }
 
@@ -204,35 +231,19 @@ namespace ormi::core::runtime {
         }
 
         if (kind_ == Kind::fusion && !auxiliary_outputs_.empty()) {
-            std::vector<Tensor*> allocated;
-            allocated.reserve(output_count());
-            const auto allocate = [&allocated](Tensor& output) {
-                if (output.buffer_) {
-                    return;
-                }
-                output.buffer_ = std::make_shared<memory::Buffer>(
-                    output.device_,
-                    output.bytes()
-                );
-                allocated.push_back(&output);
-            };
-
-            try {
-                allocate(*output_);
-                for (auto* output : auxiliary_outputs_) {
-                    allocate(*output);
-                }
-                if (fusion_state_ == FusionState::prepared) {
-                    setup_.run(*output_);
-                } else {
-                    fusion_(*output_, auxiliary_outputs_, *expression_);
-                }
-            } catch (...) {
-                for (auto* output : allocated) {
-                    output->buffer_.reset();
-                }
-                throw;
+            if (
+                output_->buffer_ &&
+                std::all_of(
+                    auxiliary_outputs_.begin(),
+                    auxiliary_outputs_.end(),
+                    [](const Tensor* output) { return output->buffer_ != nullptr; }
+                )
+            ) {
+                execute();
+                return;
             }
+
+            allocate_group_and_run();
             return;
         }
 
@@ -245,18 +256,7 @@ namespace ormi::core::runtime {
         }
 
         try {
-            if (
-                kind_ == Kind::fusion &&
-                fusion_state_ == FusionState::prepared
-            ) {
-                setup_.run(*output_);
-            } else if (kind_ == Kind::fusion) {
-                fusion_(*output_, {}, *expression_);
-            } else if (setup_) {
-                setup_.run(*output_);
-            } else {
-                compute_(*output_);
-            }
+            execute();
         } catch (...) {
             if (allocated) {
                 output_->buffer_.reset();

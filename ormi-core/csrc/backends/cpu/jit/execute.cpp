@@ -7,7 +7,7 @@
 
 #include <ormi/core/error.h>
 #include <ormi/core/float16.h>
-#include <ormi/core/op.h>
+#include <ormi/core/setup.h>
 #include <ormi/core/tensor.h>
 
 #include "backends/cpu/executor.h"
@@ -16,6 +16,36 @@
 
 namespace ormi::backends::cpu::jit::execution {
     namespace {
+        constexpr std::size_t input_capacity = 8;
+        constexpr std::size_t output_capacity = 4;
+
+        struct Kernel {
+            Kernel(const core::runtime::fusion::Expr& expression, const Compiled& compiled)
+                : compiled(compiled),
+                  dtype(expression.dtype),
+                  elements(expression.elements),
+                  range(expression.elements),
+                  reduction(core::ops::ReduceOp::sum),
+                  reduced(0) {
+                if (expression.reduction) {
+                    range = expression.reduction->output.size;
+                    reduction = expression.reduction->op;
+                    reduced = expression.reduction->reduced.size;
+                }
+                if (compiled.partial) {
+                    range = compiled.range;
+                }
+            }
+
+            const Compiled& compiled;
+            core::DType dtype;
+            std::size_t elements;
+            // Partial kernels partition the reduction; other kernels partition outputs.
+            std::size_t range;
+            core::ops::ReduceOp reduction;
+            std::size_t reduced;
+        };
+
         struct Invocation {
             Function function;
             void* const* outputs;
@@ -27,25 +57,16 @@ namespace ormi::backends::cpu::jit::execution {
 
         struct Call {
             std::shared_ptr<Compiled> compiled;
+            Kernel kernel;
             std::vector<core::Tensor*> tensors;
             std::vector<core::Tensor*> auxiliary_outputs;
             std::vector<const void*> inputs;
+            std::vector<void*> overflow_outputs;
             std::vector<float> partials32;
             std::vector<double> partials64;
-            core::DType dtype;
-            std::size_t elements;
-            std::size_t range;
-            core::ops::ReduceOp reduction;
-            std::size_t reduced;
-            std::size_t partial_slots;
         };
 
-        void invoke(
-            void* opaque,
-            std::size_t slot,
-            std::size_t begin,
-            std::size_t end
-        ) {
+        void invoke(void* opaque, std::size_t slot, std::size_t begin, std::size_t end) {
             const auto& invocation = *static_cast<const Invocation*>(opaque);
             if (invocation.stride != 0) {
                 auto* output = static_cast<void*>(
@@ -74,18 +95,9 @@ namespace ormi::backends::cpu::jit::execution {
         }
 
         template <typename T>
-        T accumulate(
-            const Compiled& compiled,
-            std::size_t elements,
-            const void* const* inputs,
-            T* prepared,
-            std::size_t prepared_slots
-        ) {
-            const auto slots = executor::slots(
-                compiled.range,
-                compiled.unit,
-                compiled.work
-            );
+        T accumulate(const Kernel& kernel, const void* const* inputs, std::span<T> prepared) {
+            const auto& compiled = kernel.compiled;
+            const auto slots = executor::slots(kernel.range, compiled.unit, compiled.work);
             if (slots == 1) {
                 T result{};
                 void* outputs[]{&result};
@@ -93,20 +105,20 @@ namespace ormi::backends::cpu::jit::execution {
                     compiled.function,
                     outputs,
                     inputs,
-                    static_cast<unsigned long long>(elements),
+                    static_cast<unsigned long long>(kernel.elements),
                     compiled.math,
                     0
                 };
-                invoke(&invocation, 0, 0, compiled.range);
+                invoke(&invocation, 0, 0, kernel.range);
                 return result;
             }
 
             std::vector<T> local;
-            auto* values = prepared;
-            if (!values) {
+            auto* values = prepared.data();
+            if (prepared.empty()) {
                 local.resize(slots);
                 values = local.data();
-            } else if (prepared_slots < slots) {
+            } else if (prepared.size() < slots) {
                 ORMI_THROW(
                     OperationError,
                     "Prepared CPU reduction storage is smaller than its execution plan."
@@ -116,18 +128,17 @@ namespace ormi::backends::cpu::jit::execution {
                 values[i] = T{};
             }
 
+            void* outputs[]{values};
             Invocation invocation{
                 compiled.function,
-                nullptr,
+                outputs,
                 inputs,
-                static_cast<unsigned long long>(elements),
+                static_cast<unsigned long long>(kernel.elements),
                 compiled.math,
                 sizeof(T)
             };
-            void* outputs[]{values};
-            invocation.outputs = outputs;
             executor::run(
-                compiled.range,
+                kernel.range,
                 compiled.unit,
                 compiled.work,
                 invoke,
@@ -142,67 +153,35 @@ namespace ormi::backends::cpu::jit::execution {
         }
 
         template <typename T>
-        T finalize(
-            T total,
-            core::ops::ReduceOp reduction,
-            std::size_t reduced
-        ) {
-            if (reduction == core::ops::ReduceOp::mean) {
-                total /= static_cast<T>(reduced);
+        T finalize(T total, const Kernel& kernel) {
+            if (kernel.reduction == core::ops::ReduceOp::mean) {
+                total /= static_cast<T>(kernel.reduced);
             }
             return total;
         }
 
         void execute_partial(
-            core::Tensor& out,
-            const Compiled& compiled,
-            core::DType dtype,
-            std::size_t elements,
-            core::ops::ReduceOp reduction,
-            std::size_t reduced,
+            void* out,
+            const Kernel& kernel,
             const void* const* inputs,
-            void* partials,
-            std::size_t partial_slots
+            std::span<float> partials32,
+            std::span<double> partials64
         ) {
-            switch (dtype) {
+            switch (kernel.dtype) {
                 case core::DType::float64:
-                    *static_cast<double*>(out.data()) = finalize(
-                        accumulate<double>(
-                            compiled,
-                            elements,
-                            inputs,
-                            static_cast<double*>(partials),
-                            partial_slots
-                        ),
-                        reduction,
-                        reduced
+                    *static_cast<double*>(out) = finalize(
+                        accumulate<double>(kernel, inputs, partials64), kernel
                     );
                     return;
                 case core::DType::float32:
-                    *static_cast<float*>(out.data()) = finalize(
-                        accumulate<float>(
-                            compiled,
-                            elements,
-                            inputs,
-                            static_cast<float*>(partials),
-                            partial_slots
-                        ),
-                        reduction,
-                        reduced
+                    *static_cast<float*>(out) = finalize(
+                        accumulate<float>(kernel, inputs, partials32), kernel
                     );
                     return;
                 case core::DType::float16:
-                    *static_cast<core::Float16*>(out.data()) = core::Float16(
+                    *static_cast<core::Float16*>(out) = core::Float16(
                         finalize(
-                            accumulate<float>(
-                                compiled,
-                                elements,
-                                inputs,
-                                static_cast<float*>(partials),
-                                partial_slots
-                            ),
-                            reduction,
-                            reduced
+                            accumulate<float>(kernel, inputs, partials32), kernel
                         )
                     );
                     return;
@@ -221,64 +200,37 @@ namespace ormi::backends::cpu::jit::execution {
         }
 
         void run_kernel(
-            core::Tensor& out,
-            std::span<core::Tensor* const> auxiliary_outputs,
-            const Compiled& compiled,
-            core::DType dtype,
-            std::size_t elements,
-            std::size_t range,
-            core::ops::ReduceOp reduction,
-            std::size_t reduced,
+            const Kernel& kernel,
+            std::span<void* const> outputs,
             const void* const* inputs,
-            void* partials,
-            std::size_t partial_slots
+            std::span<float> partials32 = {},
+            std::span<double> partials64 = {}
         ) {
+            const auto& compiled = kernel.compiled;
             if (compiled.partial) {
-                if (!auxiliary_outputs.empty()) {
+                if (outputs.size() != 1) {
                     ORMI_THROW(
                         OperationError,
                         "CPU JIT reductions do not support auxiliary outputs."
                     );
                 }
                 execute_partial(
-                    out,
-                    compiled,
-                    dtype,
-                    elements,
-                    reduction,
-                    reduced,
-                    inputs,
-                    partials,
-                    partial_slots
+                    outputs[0], kernel, inputs, partials32, partials64
                 );
                 return;
             }
 
-            constexpr std::size_t local_capacity = 4;
-            std::array<void*, local_capacity> local_outputs{};
-            std::vector<void*> overflow_outputs;
-            auto* outputs = local_outputs.data();
-            const auto output_count = 1 + auxiliary_outputs.size();
-            if (output_count > local_capacity) {
-                overflow_outputs.resize(output_count);
-                outputs = overflow_outputs.data();
-            }
-            outputs[0] = out.data();
-            for (std::size_t i = 0; i < auxiliary_outputs.size(); ++i) {
-                outputs[i + 1] = auxiliary_outputs[i]->data();
-            }
-
             Invocation invocation{
                 compiled.function,
-                outputs,
+                outputs.data(),
                 inputs,
-                static_cast<unsigned long long>(elements),
+                static_cast<unsigned long long>(kernel.elements),
                 compiled.math,
                 0
             };
             if (compiled.unit != 0) {
                 executor::run(
-                    range,
+                    kernel.range,
                     compiled.unit,
                     compiled.work,
                     invoke,
@@ -286,82 +238,27 @@ namespace ormi::backends::cpu::jit::execution {
                 );
                 return;
             }
-            invoke(&invocation, 0, 0, range);
-        }
-
-        std::unique_ptr<Call> make_call(
-            std::span<core::Tensor* const> auxiliary_outputs,
-            const core::runtime::fusion::Expr& expression,
-            std::shared_ptr<Compiled> compiled
-        ) {
-            const auto reduction = expression.reduction
-                ? expression.reduction->op
-                : core::ops::ReduceOp::sum;
-            const auto reduced = expression.reduction
-                ? expression.reduction->reduced.size
-                : 0;
-            const auto range = expression.reduction
-                ? expression.reduction->output.size
-                : expression.elements;
-            const auto partial_slots = compiled->partial
-                ? executor::slots(
-                    compiled->range,
-                    compiled->unit,
-                    compiled->work
-                )
-                : 0;
-            std::vector<float> partials32;
-            std::vector<double> partials64;
-            if (partial_slots > 1) {
-                if (expression.dtype == core::DType::float64) {
-                    partials64.resize(partial_slots);
-                } else {
-                    partials32.resize(partial_slots);
-                }
-            }
-            return std::make_unique<Call>(Call{
-                .compiled = std::move(compiled),
-                .tensors = expression.inputs,
-                .auxiliary_outputs = {
-                    auxiliary_outputs.begin(),
-                    auxiliary_outputs.end()
-                },
-                .inputs = std::vector<const void*>(expression.inputs.size()),
-                .partials32 = std::move(partials32),
-                .partials64 = std::move(partials64),
-                .dtype = expression.dtype,
-                .elements = expression.elements,
-                .range = range,
-                .reduction = reduction,
-                .reduced = reduced,
-                .partial_slots = partial_slots
-            });
+            invoke(&invocation, 0, 0, kernel.range);
         }
 
         void run_call(void* state, core::Tensor& out) {
             auto& call = *static_cast<Call*>(state);
+            std::array<void*, output_capacity> local_outputs{};
+            auto* outputs = call.overflow_outputs.empty()
+                ? local_outputs.data() : call.overflow_outputs.data();
             for (std::size_t i = 0; i < call.tensors.size(); ++i) {
                 call.inputs[i] = call.tensors[i]->data();
             }
-
-            void* partials = nullptr;
-            if (!call.partials32.empty()) {
-                partials = call.partials32.data();
-            } else if (!call.partials64.empty()) {
-                partials = call.partials64.data();
+            outputs[0] = out.data();
+            for (std::size_t i = 0; i < call.auxiliary_outputs.size(); ++i) {
+                outputs[i + 1] = call.auxiliary_outputs[i]->data();
             }
             run_kernel(
-                out,
-                call.auxiliary_outputs,
-                *call.compiled,
-                call.dtype,
-                call.elements,
-                call.range,
-                call.reduction,
-                call.reduced,
+                call.kernel,
+                {outputs, 1 + call.auxiliary_outputs.size()},
                 call.inputs.data(),
-                partials,
-                call.partial_slots
+                call.partials32,
+                call.partials64
             );
         }
 
@@ -375,14 +272,37 @@ namespace ormi::backends::cpu::jit::execution {
         const core::runtime::fusion::Expr& expression,
         std::shared_ptr<Compiled> compiled
     ) {
-        auto call = make_call(
-            auxiliary_outputs,
-            expression,
-            std::move(compiled)
-        );
+        const Kernel kernel(expression, *compiled);
+        std::vector<float> partials32;
+        std::vector<double> partials64;
+        if (kernel.compiled.partial) {
+            const auto slots = executor::slots(
+                kernel.range, kernel.compiled.unit, kernel.compiled.work
+            );
+            if (slots > 1) {
+                if (kernel.dtype == core::DType::float64) {
+                    partials64.resize(slots);
+                } else {
+                    partials32.resize(slots);
+                }
+            }
+        }
         const auto partial_bytes =
-            call->partials32.size() * sizeof(float) +
-            call->partials64.size() * sizeof(double);
+            partials32.size() * sizeof(float) + partials64.size() * sizeof(double);
+        auto call = std::make_unique<Call>(Call{
+            .compiled = std::move(compiled),
+            .kernel = kernel,
+            .tensors = expression.inputs,
+            .auxiliary_outputs = {auxiliary_outputs.begin(), auxiliary_outputs.end()},
+            .inputs = std::vector<const void*>(expression.inputs.size()),
+            .overflow_outputs = {},
+            .partials32 = std::move(partials32),
+            .partials64 = std::move(partials64)
+        });
+        const auto output_count = 1 + auxiliary_outputs.size();
+        if (output_count > output_capacity) {
+            call->overflow_outputs.resize(output_count);
+        }
         return core::Setup(
             call.release(),
             run_call,
@@ -398,39 +318,30 @@ namespace ormi::backends::cpu::jit::execution {
         const core::runtime::fusion::Expr& expression,
         const Compiled& compiled
     ) {
-        constexpr std::size_t local_capacity = 8;
-        std::array<const void*, local_capacity> local_inputs{};
+        const Kernel kernel(expression, compiled);
+        std::array<const void*, input_capacity> local_inputs{};
+        std::array<void*, output_capacity> local_outputs{};
         std::vector<const void*> overflow_inputs;
+        std::vector<void*> overflow_outputs;
         auto* inputs = local_inputs.data();
-
-        if (expression.inputs.size() > local_capacity) {
+        auto* outputs = local_outputs.data();
+        const auto output_count = 1 + auxiliary_outputs.size();
+        if (expression.inputs.size() > input_capacity) {
             overflow_inputs.resize(expression.inputs.size());
             inputs = overflow_inputs.data();
         }
-
+        if (output_count > output_capacity) {
+            overflow_outputs.resize(output_count);
+            outputs = overflow_outputs.data();
+        }
         for (std::size_t i = 0; i < expression.inputs.size(); ++i) {
             inputs[i] = expression.inputs[i]->data();
         }
 
-        const auto range = expression.reduction
-            ? expression.reduction->output.size
-            : expression.elements;
-        run_kernel(
-            out,
-            auxiliary_outputs,
-            compiled,
-            expression.dtype,
-            expression.elements,
-            range,
-            expression.reduction
-                ? expression.reduction->op
-                : core::ops::ReduceOp::sum,
-            expression.reduction
-                ? expression.reduction->reduced.size
-                : 0,
-            inputs,
-            nullptr,
-            0
-        );
+        outputs[0] = out.data();
+        for (std::size_t i = 0; i < auxiliary_outputs.size(); ++i) {
+            outputs[i + 1] = auxiliary_outputs[i]->data();
+        }
+        run_kernel(kernel, {outputs, output_count}, inputs);
     }
 }

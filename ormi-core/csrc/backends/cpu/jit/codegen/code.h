@@ -3,7 +3,6 @@
 #include <sstream>
 #include <string>
 #include <string_view>
-#include <vector>
 
 #include <ormi/backend/fusion.h>
 #include <ormi/core/dtype.h>
@@ -24,10 +23,6 @@ namespace ormi::backends::cpu::jit::codegen {
         core::runtime::fusion::Constant constant
     );
     std::string value(core::runtime::fusion::Index index);
-    std::string offset(
-        std::string_view index,
-        const std::vector<core::runtime::fusion::Axis>& axes
-    );
     std::string output_value(
         core::DType dtype,
         std::string_view expression

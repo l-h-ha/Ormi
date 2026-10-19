@@ -28,10 +28,7 @@ namespace ormi::core::runtime::finite {
                 ORMI_THROW(DTypeError, "Finiteness query supports floating-point tensors only.");
             }
 
-            if (
-                input->device().backend_id() != device.backend_id() ||
-                input->device().index() != device.index()
-            ) {
+            if (input->device() != device) {
                 ORMI_THROW(DeviceError, "Finiteness query tensors must use one device.");
             }
         }

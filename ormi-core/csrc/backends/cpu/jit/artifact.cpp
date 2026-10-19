@@ -70,17 +70,19 @@ namespace ormi::backends::cpu::jit::artifact {
             Math functions
         ) {
             const auto identity = context(functions);
-            auto value = cache::find(source, identity);
-            if (!value) {
-                return {};
+            {
+                auto value = cache::find(source, identity);
+                if (!value) {
+                    return {};
+                }
+                try {
+                    return load(value->library, kernels, functions);
+                } catch (const jitError&) {
+                    // Release the read lease before discard takes an exclusive lock.
+                }
             }
-            try {
-                return load(value->library, kernels, functions);
-            } catch (const jitError&) {
-                value.reset();
-                cache::discard(source, identity);
-                return {};
-            }
+            cache::discard(source, identity);
+            return {};
         }
 
         std::vector<std::shared_ptr<Compiled>> find(
@@ -131,12 +133,15 @@ namespace ormi::backends::cpu::jit::artifact {
 
         const auto functions = selected_math(toolchain().id);
         const auto identity = context(functions);
-        auto value = cache::get(source, identity, build_source);
-        try {
-            return load(value.library, kernels, functions);
-        } catch (const jitError&) {
-            if (!value.cached) {
-                throw;
+        {
+            auto value = cache::get(source, identity, build_source);
+            try {
+                return load(value.library, kernels, functions);
+            } catch (const jitError&) {
+                if (!value.cached) {
+                    throw;
+                }
+                // Release the read lease before discard takes an exclusive lock.
             }
         }
 

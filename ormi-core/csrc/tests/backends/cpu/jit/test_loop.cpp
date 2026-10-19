@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -6,6 +7,7 @@
 #include <ormi/core/autocast.h>
 #include <ormi/core/device.h>
 #include <ormi/core/dtype.h>
+#include <ormi/core/error.h>
 #include <ormi/core/ops/pointwise.h>
 #include <ormi/core/ops/reduction.h>
 #include <ormi/core/ops/view.h>
@@ -814,5 +816,186 @@ namespace {
         ASSERT_TRUE(expression.has_value());
 
         EXPECT_FALSE(ormi::backends::cpu::jit::plan(*expression).vectorized);
+    }
+
+    TEST(CPUJITLoopTest, preservesReductionVectorizationThresholds) {
+        using namespace ormi::core;
+
+        for (const auto dtype : {DType::float16, DType::float32, DType::float64}) {
+            const std::int64_t width = dtype == DType::float64 ? 4 : 8;
+            const auto minimum = width * 8;
+            for (const auto size : {minimum - 1, minimum, minimum + 1}) {
+                SCOPED_TRACE(static_cast<int>(dtype));
+                SCOPED_TRACE(size);
+                const auto input = tensor({size}, dtype);
+                const auto output = ops::sum(ops::add(ops::mul(input, input), input));
+                const auto expression = runtime::fusion::build(*output).value();
+                const auto result = ormi::backends::cpu::jit::plan(expression);
+
+                EXPECT_EQ(result.vectorized, size >= minimum);
+                EXPECT_TRUE(result.partial);
+                EXPECT_FALSE(result.ranged);
+                EXPECT_EQ(result.unit, size >= minimum ? width : 1);
+                EXPECT_EQ(result.lanes, size >= minimum ? width : 0);
+            }
+        }
+    }
+
+    TEST(CPUJITLoopTest, preservesOutputTileAndWorkerBoundaries) {
+        using namespace ormi::core;
+
+        for (const std::int64_t columns : {31, 32, 33}) {
+            SCOPED_TRACE(columns);
+            const auto input = tensor({64, columns});
+            const auto output = ops::sum(ops::add(ops::mul(input, input), input), {0});
+            const auto expression = runtime::fusion::build(*output).value();
+            const auto result = ormi::backends::cpu::jit::plan(expression);
+
+            EXPECT_TRUE(result.strided);
+            EXPECT_EQ(result.vectorized, columns >= 32);
+            EXPECT_EQ(result.tile, columns >= 32 ? 32u : 0u);
+            EXPECT_EQ(result.ranged, columns != 32);
+            EXPECT_EQ(result.unit, columns == 31 ? 1u : columns == 32 ? 0u : 32u);
+        }
+    }
+
+    TEST(CPUJITLoopTest, keepsShortMathMapsRangedWithoutPacking) {
+        using namespace ormi::core;
+
+        for (const std::int64_t size : {7, 8}) {
+            SCOPED_TRACE(size);
+            const auto input = tensor({size});
+            const auto output = ops::sin(ops::add(input, input));
+            const auto expression = runtime::fusion::build(*output).value();
+            const auto result = ormi::backends::cpu::jit::plan(expression);
+
+            EXPECT_TRUE(result.ranged);
+            EXPECT_EQ(result.unit, 1u);
+            EXPECT_EQ(result.vectorized, size == 8);
+            EXPECT_EQ(result.math, size == 8);
+            EXPECT_EQ(result.lanes, size == 8 ? 8u : 0u);
+        }
+    }
+
+    TEST(CPUJITLoopTest, keepsScalarMathBroadcastWorkerSpans) {
+        using namespace ormi::core;
+        using ormi::backends::cpu::jit::Access;
+
+        for (const auto dtype : {DType::float32, DType::float64}) {
+            const auto input = tensor({16, 4}, dtype);
+            const auto row = tensor({4}, dtype);
+            const auto output = ops::sin(ops::add(ops::mul(input, input), row));
+            const auto expression = runtime::fusion::build(*output).value();
+            const auto result = ormi::backends::cpu::jit::plan(expression);
+
+            EXPECT_FALSE(result.vectorized);
+            EXPECT_FALSE(result.math);
+            EXPECT_TRUE(result.ranged);
+            EXPECT_EQ(result.unit, 4u);
+            EXPECT_EQ(result.span, 0u);
+            EXPECT_EQ(result.inputs, (std::vector{Access::linear, Access::indexed}));
+        }
+    }
+
+    TEST(CPUJITLoopTest, keepsEmptyMapsFlat) {
+        const auto result = loop(tensor({0, 64}), tensor({64}));
+
+        EXPECT_TRUE(result.vectorized);
+        EXPECT_TRUE(result.ranged);
+        EXPECT_EQ(result.unit, 1u);
+        EXPECT_EQ(result.span, 0u);
+    }
+
+    TEST(CPUJITLoopTest, retainsInputClassificationBeforeFloat16Fallback) {
+        using namespace ormi::core;
+        using namespace runtime::fusion;
+        using ormi::backends::cpu::jit::Access;
+
+        const auto first = tensor({64}, DType::float16);
+        const auto second = tensor({64}, DType::float16);
+        const Expr expression{
+            .dtype = DType::float16,
+            .shape = {64},
+            .nodes = {
+                {DType::float16, Input{0, {}, true}},
+                {DType::float64, Constant::one},
+                {DType::float16, Input{2, {}, true}}
+            },
+            .inputs = {first.get(), second.get()},
+            .output = 0,
+            .operations = 1,
+            .elements = 64
+        };
+
+        const auto result = ormi::backends::cpu::jit::plan(expression);
+        EXPECT_FALSE(result.vectorized);
+        EXPECT_FALSE(result.ranged);
+        EXPECT_EQ(result.inputs, (std::vector{Access::linear, Access::indexed}));
+    }
+
+    TEST(CPUJITLoopTest, retainsReductionPartitionBeforeMixedDtypeFallback) {
+        using namespace ormi::core;
+
+        const auto input = tensor({64});
+        const auto output = ops::sum(ops::add(ops::mul(input, input), input));
+        auto expression = runtime::fusion::build(*output).value();
+        expression.nodes.back().dtype = DType::float64;
+        const auto result = ormi::backends::cpu::jit::plan(expression);
+
+        EXPECT_FALSE(result.vectorized);
+        EXPECT_TRUE(result.partial);
+        EXPECT_FALSE(result.ranged);
+        EXPECT_EQ(result.unit, 1u);
+        EXPECT_EQ(result.inputs, (std::vector{ormi::backends::cpu::jit::Access::linear}));
+    }
+
+    TEST(CPUJITLoopTest, rejectsInvalidInputDuringContiguousAnalysis) {
+        using namespace ormi::core;
+
+        const auto input = tensor({64});
+        const auto output = ops::add(ops::mul(input, input), input);
+        auto expression = runtime::fusion::build(*output).value();
+        std::get<runtime::fusion::Input>(expression.nodes.front().instruction).index = 1;
+
+        EXPECT_THROW(ormi::backends::cpu::jit::plan(expression), ormi::OperationError);
+    }
+
+    TEST(CPUJITLoopTest, keepsInvalidStridedMetadataOnIndexedFallback) {
+        using namespace ormi::core;
+        using ormi::backends::cpu::jit::Access;
+
+        const auto input = ops::transpose(tensor({32, 64}), {1, 0});
+        const auto output = ops::add(ops::mul(input, input), input);
+        auto expression = runtime::fusion::build(*output).value();
+        std::get<runtime::fusion::Input>(expression.nodes.front().instruction).index = 1;
+        const auto result = ormi::backends::cpu::jit::plan(expression);
+
+        EXPECT_FALSE(result.strided);
+        EXPECT_FALSE(result.vectorized);
+        EXPECT_FALSE(result.ranged);
+        EXPECT_TRUE(result.strides.empty());
+        EXPECT_EQ(result.inputs, (std::vector{Access::indexed}));
+    }
+
+    TEST(CPUJITLoopTest, leavesNondividingBroadcastSpanIndexed) {
+        using namespace ormi::core;
+        using ormi::backends::cpu::jit::Access;
+
+        const auto input = tensor({2, 4});
+        const auto row = tensor({4});
+        const auto output = ops::add(ops::mul(input, input), row);
+        auto expression = runtime::fusion::build(*output).value();
+        for (auto& node : expression.nodes) {
+            auto* source = std::get_if<runtime::fusion::Input>(&node.instruction);
+            if (source && !source->linear) {
+                source->axes.front().extent = 3;
+            }
+        }
+        const auto result = ormi::backends::cpu::jit::plan(expression);
+
+        EXPECT_FALSE(result.vectorized);
+        EXPECT_FALSE(result.ranged);
+        EXPECT_EQ(result.span, 0u);
+        EXPECT_EQ(result.inputs, (std::vector{Access::linear, Access::indexed}));
     }
 }

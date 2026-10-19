@@ -33,7 +33,9 @@ set(ORMI_CORE_SRCS
     core/runtime/fusion/key.cpp
     core/runtime/lower.cpp
     core/runtime/plan.cpp
-    core/runtime/realize.cpp
+    core/runtime/plan/build.cpp
+    core/runtime/plan/record.cpp
+    core/runtime/plan/run.cpp
     core/runtime/schedule.cpp
     core/runtime/step.cpp
     core/runtime/dispatch/device.cpp

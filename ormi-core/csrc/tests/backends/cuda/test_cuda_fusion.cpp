@@ -84,6 +84,95 @@ namespace {
         EXPECT_NE(source.find("output1[i] = v3;"), std::string::npos);
     }
 
+    TEST(CUDAFusionCodegenTest, emitsCompleteTypedKernelSignatures) {
+        for (const auto dtype : {
+            ormi::core::DType::float16,
+            ormi::core::DType::float32,
+            ormi::core::DType::float64
+        }) {
+            const auto lhs = std::make_shared<ormi::core::Tensor>(
+                ormi::core::Device::cpu(), ormi::core::Shape{4}, dtype
+            );
+            const auto rhs = std::make_shared<ormi::core::Tensor>(
+                ormi::core::Device::cpu(), ormi::core::Shape{4}, dtype
+            );
+            const auto mapped = ormi::core::ops::sin(
+                ormi::core::ops::add(ormi::core::ops::mul(lhs, rhs), lhs)
+            );
+            const auto auxiliary = ormi::core::ops::cos(mapped);
+            const std::array<ormi::core::Tensor*, 1> auxiliaries{auxiliary.get()};
+            const auto matrix = std::make_shared<ormi::core::Tensor>(
+                ormi::core::Device::cpu(), ormi::core::Shape{4, 1024}, dtype
+            );
+            const auto row = std::make_shared<ormi::core::Tensor>(
+                ormi::core::Device::cpu(), ormi::core::Shape{1024}, dtype
+            );
+            const auto tiled = ormi::core::ops::sum(
+                ormi::core::ops::add(ormi::core::ops::mul(matrix, matrix), row), {0}
+            );
+            const std::array roots{mapped, mapped, ormi::core::ops::sum(mapped), tiled};
+            const std::string storage = dtype == ormi::core::DType::float16
+                ? "unsigned short"
+                : dtype == ormi::core::DType::float64 ? "double" : "float";
+            const std::string scalar = dtype == ormi::core::DType::float64 ? "double" : "float";
+
+            for (std::size_t layout = 0; layout < roots.size(); ++layout) {
+                SCOPED_TRACE(static_cast<int>(dtype));
+                SCOPED_TRACE(layout);
+                const auto expression = layout == 1
+                    ? ormi::core::runtime::fusion::build(*roots[layout], auxiliaries)
+                    : ormi::core::runtime::fusion::build(*roots[layout]);
+                ASSERT_TRUE(expression.has_value());
+                ASSERT_EQ(expression->inputs.size(), 2u);
+                ASSERT_EQ(ormi::backends::cuda::fusion::tile(*expression).has_value(), layout == 3);
+
+                std::string expected = "extern \"C\" __global__ void ormi_kernel(\n    " +
+                    (layout == 2 ? scalar : storage) + "* output";
+                if (layout == 1) {
+                    expected += ",\n    " + storage + "* output1";
+                }
+                expected += ",\n    const " + storage + "* input0";
+                expected += ",\n    const " + storage + "* input1";
+                expected += layout >= 2
+                    ? ",\n    unsigned long long parts\n"
+                    : ",\n    unsigned long long elements\n";
+                expected += ") {\n";
+
+                const auto source = ormi::backends::cuda::fusion::emit(*expression);
+                const auto start = source.find("extern \"C\" __global__ void ormi_kernel(\n");
+                ASSERT_NE(start, std::string::npos);
+                const auto end = source.find(") {\n", start);
+                ASSERT_NE(end, std::string::npos);
+                EXPECT_EQ(source.substr(start, end + 4 - start), expected);
+            }
+        }
+    }
+
+    TEST(CUDAFusionCodegenTest, emitsMixedInputTypesInBindingOrder) {
+        const auto lhs = std::make_shared<ormi::core::Tensor>(
+            ormi::core::Device::cpu(), ormi::core::Shape{4}, ormi::core::DType::float16
+        );
+        const auto rhs = std::make_shared<ormi::core::Tensor>(
+            ormi::core::Device::cpu(), ormi::core::Shape{4}, ormi::core::DType::float64
+        );
+        const auto output = ormi::core::ops::add(ormi::core::ops::mul(lhs, rhs), rhs);
+        const auto expression = ormi::core::runtime::fusion::build(*output);
+        ASSERT_TRUE(expression.has_value());
+        ASSERT_EQ(expression->inputs.size(), 2u);
+        ASSERT_EQ(expression->inputs[0], lhs.get());
+        ASSERT_EQ(expression->inputs[1], rhs.get());
+
+        const auto source = ormi::backends::cuda::fusion::emit(*expression);
+        const std::string expected =
+            "extern \"C\" __global__ void ormi_kernel(\n"
+            "    double* output,\n"
+            "    const unsigned short* input0,\n"
+            "    const double* input1,\n"
+            "    unsigned long long elements\n"
+            ") {\n";
+        EXPECT_NE(source.find(expected), std::string::npos);
+    }
+
     TEST(CUDAFusionCodegenTest, rejectsInvalidAuxiliaryOutputIndex) {
         const auto input = std::make_shared<ormi::core::Tensor>(
             ormi::core::Device::cpu(),
@@ -153,6 +242,54 @@ namespace {
             std::string::npos
         );
         EXPECT_NE(source.find("output[i] = ormi_half_bits(v3);"), std::string::npos);
+    }
+
+    TEST(CUDAFusionCodegenTest, emitsOnlyRequiredSupportRoutines) {
+        for (const auto dtype : {
+            ormi::core::DType::float16,
+            ormi::core::DType::float32,
+            ormi::core::DType::float64
+        }) {
+            const auto input = std::make_shared<ormi::core::Tensor>(
+                ormi::core::Device::cpu(), ormi::core::Shape{4}, dtype
+            );
+            const auto mapped = ormi::core::ops::add(
+                ormi::core::ops::mul(input, input), input
+            );
+            const auto matrix = std::make_shared<ormi::core::Tensor>(
+                ormi::core::Device::cpu(), ormi::core::Shape{4, 1024}, dtype
+            );
+            const auto tiled = ormi::core::ops::sum(
+                ormi::core::ops::add(ormi::core::ops::mul(matrix, matrix), matrix), {0}
+            );
+            const std::array roots{mapped, ormi::core::ops::sum(mapped), tiled};
+            for (std::size_t layout = 0; layout < roots.size(); ++layout) {
+                SCOPED_TRACE(static_cast<int>(dtype));
+                SCOPED_TRACE(layout);
+                const auto expression = ormi::core::runtime::fusion::build(*roots[layout]);
+                ASSERT_TRUE(expression.has_value());
+                ASSERT_EQ(ormi::backends::cuda::fusion::tile(*expression).has_value(), layout == 2);
+                const auto source = ormi::backends::cuda::fusion::emit(*expression);
+
+                for (const auto* marker : {
+                    "__device__ __forceinline__ unsigned short ormi_half_bits(float value)",
+                    "__device__ __forceinline__ float ormi_half_value(unsigned short value)",
+                    "__device__ __forceinline__ float ormi_half_round(float value)"
+                }) {
+                    const auto first = source.find(marker);
+                    EXPECT_EQ(first != std::string::npos, dtype == ormi::core::DType::float16);
+                    if (first != std::string::npos) {
+                        EXPECT_EQ(source.find(marker, first + 1), std::string::npos);
+                    }
+                }
+                const auto* marker = "__device__ T ormi_block_sum(T value)";
+                const auto first = source.find(marker);
+                EXPECT_EQ(first != std::string::npos, layout == 1);
+                if (first != std::string::npos) {
+                    EXPECT_EQ(source.find(marker, first + 1), std::string::npos);
+                }
+            }
+        }
     }
 
     TEST(CUDAFusionCodegenTest, emitsHierarchicalMapSum) {
@@ -411,6 +548,106 @@ namespace {
         EXPECT_NE(
             source.find("output[output_index] = total / static_cast<float>(2ull);"),
             std::string::npos
+        );
+    }
+
+    TEST(CUDAFusionCodegenTest, emitsTypedTwoStageReductionFinalization) {
+        for (const auto dtype : {
+            ormi::core::DType::float16,
+            ormi::core::DType::float32,
+            ormi::core::DType::float64
+        }) {
+            const auto input = std::make_shared<ormi::core::Tensor>(
+                ormi::core::Device::cpu(), ormi::core::Shape{2, 3, 4}, dtype
+            );
+            const auto mapped = ormi::core::ops::add(
+                ormi::core::ops::mul(input, input), input
+            );
+            for (const bool mean : {false, true}) {
+                SCOPED_TRACE(static_cast<int>(dtype));
+                SCOPED_TRACE(mean);
+                const auto output = mean
+                    ? ormi::core::ops::mean(mapped, {0, 2}, true)
+                    : ormi::core::ops::sum(mapped, {0, 2}, true);
+                const auto expression = ormi::core::runtime::fusion::build(*output);
+                ASSERT_TRUE(expression.has_value());
+                ASSERT_FALSE(ormi::backends::cuda::fusion::tile(*expression));
+
+                const auto source = ormi::backends::cuda::fusion::emit(*expression);
+                const std::string storage = dtype == ormi::core::DType::float16
+                    ? "unsigned short"
+                    : dtype == ormi::core::DType::float64 ? "double" : "float";
+                const std::string scalar = dtype == ormi::core::DType::float64
+                    ? "double" : "float";
+                const std::string zero = dtype == ormi::core::DType::float64
+                    ? "0.0" : "0.0f";
+                std::string result = mean
+                    ? "total / static_cast<" + scalar + ">(8ull)"
+                    : "total";
+                if (dtype == ormi::core::DType::float16) {
+                    result = "ormi_half_bits(" + result + ")";
+                }
+
+                const auto expected =
+                    "extern \"C\" __global__ void ormi_finish(\n"
+                    "    " + storage + "* output,\n"
+                    "    const " + scalar + "* partials,\n"
+                    "    unsigned long long parts\n"
+                    ") {\n"
+                    "    for (unsigned long long output_index = blockIdx.x;\n"
+                    "         output_index < 3ull;\n"
+                    "         output_index += gridDim.x) {\n"
+                    "        " + scalar + " total = " + zero + ";\n"
+                    "        for (unsigned long long part = threadIdx.x; part < parts; part += blockDim.x) {\n"
+                    "            total += partials[output_index * parts + part];\n"
+                    "        }\n"
+                    "        total = ormi_block_sum(total);\n"
+                    "        if (threadIdx.x == 0) {\n"
+                    "            output[output_index] = " + result + ";\n"
+                    "        }\n"
+                    "    }\n"
+                    "}\n";
+                const auto finish = source.find("extern \"C\" __global__ void ormi_finish");
+                ASSERT_NE(finish, std::string::npos);
+                EXPECT_EQ(source.substr(finish), expected);
+                EXPECT_NE(source.find("output[task] = block;"), std::string::npos);
+            }
+        }
+    }
+
+    TEST(CUDAFusionCodegenTest, rejectsAuxiliaryReductionOutputs) {
+        const auto input = std::make_shared<ormi::core::Tensor>(
+            ormi::core::Device::cpu(),
+            ormi::core::Shape{4},
+            ormi::core::DType::float32
+        );
+        const auto output = ormi::core::ops::sum(
+            ormi::core::ops::add(ormi::core::ops::mul(input, input), input)
+        );
+        auto expression = ormi::core::runtime::fusion::build(*output).value();
+        expression.auxiliary_outputs.push_back(expression.output);
+
+        EXPECT_THROW(
+            (void)ormi::backends::cuda::fusion::emit(expression),
+            ormi::OperationError
+        );
+    }
+
+    TEST(CUDAFusionCodegenTest, rejectsUnsupportedReduction) {
+        const auto input = std::make_shared<ormi::core::Tensor>(
+            ormi::core::Device::cpu(),
+            ormi::core::Shape{4},
+            ormi::core::DType::float32
+        );
+        const auto output = ormi::core::ops::sum(
+            ormi::core::ops::add(ormi::core::ops::mul(input, input), input)
+        );
+        auto expression = ormi::core::runtime::fusion::build(*output).value();
+        expression.reduction->op = static_cast<ormi::core::ops::ReduceOp>(255);
+
+        EXPECT_THROW(
+            (void)ormi::backends::cuda::fusion::emit(expression),
+            ormi::OperationError
         );
     }
 

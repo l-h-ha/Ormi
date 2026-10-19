@@ -4,18 +4,26 @@ target_sources(ormi_core PRIVATE
     backends/cpu/blas/openblas.cpp
     backends/cpu/cast.cpp
     backends/cpu/executor.cpp
+    backends/cpu/executor/pool.cpp
     backends/cpu/fractional.cpp
     backends/cpu/fractional/l1.cpp
     backends/cpu/fractional/l2.cpp
     backends/cpu/jit/artifact.cpp
     backends/cpu/jit/cache.cpp
     backends/cpu/jit/codegen.cpp
+    backends/cpu/jit/codegen/input.cpp
     backends/cpu/jit/codegen/map.cpp
     backends/cpu/jit/codegen/reduction.cpp
+    backends/cpu/jit/codegen/reduction/contiguous.cpp
+    backends/cpu/jit/codegen/reduction/strided.cpp
+    backends/cpu/jit/codegen/reduction/tiled.cpp
+    backends/cpu/jit/codegen/support.cpp
     backends/cpu/jit/codegen/value.cpp
     backends/cpu/jit/compile.cpp
     backends/cpu/jit/compatibility.cpp
     backends/cpu/jit/compiler.cpp
+    backends/cpu/jit/compiler/invoke.cpp
+    backends/cpu/jit/compiler/probe.cpp
     backends/cpu/jit/execute.cpp
     backends/cpu/jit/kernel.cpp
     backends/cpu/jit/loop.cpp

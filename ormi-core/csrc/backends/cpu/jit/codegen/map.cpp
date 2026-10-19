@@ -7,6 +7,7 @@
 #include <ormi/core/error.h>
 #include <ormi/core/tensor.h>
 
+#include "backends/cpu/jit/codegen/input.h"
 #include "backends/cpu/jit/codegen/map.h"
 
 namespace ormi::backends::cpu::jit::codegen {
@@ -55,30 +56,6 @@ namespace ormi::backends::cpu::jit::codegen {
             );
         }
 
-        void emit_broadcast_bindings(
-            Code& code,
-            std::string_view indent
-        ) {
-            for (std::size_t i = 0; i < code.loop.inputs.size(); ++i) {
-                if (code.loop.inputs[i] == Access::span) {
-                    code.out
-                        << indent << "const auto input" << i << "_base = "
-                        << outer_offset(input_node(code.expr, i).axes)
-                        << ";\n";
-                } else if (code.loop.inputs[i] == Access::fixed) {
-                    code.out
-                        << indent << "const "
-                        << storage_type(code.expr.inputs[i]->dtype())
-                        << " input" << i << "_fixed = input" << i << "["
-                        << offset(
-                            "base",
-                            input_node(code.expr, i).axes
-                        )
-                        << "];\n";
-                }
-            }
-        }
-
         std::size_t output_count(
             const core::runtime::fusion::Expr& expression
         ) {
@@ -100,6 +77,34 @@ namespace ormi::backends::cpu::jit::codegen {
                 : "output" + std::to_string(output);
         }
 
+        void emit_span_bindings(Code& code, std::string_view indent) {
+            // Keep inner-loop addresses relative to one contiguous span.
+            for (std::size_t i = 0; i < code.loop.inputs.size(); ++i) {
+                const auto access = code.loop.inputs[i];
+                if (access == Access::linear || access == Access::span) {
+                    code.out
+                        << indent << "const auto* input" << i << "_span = input"
+                        << i << " + " << (access == Access::linear
+                            ? "base"
+                            : outer_offset(input_node(code.expr, i).axes))
+                        << ";\n";
+                } else if (access == Access::fixed) {
+                    code.out
+                        << indent << "const "
+                        << storage_type(code.expr.inputs[i]->dtype())
+                        << " input" << i << "_fixed = input" << i << "["
+                        << offset("base", input_node(code.expr, i).axes)
+                        << "];\n";
+                }
+            }
+            for (std::size_t output = 0; output < output_count(code.expr); ++output) {
+                const auto name = output_name(output);
+                code.out
+                    << indent << "auto* ORMI_RESTRICT " << name << "_span = "
+                    << name << " + base;\n";
+            }
+        }
+
         void emit_packed_stores(
             Code& code,
             std::string_view indent
@@ -110,18 +115,21 @@ namespace ormi::backends::cpu::jit::codegen {
                 ++output
             ) {
                 const auto index = output_index(code.expr, output);
-                const auto name = output_name(output);
+                const auto name = output_name(output) +
+                    (code.loop.span != 0 ? "_span" : "");
+                const auto index_name = code.loop.span != 0 ? "j" : "i";
                 if (code.expr.nodes[index].dtype == core::DType::float16) {
                     code.out
                         << indent << "_mm_storeu_si128(\n"
                         << indent << "    reinterpret_cast<__m128i*>("
-                        << name << " + i),\n"
+                        << name << " + " << index_name << "),\n"
                         << indent << "    ormi_half_bits8("
                         << packed(index) << ")\n"
                         << indent << ");\n";
                 } else {
                     code.out
-                        << indent << "_mm256_storeu_ps(" << name << " + i, "
+                        << indent << "_mm256_storeu_ps(" << name << " + "
+                        << index_name << ", "
                         << packed(index) << ");\n";
                 }
             }
@@ -135,7 +143,8 @@ namespace ormi::backends::cpu::jit::codegen {
             ) {
                 const auto index = output_index(code.expr, output);
                 code.out
-                    << indent << output_name(output) << "[i] = "
+                    << indent << output_name(output)
+                    << (code.loop.span != 0 ? "_span[j] = " : "[i] = ")
                     << output_value(
                         code.expr.nodes[index].dtype,
                         value(index)
@@ -167,20 +176,18 @@ namespace ormi::backends::cpu::jit::codegen {
                     << "    for (unsigned long long base = begin; "
                     << "base < end; base += " << code.loop.span
                     << ") {\n";
-                emit_broadcast_bindings(code, "        ");
+                emit_span_bindings(code, "        ");
                 code.out
                     << "        unsigned long long j = 0;\n"
                     << "        for (; j + " << code.loop.lanes << " <= "
                     << code.loop.span << "; j += " << code.loop.lanes
-                    << ") {\n"
-                    << "            const auto i = base + j;\n";
+                    << ") {\n";
                 emit_packed_nodes(code, "            ");
                 emit_packed_stores(code, "            ");
                 code.out
                     << "        }\n"
                     << "        for (; j < " << code.loop.span
-                    << "; ++j) {\n"
-                    << "            const auto i = base + j;\n";
+                    << "; ++j) {\n";
                 emit_nodes(code, "            ");
                 emit_stores(code, "            ");
                 code.out
@@ -201,11 +208,10 @@ namespace ormi::backends::cpu::jit::codegen {
                     << "    for (unsigned long long base = begin; "
                     << "base < end; base += " << code.loop.span
                     << ") {\n";
-                emit_broadcast_bindings(code, "        ");
+                emit_span_bindings(code, "        ");
                 code.out
                     << "        for (unsigned long long j = 0; j < "
-                    << code.loop.span << "; ++j) {\n"
-                    << "            const auto i = base + j;\n";
+                    << code.loop.span << "; ++j) {\n";
                 emit_nodes(code, "            ");
                 emit_stores(code, "            ");
                 code.out
@@ -289,12 +295,11 @@ namespace ormi::backends::cpu::jit::codegen {
                     << "\n    for (unsigned long long base = begin; "
                     << "base < end; base += " << code.loop.span
                     << ") {\n";
-                emit_broadcast_bindings(code, "        ");
+                emit_span_bindings(code, "        ");
                 code.out
                     << "        ORMI_VECTORIZE_LOOP\n"
                     << "        for (unsigned long long j = 0; j < "
-                    << code.loop.span << "; ++j) {\n"
-                    << "            const auto i = base + j;\n";
+                    << code.loop.span << "; ++j) {\n";
                 emit_nodes(code, "            ");
                 emit_stores(code, "            ");
                 code.out

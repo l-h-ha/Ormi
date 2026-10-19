@@ -25,6 +25,7 @@
 #include <ormi/core/optim/grad_scaler.h>
 #include <ormi/core/optim/sgd.h>
 #include <ormi/core/plan.h>
+#include <ormi/core/setup.h>
 #include <ormi/core/shape.h>
 #include <ormi/core/tensor.h>
 

@@ -14,12 +14,10 @@
 
 namespace ormi::core {
     class Plan;
-    class Tensor;
 }
 
 namespace ormi::core::runtime {
     class Step;
-    void realize(Tensor& tensor);
 }
 
 namespace ormi::core {
@@ -82,7 +80,6 @@ namespace ormi::core {
     private:
         friend class Plan;
         friend class runtime::Step;
-        friend void runtime::realize(Tensor& tensor);
 
         const Op* op_;
         Attrs attrs_;

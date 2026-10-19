@@ -57,4 +57,4 @@ x64/
 /ormi-core/requirements.txt
 
 # Misc
-csrc_old/
+csrc_mir/

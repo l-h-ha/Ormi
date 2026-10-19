@@ -9,6 +9,7 @@
 #include <ormi/core/dtype.h>
 #include <ormi/core/ops/linalg.h>
 #include <ormi/core/ops/pointwise.h>
+#include <ormi/core/ops/reduction.h>
 #include <ormi/core/shape.h>
 #include <ormi/core/tensor.h>
 
@@ -18,10 +19,10 @@ namespace {
     using Tensor = ormi::core::Tensor;
     using Graph = std::shared_ptr<Tensor> (*)(std::int64_t);
 
-    std::shared_ptr<Tensor> input() {
+    std::shared_ptr<Tensor> input(ormi::core::Shape shape = {1}) {
         return std::make_shared<Tensor>(
             ormi::core::Device::cpu(),
-            ormi::core::Shape{1},
+            std::move(shape),
             ormi::core::DType::float32
         );
     }
@@ -74,8 +75,29 @@ namespace {
         return level.front();
     }
 
+    std::shared_ptr<Tensor> broadcast_chain(std::int64_t operations) {
+        auto result = input({2, 3, 4});
+        const auto row = input({3, 1});
+        for (std::int64_t operation = 0; operation < operations; ++operation) {
+            result = ormi::core::ops::add(result, row);
+        }
+        return result;
+    }
+
+    std::shared_ptr<Tensor> reduction_chain(std::int64_t operations) {
+        auto result = input({2, 3, 4});
+        for (std::int64_t operation = 0; operation < operations; ++operation) {
+            result = ormi::core::ops::neg(result);
+        }
+        return ormi::core::ops::mean(result, {0, 2});
+    }
+
     void bmBuild(benchmark::State& state, Graph graph) {
         const auto root = graph(state.range(0));
+        if (!ormi::core::runtime::fusion::build(*root)) {
+            state.SkipWithError("The graph did not produce a fusion expression.");
+            return;
+        }
 
         for (auto _ : state) {
             auto result = ormi::core::runtime::fusion::build(*root);
@@ -111,6 +133,14 @@ ORMI_BUILD_SIZES(
 ORMI_BUILD_SIZES(
     BENCHMARK_CAPTURE(bmBuild, balanced, balanced_tree)
         ->Name("runtime/fusion/build/balanced")
+);
+ORMI_BUILD_SIZES(
+    BENCHMARK_CAPTURE(bmBuild, broadcast, broadcast_chain)
+        ->Name("runtime/fusion/build/broadcast")
+);
+ORMI_BUILD_SIZES(
+    BENCHMARK_CAPTURE(bmBuild, reduction, reduction_chain)
+        ->Name("runtime/fusion/build/reduction")
 );
 BENCHMARK(bmReject)->Name("runtime/fusion/build/reject");
 

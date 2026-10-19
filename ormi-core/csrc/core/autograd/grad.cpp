@@ -19,12 +19,6 @@ namespace ormi::core {
             std::size_t next_parent;
         };
 
-        bool same_device(const Tensor& lhs, const Tensor& rhs) {
-            return
-                lhs.device().backend_id() == rhs.device().backend_id() &&
-                lhs.device().index() == rhs.device().index();
-        }
-
         std::vector<std::shared_ptr<Tensor>> topology(const std::shared_ptr<Tensor>& root) {
             std::vector<std::shared_ptr<Tensor>> result;
             std::vector<Frame> stack{{&root, 0}};
@@ -91,7 +85,7 @@ namespace ormi::core {
                 ORMI_THROW(DTypeError, "Gradient seed dtype must match the output dtype.");
             }
 
-            if (!same_device(*seed, *output)) {
+            if (seed->device() != output->device()) {
                 ORMI_THROW(DeviceError, "Gradient seed device must match the output device.");
             }
 

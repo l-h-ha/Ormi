@@ -2,65 +2,61 @@
 
 ## Unreleased
 
+### Fixed
+
+- Pin Linux CUDA wheel repair to `patchelf 0.17.2.4` to avoid a cuBLAS
+  load-time crash caused by `patchelf 0.18.0`.
+- Release CPU JIT cache leases before repairing invalid libraries, avoiding
+  a deadlock when recovery tries to acquire the same entry's write lock.
+- Preserve CPU/CUDA cache inspection errors during scanning and deletion
+  instead of overwriting them or treating them as missing files.
+- Remove any stale `.ok` compiler-probe result when caching a process-launch
+  failure.
+- Initialize CUDA graph handles to null before capture so early failure cleanup
+  does not destroy uninitialized handles.
+- Fix timeout tests that assumed the child reached `main()` before its deadline,
+  and make CUDA grouped-launch tests compile with GCC.
+
 ### Changed
 
-- Lazy `Tensor` construction now accepts `op_ref<descriptor>()` instead of a
-  bare `Op&`. The descriptor must have static storage, so C++ extensions
-  cannot leave a tensor with dangling operation metadata. `OpRef` remains one
-  pointer wide and tensors retain direct pointer identity for dispatch.
-- Runtime lowering now constructs named alias, compute, direct-fusion, or
-  deferred-fusion steps. `Step` execution and fusion preparation use explicit
-  states instead of inferring behavior from combinations of nullable hooks.
-  No allocation was added to lowering; repeated schedule benchmarks remained
-  within measured run variation.
-- Fusion candidate discovery now only identifies compatible shared-parent
-  outputs. The expression builder decides whether a candidate can be
-  represented, and lowering checks backend support before creating a
-  fusion step. This removes duplicate policy without moving the common path
-  out of `lower.cpp`; an out-of-line prototype made schedule construction
-  roughly 23-28% slower by preventing useful specialization.
-- Automatic CPU JIT compiler discovery now syntax-checks a small C++20 source
-  before accepting a candidate. This prevents an installed compiler with an
-  incompatible standard library or SDK from breaking the first fused kernel;
-  discovery continues to the next supported compiler instead. Successful and
-  rejected probes are cached by compiler, binary timestamp, and toolchain
-  environment, and `jit.clear()` invalidates those records. Explicit
-  `ORMI_CPU_JIT_CXX` selections remain authoritative and are not probed. On the
-  development machine, rejecting stale clang-cl and accepting GCC took 561.9
-  ms from an empty cache; cached resolution measured 5.44 ms versus 2.86 ms
-  before compatibility checks. Toolchain selection is process-cached and does
-  not enter kernel execution.
-- CPU AVX2 matrix multiplication now divides output rows among every useful
-  configured CPU worker instead of exposing only two row partitions. The
-  kernel tile boundaries remain intact, including partial final tiles, and
-  serial calls retain their direct fast path. On the development
-  i5-11400H, median `512x512x512` throughput at six threads increased from
-  116.75 to 341.78 GFLOP/s; the one-thread result remained within measurement
-  variation. The framework dense-compute plan improved from 36.30 to 19.52 ms.
-- Transposed-left AVX2 matrix multiplication now traverses each right-hand
-  column panel across six output rows at a time. Its twelve accumulators fit
-  the AVX2 register budget while reducing repeated right-hand matrix traffic
-  for long inner dimensions. In a controlled comparison on the same system,
-  median `512x2048x512` wall time at six threads decreased from 7.80 to 6.67
-  ms, and the framework dense-compute plan improved from 19.52 to 17.26 ms.
-- Large transposed-left AVX2 products now process the inner dimension in
-  256-element blocks once a worker's left-hand working set reaches 256 KiB.
-  Smaller products retain one direct pass. On the development i5-11400H,
-  median `512x2048x512` wall time at six threads decreased from 6.19 to 3.79
-  ms, while the complete dense forward-and-backward plan decreased from 10.94
-  to 8.63 ms. The transposed benchmark now covers intermediate inner depths
-  so the cache policy is measured beyond one training shape.
-- Contiguous AVX2 matrix multiplication now reuses each 16-column right-hand
-  panel across six output rows, while retaining the previous two-row kernel
-  for short matrices and final row tails. In the package-matched MSVC build,
-  median `512x512x512` wall time at six threads decreased from 0.908 to 0.647
-  ms, `512x2048x512` decreased from 7.68 to 4.34 ms, and the complete dense
-  plan decreased from 8.45 to 7.52 ms. The row-oriented kernels now live in a
-  separate source file instead of extending the shared AVX2 implementation.
-- CPU matrix-multiplication benchmarks now measure wall time, so rates include
-  work performed by ORMI and BLAS worker threads.
-- The CPU benchmark suite can now decompose a complete dense forward-and-
-  backward plan into ordered per-step median timings.
+- Move Plan construction to `core/runtime/plan/build.cpp`, execution and update
+  copies to `core/runtime/plan/run.cpp`, and recording and replay to
+  `core/runtime/plan/record.cpp`.
+- Use the same lowering code for tensor realization and Plans. Represent step
+  kinds and pending preparation explicitly. Separate fusion layout calculations
+  from graph traversal.
+- Require static operation descriptors through `op_ref<descriptor>()` when
+  constructing lazy C++ tensors. Move prepared backend state to
+  `ormi/core/setup.h`; `op.h` continues to include it.
+- Use backend ID and device index consistently for device equality.
+- Test C++20 syntax and standard-library headers during automatic CPU compiler
+  discovery, and cache the result for each compiler and environment.
+  `ORMI_CPU_JIT_CXX` skips this probe and automatic selection; compiler lookup
+  still waits until an uncached CPU kernel needs compilation.
+- Separate CPU JIT discovery, invocation, probing, code generation, compilation,
+  artifact loading, and execution. Separate execution policy from worker-pool
+  synchronization and thread ownership.
+- Separate CUDA fusion code generation, NVRTC compilation, module loading,
+  execution, and cache management.
+- Move Linux process execution and shared-library loading into
+  `platform/linux/process.cpp` and `platform/linux/library.cpp`.
+
+### Performance
+
+- Improve AVX2 matmul worker partitioning, right-hand panel reuse, and cache
+  blocking for large transposed-left products.
+- Calculate CPU JIT broadcast addresses before inner loops for MSVC
+  vectorization and reuse prepared execution storage instead of allocating
+  temporary arrays.
+- Do not allocate a buffer-cleanup list when all grouped outputs already have
+  buffers. Failed runs release only buffers allocated during that run.
+
+### Tests and Benchmarks
+
+- Expand CPU/CUDA coverage for concurrency, ownership, failure recovery,
+  compiler selection, cache maintenance, generated kernels, and platform loaders.
+- Add separate measurements for loop planning, code generation, JIT execution,
+  scheduling, and Plan steps. CPU matmul benchmarks now use wall time.
 
 ## 0.1.0a6 - 2026-08-12
 

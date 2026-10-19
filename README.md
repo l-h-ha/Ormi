@@ -22,13 +22,15 @@ Install CPU and CUDA 12.4 support:
 python -m pip install "ormi-core[cuda]==0.1.0a6" --extra-index-url https://l-h-ha.github.io/Ormi/whl/
 ```
 
-The wheels include OpenBLAS, SLEEF vector math, and, for the CUDA extra, ORMI's
-CUDA runtime libraries. Users do not install OpenBLAS, SLEEF, or the CUDA
-Toolkit. CUDA users only install a compatible
-[NVIDIA driver](https://www.nvidia.com/Download/index.aspx/).
+The CPU wheel includes OpenBLAS and SLEEF. The CUDA extra adds the CUDA
+backend, CUDA Runtime, cuBLAS, and NVRTC libraries. Users do not need to
+install these dependencies or the CUDA Toolkit separately. CUDA execution
+requires a supported NVIDIA GPU and an installed
+[NVIDIA driver](https://www.nvidia.com/Download/index.aspx/) that meets the
+[GPU and driver requirements](ormi-core/README.md#requirements).
 CPU fusion needs a C++20 compiler when an uncached fused kernel is first used.
-CUDA fusion stores generated PTX in the user's cache, so NVRTC compilation is
-normally paid once per kernel and GPU target.
+CUDA fusion caches generated PTX on disk. Matching PTX entries can be reused
+across processes without NVRTC recompilation.
 
 Read [ormi-core/README.md](ormi-core/README.md) for the exact Python, compiler,
 platform, GPU, and NVIDIA driver requirements.
@@ -54,15 +56,17 @@ cmake --build --preset cpu-debug
 ctest --preset cpu-debug
 ```
 
-CUDA additionally requires the
-[CUDA 12.4 Toolkit](https://developer.nvidia.com/cuda-toolkit-archive). It is
-enabled only by the CUDA preset:
+CUDA builds also need the
+[CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit-archive); release
+wheels use version 12.4. The CUDA preset enables `ORMI_ENABLE_CUDA`:
 
 ```bash
 cmake --preset cuda-debug
 cmake --build --preset cuda-debug
 ctest --preset cuda-debug
 ```
+
+For a custom CMake configuration, set `-DORMI_ENABLE_CUDA=ON`.
 
 For Python workspace development, [install `uv`](https://docs.astral.sh/uv/getting-started/installation/)
 and run from the repository root:

@@ -156,6 +156,33 @@ namespace {
             static_cast<double>(plan.storage_bytes());
     }
 
+    void bmGroupedPlanReplay(benchmark::State& state) {
+        const auto values = input(state.range(0));
+        const auto mapped = ormi::core::ops::add(values, values);
+        std::vector<Tensor> outputs;
+        outputs.reserve(static_cast<std::size_t>(state.range(1)));
+        for (std::int64_t index = 0; index < state.range(1); ++index) {
+            outputs.push_back(ormi::core::ops::neg(mapped));
+        }
+        Plan plan(outputs);
+        if (plan.steps() != 1u) {
+            state.SkipWithError("Expected one fused step for sibling outputs.");
+            return;
+        }
+        plan.run();
+
+        for (auto _ : state) {
+            plan.run();
+            benchmark::DoNotOptimize(outputs.front().get());
+        }
+
+        state.SetItemsProcessed(
+            state.iterations() * state.range(0) * state.range(1)
+        );
+        state.counters["outputs"] = static_cast<double>(outputs.size());
+        state.counters["steps"] = static_cast<double>(plan.steps());
+    }
+
     void bmRealize(benchmark::State& state) {
         const auto values = input(state.range(0));
         warm(values);
@@ -256,6 +283,10 @@ BENCHMARK(bmPartialReductionPlanReplay)
     ->Name("runtime/plan/partial_reduction_replay")
     ->Arg(1048576)
     ->Arg(4194304)
+    ->UseRealTime();
+BENCHMARK(bmGroupedPlanReplay)
+    ->Name("runtime/plan/grouped_replay")
+    ->ArgsProduct({{1, 1024, 1048576}, {1, 2, 4, 8}})
     ->UseRealTime();
 ORMI_PLAN_SIZES(
     BENCHMARK(bmRealize)

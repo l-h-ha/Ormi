@@ -4,7 +4,7 @@
 #include <ormi/core/error.h>
 #include <ormi/core/tensor.h>
 
-#include "core/runtime/realize.h"
+#include "core/runtime/schedule.h"
 
 namespace ormi::core {
     namespace {
@@ -181,10 +181,7 @@ namespace ormi::core {
                 ORMI_THROW(OperationError, "A lazy tensor cannot have a null parent.");
             }
 
-            if (
-                parent->device().backend_id() != device_.backend_id() ||
-                parent->device().index() != device_.index()
-            ) {
+            if (parent->device() != device_) {
                 ORMI_THROW(DeviceError, "A lazy tensor and its parents must use the same device.");
             }
 
@@ -217,7 +214,7 @@ namespace ormi::core {
     }
 
     void Tensor::realize() {
-        runtime::realize(*this);
+        runtime::schedule::run(*this);
     }
 
     bool Tensor::realized() const {

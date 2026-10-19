@@ -4,7 +4,7 @@
 #include <vector>
 
 #include <ormi/backend/api.h>
-#include <ormi/core/op.h>
+#include <ormi/core/setup.h>
 #include <ormi/core/tensor.h>
 
 #include "backends/cpu/jit/compile.h"

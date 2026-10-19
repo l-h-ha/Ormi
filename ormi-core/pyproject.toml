@@ -1,7 +1,7 @@
 [project]
 name = "ormi-core"
 version = "0.1.0a6"
-description = "A C++ lazily accelerated tensor/autograd engine."
+description = "Lazy tensors and automatic differentiation for Python and C++."
 readme = "README.md"
 authors = [{ name = "Ha H. Le" }]
 license = { text = "MIT" }

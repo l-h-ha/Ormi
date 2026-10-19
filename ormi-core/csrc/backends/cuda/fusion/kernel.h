@@ -2,7 +2,7 @@
 #include <span>
 
 #include <ormi/backend/fusion.h>
-#include <ormi/core/op.h>
+#include <ormi/core/setup.h>
 #include <ormi/core/tensor.h>
 
 namespace ormi::backends::cuda::fusion {

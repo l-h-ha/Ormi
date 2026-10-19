@@ -1,6 +1,5 @@
-#include <cstddef>
 #include <algorithm>
-#include <sstream>
+#include <cstddef>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -9,6 +8,7 @@
 #include <ormi/core/ops/kind.h>
 
 #include "backends/cpu/jit/codegen/code.h"
+#include "backends/cpu/jit/codegen/input.h"
 #include "backends/cpu/jit/math.h"
 
 namespace ormi::backends::cpu::jit::codegen {
@@ -74,78 +74,6 @@ namespace ormi::backends::cpu::jit::codegen {
             return expression;
         }
 
-        std::string input_offset(
-            const core::runtime::fusion::Input& input
-        ) {
-            if (input.linear) {
-                return "i";
-            }
-            return offset("i", input.axes);
-        }
-
-        std::string input_value(
-            core::DType dtype,
-            const core::runtime::fusion::Input& input,
-            const Loop& loop
-        ) {
-            auto expression = "input" + std::to_string(input.index);
-            if (loop.strided) {
-                expression += "[";
-                bool first = true;
-                for (
-                    std::size_t dimension = 0;
-                    dimension < loop.strides[input.index].size();
-                    ++dimension
-                ) {
-                    const auto stride =
-                        loop.strides[input.index][dimension];
-                    if (stride == 0) {
-                        continue;
-                    }
-                    if (!first) {
-                        expression += " + ";
-                    }
-                    first = false;
-                    expression += "index" + std::to_string(dimension);
-                    if (stride != 1) {
-                        expression += " * " + std::to_string(stride);
-                    }
-                }
-                expression += first ? "0]" : "]";
-                if (dtype == core::DType::float16) {
-                    return "ormi_half_value(" + expression + ")";
-                }
-                return expression;
-            }
-
-            const auto access = loop.vectorized
-                ? loop.inputs[input.index]
-                : Access::indexed;
-
-            switch (access) {
-                case Access::linear:
-                    expression += "[i]";
-                    break;
-                case Access::scalar:
-                    expression += "_scalar";
-                    break;
-                case Access::span:
-                    expression += "[input" +
-                        std::to_string(input.index) + "_base + j]";
-                    break;
-                case Access::fixed:
-                    expression += "_fixed";
-                    break;
-                case Access::indexed:
-                    expression += "[" + input_offset(input) + "]";
-                    break;
-            }
-            if (dtype == core::DType::float16) {
-                return "ormi_half_value(" + expression + ")";
-            }
-            return expression;
-        }
-
         std::string cast_value(
             core::DType dtype,
             std::string_view expression
@@ -184,98 +112,6 @@ namespace ormi::backends::cpu::jit::codegen {
                     "Fusion expression nodes must reference prior nodes."
                 );
             }
-        }
-
-        std::string packed_strided_input(
-            const core::runtime::fusion::Input& input,
-            const Loop& loop
-        ) {
-            const auto name = "input" + std::to_string(input.index);
-            const auto& strides = loop.strides[input.index];
-            const auto inner = loop.reduced_dimensions.back();
-            std::string address;
-
-            for (
-                std::size_t dimension = 0;
-                dimension < strides.size();
-                ++dimension
-            ) {
-                const auto stride = strides[dimension];
-                if (stride == 0) {
-                    continue;
-                }
-                if (!address.empty()) {
-                    address += " + ";
-                }
-                address += dimension == inner
-                    ? "inner_index"
-                    : "index" + std::to_string(dimension);
-                if (stride != 1) {
-                    address += " * " + std::to_string(stride);
-                }
-            }
-
-            if (strides[inner] == 0) {
-                return "_mm256_set1_ps(" + name + "[" +
-                    (address.empty() ? "0" : address) + "])";
-            }
-            if (strides[inner] == 1) {
-                return "_mm256_loadu_ps(" + name + " + " + address + ")";
-            }
-
-            ORMI_THROW(
-                OperationError,
-                "Packed strided fusion requires unit or broadcast inner strides."
-            );
-        }
-
-        std::string packed_input(
-            const core::runtime::fusion::Input& input,
-            core::DType dtype,
-            const Loop& loop
-        ) {
-            if (loop.strided) {
-                if (dtype != core::DType::float32) {
-                    ORMI_THROW(
-                        OperationError,
-                        "Packed strided fusion requires Float32 inputs."
-                    );
-                }
-                return packed_strided_input(input, loop);
-            }
-
-            const auto name = "input" + std::to_string(input.index);
-            const bool float16 = dtype == core::DType::float16;
-            switch (loop.inputs[input.index]) {
-                case Access::linear:
-                    return float16
-                        ? "ormi_half_load8(" + name + " + i)"
-                        : "_mm256_loadu_ps(" + name + " + i)";
-                case Access::scalar:
-                    return "_mm256_set1_ps(" + (float16
-                        ? "ormi_half_value(" + name + "_scalar)"
-                        : name + "_scalar") + ")";
-                case Access::span:
-                    return float16
-                        ? "ormi_half_load8(" + name + " + input" +
-                            std::to_string(input.index) + "_base + j)"
-                        : "_mm256_loadu_ps(" + name + " + input" +
-                            std::to_string(input.index) + "_base + j)";
-                case Access::fixed:
-                    return "_mm256_set1_ps(" + (float16
-                        ? "ormi_half_value(" + name + "_fixed)"
-                        : name + "_fixed") + ")";
-                case Access::indexed:
-                    ORMI_THROW(
-                        OperationError,
-                        "Packed fusion requires planned input access."
-                    );
-            }
-
-            ORMI_THROW(
-                OperationError,
-                "Packed fusion received unknown input access."
-            );
         }
 
         std::string packed_binary(
@@ -366,35 +202,6 @@ namespace ormi::backends::cpu::jit::codegen {
 
     std::string value(core::runtime::fusion::Index index) {
         return "v" + std::to_string(index);
-    }
-
-    std::string offset(
-        std::string_view index,
-        const std::vector<core::runtime::fusion::Axis>& axes
-    ) {
-        if (axes.empty()) {
-            return "0";
-        }
-
-        std::ostringstream result;
-        for (std::size_t i = 0; i < axes.size(); ++i) {
-            const auto& axis = axes[i];
-            if (i != 0) {
-                result << " + ";
-            }
-
-            result << "(";
-            if (axis.divisor != 1) {
-                result << "(" << index << " / " << axis.divisor << ")";
-            } else {
-                result << index;
-            }
-            result << " % " << axis.extent << ")";
-            if (axis.stride != 1) {
-                result << " * " << axis.stride;
-            }
-        }
-        return result.str();
     }
 
     std::string output_value(

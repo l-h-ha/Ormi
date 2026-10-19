@@ -1,5 +1,6 @@
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <span>
 #include <unordered_set>
@@ -52,19 +53,13 @@ namespace {
         return result;
     }
 
-    std::vector<ormi::core::runtime::Step> build_schedule(
-        ormi::core::Tensor& root,
-        std::span<ormi::core::Tensor* const> roots
-    ) {
+    std::vector<ormi::core::runtime::Step> build_schedule(std::span<ormi::core::Tensor* const> roots) {
         const auto candidates = ormi::core::runtime::fusion::find_candidates(roots);
         std::unordered_set<const ormi::core::Tensor*> completed;
         std::vector<ormi::core::runtime::Step> steps;
-        ormi::core::runtime::schedule::append(
-            root,
-            completed,
-            steps,
-            candidates
-        );
+        for (auto* root : roots) {
+            ormi::core::runtime::schedule::append(*root, completed, steps, candidates);
+        }
         return steps;
     }
 
@@ -76,7 +71,7 @@ namespace {
         );
 
         for (auto _ : state) {
-            auto step = ormi::core::runtime::lower(*root);
+            auto step = ormi::core::runtime::lower(*root, ormi::core::runtime::Preparation::direct);
             benchmark::DoNotOptimize(step.input_count());
         }
     }
@@ -88,13 +83,37 @@ namespace {
             static_cast<std::size_t>(state.range(0))
         );
         const std::array<ormi::core::Tensor*, 1> roots{root.get()};
-        auto warmup = build_schedule(*root, roots);
+        auto warmup = build_schedule(roots);
         benchmark::DoNotOptimize(warmup.size());
 
         for (auto _ : state) {
-            auto steps = build_schedule(*root, roots);
+            auto steps = build_schedule(roots);
             benchmark::DoNotOptimize(steps.size());
         }
+    }
+
+    void bmBuildGroupedSchedule(benchmark::State& state) {
+        const auto source = input();
+        const auto mapped = graph(source, static_cast<std::size_t>(state.range(0)));
+        std::vector<Tensor> outputs;
+        std::vector<ormi::core::Tensor*> roots;
+        outputs.reserve(static_cast<std::size_t>(state.range(1)));
+        roots.reserve(static_cast<std::size_t>(state.range(1)));
+        for (std::int64_t index = 0; index < state.range(1); ++index) {
+            outputs.push_back(ormi::core::ops::neg(mapped));
+            roots.push_back(outputs.back().get());
+        }
+        const auto warmup = build_schedule(roots);
+        if (warmup.size() != 1 || warmup.front().output_count() != roots.size()) {
+            state.SkipWithError("Expected one grouped fusion step.");
+            return;
+        }
+
+        for (auto _ : state) {
+            auto steps = build_schedule(roots);
+            benchmark::DoNotOptimize(steps.size());
+        }
+        state.counters["outputs"] = static_cast<double>(roots.size());
     }
 
     void bmRunFused(benchmark::State& state) {
@@ -149,6 +168,11 @@ ORMI_SCHEDULE_DEPTHS(
     BENCHMARK(bmBuildSchedule)
         ->Name("runtime/schedule/build")
 );
+
+BENCHMARK(bmBuildGroupedSchedule)
+    ->Name("runtime/schedule/build_grouped")
+    ->ArgsProduct({{1, 4, 16, 64}, {2, 4, 8}})
+    ->UseRealTime();
 
 ORMI_SCHEDULE_DEPTHS(
     BENCHMARK(bmRunFused)

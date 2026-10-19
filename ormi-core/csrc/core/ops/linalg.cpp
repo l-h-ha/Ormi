@@ -168,12 +168,8 @@ namespace ormi::core::ops {
         }
 
         const auto lhs_device = lhs->device();
-        const auto rhs_device = rhs->device();
 
-        if (
-            lhs_device.backend_id() != rhs_device.backend_id() ||
-            lhs_device.index() != rhs_device.index()
-        ) {
+        if (lhs_device != rhs->device()) {
             ORMI_THROW(DeviceError, "Matmul requires tensors on the same device.");
         }
 

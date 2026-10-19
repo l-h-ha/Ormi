@@ -107,6 +107,9 @@ namespace ormi::core::runtime {
         std::span<Tensor* const> auxiliary_outputs,
         const fusion::Expr& expression
     );
+    // The job, expression, output-pointer array, and setup slot are borrowed
+    // only during preparation. Retained state must copy the data it needs;
+    // tensor objects remain owned by the caller throughout execution.
     struct FusionJob {
         Tensor* output;
         Tensor* const* auxiliary_outputs;
@@ -114,6 +117,9 @@ namespace ormi::core::runtime {
         const fusion::Expr* expression;
         Setup* setup;
     };
+    // Write through each setup slot; an empty Setup selects direct execution.
+    // If preparation throws, installed states remain owned by their steps.
+    // The batch stays pending and a retry may replace those states.
     using PrepareFusionsFn = void (*)(std::span<FusionJob> jobs);
     using FusionFn = void (*)(
         Tensor& out,

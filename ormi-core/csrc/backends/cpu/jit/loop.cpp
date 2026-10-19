@@ -203,37 +203,145 @@ namespace ormi::backends::cpu::jit {
             return result;
         }
 
-        bool plan_direct_reduction(
-            const core::runtime::fusion::Expr& expression,
-            Loop& loop
-        ) {
-            if (!expression.reduction) {
-                return false;
+        void tile_global_reduction(const core::runtime::fusion::Expr& expression, Loop& loop) {
+            for (const auto dimension : loop.reduced_dimensions) {
+                const bool unit_stride = std::all_of(
+                    loop.strides.begin(), loop.strides.end(),
+                    [dimension](const std::vector<std::size_t>& input) {
+                        return input[dimension] <= 1;
+                    }
+                );
+                if (unit_stride) {
+                    return;
+                }
+            }
+            if (!vectorizable_arithmetic(expression)) {
+                return;
             }
 
+            constexpr std::size_t tile = 16;
+            std::optional<std::size_t> tile_axis;
+            for (const auto dimension : loop.reduced_dimensions) {
+                if (dimension == loop.split || expression.shape[dimension] < tile * 2) {
+                    continue;
+                }
+                const bool serves_input = std::any_of(
+                    loop.strides.begin(), loop.strides.end(),
+                    [dimension](const std::vector<std::size_t>& input) {
+                        return input[dimension] <= 1;
+                    }
+                );
+                if (
+                    serves_input &&
+                    (!tile_axis || expression.shape[dimension] > expression.shape[*tile_axis])
+                ) {
+                    tile_axis = dimension;
+                }
+            }
+            if (tile_axis && expression.shape[*loop.split] >= tile * 2) {
+                loop.tile = tile;
+                loop.unit = tile;
+                loop.tile_axis = tile_axis;
+            }
+        }
+
+        void plan_global_reduction(const core::runtime::fusion::Expr& expression, Loop& loop) {
+            const auto largest = std::max_element(
+                loop.reduced_dimensions.begin(), loop.reduced_dimensions.end(),
+                [&expression, &loop](std::size_t lhs, std::size_t rhs) {
+                    if (expression.shape[lhs] != expression.shape[rhs]) {
+                        return expression.shape[lhs] < expression.shape[rhs];
+                    }
+                    return stride_cost(loop.strides, lhs) < stride_cost(loop.strides, rhs);
+                }
+            );
+            loop.split = *largest;
+            std::stable_sort(
+                loop.reduced_dimensions.begin(), loop.reduced_dimensions.end(),
+                [&loop](std::size_t lhs, std::size_t rhs) {
+                    return stride_cost(loop.strides, lhs) > stride_cost(loop.strides, rhs);
+                }
+            );
+            loop.partial = true;
+            loop.unit = 1;
+
+            const auto inner = loop.reduced_dimensions.back();
+            const auto width = lanes(expression.dtype);
+            const bool unit_stride = std::all_of(
+                loop.strides.begin(), loop.strides.end(),
+                [inner](const std::vector<std::size_t>& input) {
+                    return input[inner] <= 1;
+                }
+            );
+            if (
+                vectorizable_arithmetic(expression) &&
+                unit_stride &&
+                expression.shape[inner] >= width * 8
+            ) {
+                loop.vectorized = true;
+                loop.lanes = width;
+                if (loop.split == inner) {
+                    loop.unit = width;
+                }
+            }
+
+            tile_global_reduction(expression, loop);
+        }
+
+        void plan_output_reduction(const core::runtime::fusion::Expr& expression, Loop& loop) {
+            if (!loop.output_dimensions.empty() && !loop.reduced_dimensions.empty()) {
+                const auto output_axis = loop.output_dimensions.front();
+                const auto tile = expression.shape.size() == 2 ? 32u : 16u;
+                if (
+                    expression.shape[output_axis] >= tile &&
+                    std::all_of(
+                        loop.strides.begin(), loop.strides.end(),
+                        [output_axis](const std::vector<std::size_t>& input) {
+                            return input[output_axis] <= 1;
+                        }
+                    )
+                ) {
+                    loop.tile = tile;
+                    loop.vectorized = true;
+                    loop.tile_axis = output_axis;
+                    return;
+                }
+            }
+            if (expression.reduction->output.size <= 1 || loop.reduced_dimensions.empty()) {
+                return;
+            }
+
+            const auto inner = loop.reduced_dimensions.back();
+            const auto width = lanes(expression.dtype);
+            const bool unit_stride = std::all_of(
+                loop.strides.begin(), loop.strides.end(),
+                [inner](const std::vector<std::size_t>& input) {
+                    return input[inner] <= 1;
+                }
+            );
+            if (
+                vectorizable_arithmetic(expression) &&
+                unit_stride &&
+                expression.shape[inner] >= width * 8
+            ) {
+                loop.vectorized = true;
+                loop.lanes = width;
+            }
+        }
+
+        bool plan_direct_reduction(const core::runtime::fusion::Expr& expression, Loop& loop) {
             const auto strides = strided_strides(expression);
-            const auto output = dimensions(
-                expression.reduction->output,
-                expression.shape
-            );
-            const auto reduced = dimensions(
-                expression.reduction->reduced,
-                expression.shape
-            );
+            const auto output = dimensions(expression.reduction->output, expression.shape);
+            const auto reduced = dimensions(expression.reduction->reduced, expression.shape);
             const bool empty_shape = std::any_of(
-                expression.shape.begin(),
-                expression.shape.end(),
+                expression.shape.begin(), expression.shape.end(),
                 [](std::size_t extent) {
                     return extent == 0;
                 }
             );
             if (
-                !strides ||
-                !output ||
-                !reduced ||
-                empty_shape ||
-                output->size() + reduced->size() !=
-                    expression.shape.size()
+                !strides || !output || !reduced || empty_shape ||
+                output->size() + reduced->size() != expression.shape.size()
             ) {
                 return false;
             }
@@ -243,169 +351,15 @@ namespace ormi::backends::cpu::jit {
             loop.output_dimensions = *output;
             loop.reduced_dimensions = *reduced;
 
-            if (
-                expression.reduction->output.size == 1 &&
-                !loop.reduced_dimensions.empty()
-            ) {
-                const auto largest = std::max_element(
-                    loop.reduced_dimensions.begin(),
-                    loop.reduced_dimensions.end(),
-                    [&expression, &loop](
-                        std::size_t lhs,
-                        std::size_t rhs
-                    ) {
-                        if (expression.shape[lhs] != expression.shape[rhs]) {
-                            return expression.shape[lhs] <
-                                expression.shape[rhs];
-                        }
-                        return stride_cost(loop.strides, lhs) <
-                            stride_cost(loop.strides, rhs);
-                    }
-                );
-                loop.split = *largest;
-                std::stable_sort(
-                    loop.reduced_dimensions.begin(),
-                    loop.reduced_dimensions.end(),
-                    [&loop](std::size_t lhs, std::size_t rhs) {
-                        return stride_cost(loop.strides, lhs) >
-                            stride_cost(loop.strides, rhs);
-                    }
-                );
-                loop.partial = true;
-                loop.unit = 1;
-
-                const auto inner = loop.reduced_dimensions.back();
-                const auto width = lanes(expression.dtype);
-                const bool unit_stride = std::all_of(
-                    loop.strides.begin(),
-                    loop.strides.end(),
-                    [inner](const std::vector<std::size_t>& input) {
-                        return input[inner] <= 1;
-                    }
-                );
-                if (
-                    vectorizable_arithmetic(expression) &&
-                    unit_stride &&
-                    expression.shape[inner] >= width * 8
-                ) {
-                    loop.vectorized = true;
-                    loop.lanes = width;
-                    if (loop.split == inner) {
-                        loop.unit = width;
-                    }
-                }
-
-                bool unit_axis = false;
-                for (const auto dimension : loop.reduced_dimensions) {
-                    unit_axis = std::all_of(
-                        loop.strides.begin(),
-                        loop.strides.end(),
-                        [dimension](
-                            const std::vector<std::size_t>& input
-                        ) {
-                            return input[dimension] <= 1;
-                        }
-                    );
-                    if (unit_axis) {
-                        break;
-                    }
-                }
-                constexpr std::size_t tile = 16;
-                std::optional<std::size_t> tile_axis;
-                if (!unit_axis && vectorizable_arithmetic(expression)) {
-                    for (const auto dimension : loop.reduced_dimensions) {
-                        if (
-                            dimension == loop.split ||
-                            expression.shape[dimension] < tile * 2
-                        ) {
-                            continue;
-                        }
-                        const bool serves_input = std::any_of(
-                            loop.strides.begin(),
-                            loop.strides.end(),
-                            [dimension](
-                                const std::vector<std::size_t>& input
-                            ) {
-                                return input[dimension] <= 1;
-                            }
-                        );
-                        if (
-                            serves_input &&
-                            (
-                                !tile_axis ||
-                                expression.shape[dimension] >
-                                    expression.shape[*tile_axis]
-                            )
-                        ) {
-                            tile_axis = dimension;
-                        }
-                    }
-                }
-                if (
-                    tile_axis &&
-                    expression.shape[*loop.split] >= tile * 2
-                ) {
-                    loop.tile = tile;
-                    loop.unit = loop.tile;
-                    loop.tile_axis = tile_axis;
-                }
+            if (expression.reduction->output.size == 1 && !loop.reduced_dimensions.empty()) {
+                plan_global_reduction(expression, loop);
             }
+            plan_output_reduction(expression, loop);
 
-            bool tile_output_axis = false;
-            if (
-                !loop.output_dimensions.empty() &&
-                !loop.reduced_dimensions.empty()
-            ) {
-                const auto output_axis = loop.output_dimensions[0];
-                const auto tile =
-                    expression.shape.size() == 2 ? 32u : 16u;
-                tile_output_axis =
-                    expression.shape[output_axis] >= tile &&
-                    std::all_of(
-                        loop.strides.begin(),
-                        loop.strides.end(),
-                        [output_axis](const std::vector<std::size_t>& input) {
-                            return input[output_axis] <= 1;
-                        }
-                    );
-                if (tile_output_axis) {
-                    loop.tile = tile;
-                }
-            }
-            if (tile_output_axis) {
-                loop.vectorized = true;
-                loop.tile_axis = loop.output_dimensions[0];
-            } else if (
-                expression.reduction->output.size > 1 &&
-                !loop.reduced_dimensions.empty()
-            ) {
-                const auto inner = loop.reduced_dimensions.back();
-                const auto width = lanes(expression.dtype);
-                const bool unit_stride = std::all_of(
-                    loop.strides.begin(),
-                    loop.strides.end(),
-                    [inner](const std::vector<std::size_t>& input) {
-                        return input[inner] <= 1;
-                    }
-                );
-                if (
-                    vectorizable_arithmetic(expression) &&
-                    unit_stride &&
-                    expression.shape[inner] >= width * 8
-                ) {
-                    loop.vectorized = true;
-                    loop.lanes = width;
-                }
-            }
-            if (
-                expression.reduction->output.size > 1 &&
-                !loop.output_dimensions.empty()
-            ) {
-                const auto slab =
-                    expression.reduction->output.size /
+            if (expression.reduction->output.size > 1 && !loop.output_dimensions.empty()) {
+                const auto slab = expression.reduction->output.size /
                     expression.shape[loop.output_dimensions.front()];
-                const auto unit =
-                    loop.tile != 0 ? loop.tile * slab : slab;
+                const auto unit = loop.tile != 0 ? loop.tile * slab : slab;
                 if (expression.reduction->output.size > unit) {
                     loop.ranged = true;
                     loop.unit = unit;
@@ -435,6 +389,105 @@ namespace ormi::backends::cpu::jit {
                         input[1] > 1;
                 }
             );
+        }
+
+        struct Analysis {
+            bool float16;
+            bool arithmetic;
+            // Candidate inner span; absent for linear/scalar-only inputs.
+            std::optional<std::size_t> span;
+        };
+
+        void plan_contiguous_reduction(
+            const core::runtime::fusion::Expr& expression,
+            const Analysis& analysis,
+            Loop& loop
+        ) {
+            const auto width = analysis.float16 ? 8 : lanes(expression.dtype);
+            const auto minimum = analysis.float16 ? 64 : width * 8;
+            if (
+                !analysis.arithmetic || analysis.span ||
+                !contiguous(expression.reduction->reduced) ||
+                expression.reduction->reduced.size < minimum
+            ) {
+                return;
+            }
+
+            loop.vectorized = true;
+            loop.lanes = width;
+            if (loop.partial) {
+                loop.unit = width;
+            }
+        }
+
+        void plan_flat_map(
+            const core::runtime::fusion::Expr& expression,
+            const Analysis& analysis,
+            Loop& loop
+        ) {
+            loop.ranged = true;
+            loop.unit = 1;
+            if (!analysis.arithmetic) {
+                if (vectorizable_math(expression) && expression.elements >= 8) {
+                    loop.vectorized = true;
+                    loop.math = true;
+                    loop.lanes = 8;
+                }
+                return;
+            }
+            if (analysis.float16 && expression.elements < 64) {
+                return;
+            }
+
+            loop.vectorized = true;
+            loop.lanes = analysis.float16 ? 8 : 0;
+        }
+
+        void plan_broadcast_map(
+            const core::runtime::fusion::Expr& expression,
+            const Analysis& analysis,
+            Loop& loop
+        ) {
+            const auto span = *analysis.span;
+            if (span <= 1 || (expression.elements != 0 && expression.elements % span != 0)) {
+                return;
+            }
+            if (analysis.float16 && (expression.elements < 64 || span < 8)) {
+                return;
+            }
+            if (!analysis.arithmetic && (!vectorizable_math(expression) || span < 8)) {
+                loop.ranged = true;
+                loop.unit = span;
+                return;
+            }
+
+            for (const auto& node : expression.nodes) {
+                const auto* input =
+                    std::get_if<core::runtime::fusion::Input>(&node.instruction);
+                if (!input || input->linear || input->axes.empty()) {
+                    continue;
+                }
+
+                bool contiguous = false;
+                for (const auto& axis : input->axes) {
+                    if (axis.divisor == 1) {
+                        if (axis.extent != span || axis.stride != 1) {
+                            return;
+                        }
+                        contiguous = true;
+                    } else if (axis.divisor % span != 0) {
+                        return;
+                    }
+                }
+                loop.inputs[input->index] = contiguous ? Access::span : Access::fixed;
+            }
+
+            loop.vectorized = true;
+            loop.math = !analysis.arithmetic;
+            loop.ranged = true;
+            loop.unit = span;
+            loop.span = span;
+            loop.lanes = analysis.float16 || loop.math ? 8 : 0;
         }
     }
 
@@ -479,8 +532,6 @@ namespace ormi::backends::cpu::jit {
         Loop result;
         result.inputs.assign(expression.inputs.size(), Access::indexed);
 
-        const bool packed_float16 = uses_float16(expression);
-        const bool packed_math = vectorizable_math(expression);
         const bool has_noncontiguous_input = std::any_of(
             expression.inputs.begin(),
             expression.inputs.end(),
@@ -532,13 +583,13 @@ namespace ormi::backends::cpu::jit {
             result.unit = 1;
         }
 
+        const bool float16 = uses_float16(expression);
+        bool arithmetic = true;
         std::optional<std::size_t> span;
-        bool broadcast = false;
-        bool vectorizable = true;
-
+        // Preserve input classifications when a later node needs the indexed fallback.
         for (std::size_t index = 0; index < expression.nodes.size(); ++index) {
             const auto& node = expression.nodes[index];
-            if (packed_float16) {
+            if (float16) {
                 if (
                     node.dtype != core::DType::float16 &&
                     node.dtype != core::DType::float32
@@ -551,7 +602,7 @@ namespace ormi::backends::cpu::jit {
 
             if (const auto* cast =
                     std::get_if<core::runtime::fusion::Cast>(&node.instruction)) {
-                if (!packed_float16) {
+                if (!float16) {
                     continue;
                 }
                 if (cast->input >= index) {
@@ -569,7 +620,7 @@ namespace ormi::backends::cpu::jit {
             if (const auto* unary =
                     std::get_if<core::runtime::fusion::Unary>(&node.instruction);
                 unary && unary->op != core::ops::UnaryOp::neg) {
-                vectorizable = false;
+                arithmetic = false;
             }
 
             const auto* input =
@@ -593,7 +644,6 @@ namespace ormi::backends::cpu::jit {
                 continue;
             }
 
-            broadcast = true;
             for (const auto& axis : input->axes) {
                 if (axis.divisor == 1 && axis.stride != 1) {
                     return result;
@@ -609,109 +659,18 @@ namespace ormi::backends::cpu::jit {
             }
         }
 
-        if (packed_float16 && expression.reduction) {
-            if (!vectorizable || broadcast) {
-                return result;
-            }
-            if (
-                !contiguous(expression.reduction->reduced) ||
-                expression.reduction->reduced.size < 64
-            ) {
-                return result;
-            }
-
-            result.vectorized = true;
-            result.lanes = 8;
-            if (result.partial) {
-                result.unit = result.lanes;
-            }
-            return result;
-        }
-
+        const Analysis analysis{
+            .float16 = float16,
+            .arithmetic = arithmetic,
+            .span = span
+        };
         if (expression.reduction) {
-            const auto width = lanes(expression.dtype);
-            if (
-                !vectorizable ||
-                broadcast ||
-                !contiguous(expression.reduction->reduced) ||
-                expression.reduction->reduced.size < width * 8
-            ) {
-                return result;
-            }
-
-            result.vectorized = true;
-            result.lanes = width;
-            if (result.partial) {
-                result.unit = result.lanes;
-            }
-            return result;
+            plan_contiguous_reduction(expression, analysis, result);
+        } else if (analysis.span) {
+            plan_broadcast_map(expression, analysis, result);
+        } else {
+            plan_flat_map(expression, analysis, result);
         }
-
-        if (!broadcast) {
-            result.ranged = true;
-            result.unit = 1;
-            if (!vectorizable) {
-                if (packed_math && expression.elements >= 8) {
-                    result.vectorized = true;
-                    result.math = true;
-                    result.lanes = 8;
-                }
-                return result;
-            }
-            if (packed_float16 && expression.elements < 64) {
-                return result;
-            }
-
-            result.vectorized = true;
-            result.lanes = packed_float16 ? 8 : 0;
-            return result;
-        }
-
-        if (
-            !span ||
-            *span <= 1 ||
-            (expression.elements != 0 && expression.elements % *span != 0)
-        ) {
-            return result;
-        }
-        if (packed_float16 && (expression.elements < 64 || *span < 8)) {
-            return result;
-        }
-        if (!vectorizable && (!packed_math || *span < 8)) {
-            result.ranged = true;
-            result.unit = *span;
-            return result;
-        }
-
-        for (const auto& node : expression.nodes) {
-            const auto* input =
-                std::get_if<core::runtime::fusion::Input>(&node.instruction);
-            if (!input || input->linear || input->axes.empty()) {
-                continue;
-            }
-
-            bool contiguous = false;
-            for (const auto& axis : input->axes) {
-                if (axis.divisor == 1) {
-                    if (axis.extent != *span || axis.stride != 1) {
-                        return result;
-                    }
-                    contiguous = true;
-                } else if (axis.divisor % *span != 0) {
-                    return result;
-                }
-            }
-            result.inputs[input->index] = contiguous
-                ? Access::span
-                : Access::fixed;
-        }
-
-        result.vectorized = true;
-        result.math = !vectorizable;
-        result.ranged = true;
-        result.unit = *span;
-        result.span = *span;
-        result.lanes = packed_float16 || result.math ? 8 : 0;
         return result;
     }
 }

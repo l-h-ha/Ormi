@@ -10,13 +10,13 @@
 #include <cuda_runtime_api.h>
 
 #include <ormi/core/error.h>
-#include <ormi/core/op.h>
+#include <ormi/core/setup.h>
 #include <ormi/core/tensor.h>
 
 #include "backends/cuda/allocator.h"
 #include "backends/cuda/check.cuh"
-#include "backends/cuda/fusion/compile.h"
 #include "backends/cuda/fusion/execute.h"
+#include "backends/cuda/fusion/module.h"
 #include "backends/cuda/state.h"
 
 namespace ormi::backends::cuda::fusion::execution {
@@ -75,6 +75,7 @@ namespace ormi::backends::cuda::fusion::execution {
             State& cuda_state,
             std::shared_ptr<Compiled> compiled
         ) {
+            // Resolve launch settings and workspace requirements before creating the call.
             const auto reduction = expression.reduction.has_value();
             const auto elements = static_cast<unsigned long long>(
                 expression.elements
@@ -163,6 +164,7 @@ namespace ormi::backends::cuda::fusion::execution {
                 static_cast<std::size_t>(finish_thread_count) * value_bytes
             );
 
+            // Own all setup resources before allocation or argument binding can fail.
             auto result = std::unique_ptr<Call>(new Call{
                 .compiled = std::move(compiled),
                 .cuda_state = &cuda_state,
@@ -190,6 +192,7 @@ namespace ormi::backends::cuda::fusion::execution {
             if (result->memory) {
                 result->partials = result->memory->allocate(partials_bytes);
             }
+            // These addresses stay valid: the heap-owned call and pointer vectors no longer move.
             result->arguments.reserve(
                 result->outputs.size() + result->inputs.size() + 1
             );
