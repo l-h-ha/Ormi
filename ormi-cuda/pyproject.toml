@@ -46,8 +46,9 @@ before-all = [
     "dnf install -y -q cuda-compiler-12-4 cuda-cudart-devel-12-4 libcublas-devel-12-4 cuda-nvrtc-devel-12-4 cuda-driver-devel-12-4 libcurand-devel-12-4",
     "/opt/python/cp310-cp310/bin/python -m venv /opt/auditwheel && /opt/auditwheel/bin/pip install -q auditwheel==6.7.0 patchelf==0.17.2.4"
 ]
-environment = { PATH="/opt/auditwheel/bin:/opt/rh/gcc-toolset-13/root/usr/bin:/usr/local/cuda-12.4/bin:$PATH", LD_LIBRARY_PATH="/usr/local/cuda-12.4/lib64:$LD_LIBRARY_PATH", CC="/opt/rh/gcc-toolset-13/root/usr/bin/gcc", CXX="/opt/rh/gcc-toolset-13/root/usr/bin/g++", CUDACXX="/usr/local/cuda-12.4/bin/nvcc", CUDAHOSTCXX="/opt/rh/gcc-toolset-13/root/usr/bin/g++" }
-repair-wheel-command = "/opt/auditwheel/bin/auditwheel repair --exclude libcuda.so.1 --exclude libormi_core.so -w {dest_dir} {wheel}"
+environment = { PATH="/opt/rh/gcc-toolset-13/root/usr/bin:/usr/local/cuda-12.4/bin:$PATH", LD_LIBRARY_PATH="/usr/local/cuda-12.4/lib64:$LD_LIBRARY_PATH", CC="/opt/rh/gcc-toolset-13/root/usr/bin/gcc", CXX="/opt/rh/gcc-toolset-13/root/usr/bin/g++", CUDACXX="/usr/local/cuda-12.4/bin/nvcc", CUDAHOSTCXX="/opt/rh/gcc-toolset-13/root/usr/bin/g++" }
+# Keep the repair environment's Python out of the build PATH.
+repair-wheel-command = "PATH=\"/opt/auditwheel/bin:$PATH\" /opt/auditwheel/bin/auditwheel repair --exclude libcuda.so.1 --exclude libormi_core.so -w {dest_dir} {wheel}"
 
 [tool.cibuildwheel.windows]
 before-build = "python -m pip install delvewheel==1.13.0"
