@@ -16,54 +16,75 @@
 
 namespace ormi::backends::cuda::fusion {
     namespace {
-        std::string unary(
-            core::DType dtype,
-            core::ops::UnaryOp op,
-            std::string_view input
-        ) {
+        std::string unary(core::DType dtype, core::ops::UnaryOp op, std::string_view input) {
+            const auto x = std::string(input);
+            const auto zero = "decltype(" + x + ")(0)";
+            const auto one = "decltype(" + x + ")(1)";
             const bool single = dtype != core::DType::float64;
+            const std::string exp = single ? "expf" : "exp";
+            const std::string log1p = single ? "log1pf" : "log1p";
 
             switch (op) {
                 case core::ops::UnaryOp::neg:
-                    return "-" + std::string(input);
+                    return "-" + x;
                 case core::ops::UnaryOp::exp:
-                    return std::string(single ? "expf(" : "exp(") + std::string(input) + ")";
+                    return exp + "(" + x + ")";
                 case core::ops::UnaryOp::log:
-                    return std::string(single ? "logf(" : "log(") + std::string(input) + ")";
+                    return std::string(single ? "logf" : "log") + "(" + x + ")";
                 case core::ops::UnaryOp::sin:
-                    return std::string(single ? "sinf(" : "sin(") + std::string(input) + ")";
+                    return std::string(single ? "sinf" : "sin") + "(" + x + ")";
                 case core::ops::UnaryOp::cos:
-                    return std::string(single ? "cosf(" : "cos(") + std::string(input) + ")";
+                    return std::string(single ? "cosf" : "cos") + "(" + x + ")";
+                case core::ops::UnaryOp::abs:
+                    return std::string(single ? "fabsf" : "fabs") + "(" + x + ")";
+                case core::ops::UnaryOp::tanh:
+                    return std::string(single ? "tanhf" : "tanh") + "(" + x + ")";
+                case core::ops::UnaryOp::erf:
+                    return std::string(single ? "erff" : "erf") + "(" + x + ")";
+                case core::ops::UnaryOp::log1p:
+                    return log1p + "(" + x + ")";
+                case core::ops::UnaryOp::expm1:
+                    return std::string(single ? "expm1f" : "expm1") + "(" + x + ")";
+                case core::ops::UnaryOp::rsqrt:
+                    return std::string(single ? "rsqrtf" : "rsqrt") + "(" + x + ")";
+                case core::ops::UnaryOp::relu:
+                    return x + " < " + zero + " ? " + zero + " : " + x;
+                case core::ops::UnaryOp::positive:
+                    return x + " != " + x + " ? " + x + " : (" + x + " > " + zero + " ? " + one + " : " +
+                           zero + ")";
+                case core::ops::UnaryOp::sign:
+                    return x + " != " + x + " ? " + x + " : (" + x + " > " + zero + " ? " + one + " : (" + x +
+                           " < " + zero + " ? -" + one + " : " + zero + "))";
+                case core::ops::UnaryOp::sigmoid:
+                    return x + " >= " + zero + " ? " + one + " / (" + one + " + " + exp + "(-" + x +
+                           ")) : " + exp + "(" + x + ") / (" + one + " + " + exp + "(" + x + "))";
+                case core::ops::UnaryOp::softplus:
+                    return x + " > " + zero + " ? " + x + " + " + log1p + "(" + exp + "(-" + x +
+                           ")) : " + log1p + "(" + exp + "(" + x + "))";
             }
-
-            ORMI_THROW(
-                OperationError,
-                "CUDA fusion received an unknown unary operation."
-            );
+            ORMI_THROW(OperationError, "CUDA fusion received an unknown unary operation.");
         }
 
-        std::string_view binary_operator(core::ops::BinaryOp op) {
+        std::string binary(core::ops::BinaryOp op, std::string_view lhs, std::string_view rhs) {
+            const auto left = std::string(lhs);
+            const auto right = std::string(rhs);
             switch (op) {
                 case core::ops::BinaryOp::add:
-                    return "+";
+                    return left + " + " + right;
                 case core::ops::BinaryOp::sub:
-                    return "-";
+                    return left + " - " + right;
                 case core::ops::BinaryOp::mul:
-                    return "*";
+                    return left + " * " + right;
                 case core::ops::BinaryOp::div:
-                    return "/";
+                    return left + " / " + right;
+                case core::ops::BinaryOp::minimum:
+                case core::ops::BinaryOp::maximum: {
+                    const auto comparison = op == core::ops::BinaryOp::minimum ? " < " : " > ";
+                    return left + " != " + left + " ? " + left + " : (" + right + " != " + right + " ? " +
+                           right + " : (" + left + comparison + right + " ? " + left + " : " + right + "))";
+                }
             }
-
             ORMI_THROW(OperationError, "CUDA fusion received an unknown binary operation.");
-        }
-
-        std::string binary(
-            core::ops::BinaryOp op,
-            std::string_view lhs,
-            std::string_view rhs
-        ) {
-            return std::string(lhs) + " " + std::string(binary_operator(op)) + " " +
-                std::string(rhs);
         }
 
         std::string rounded(core::DType dtype, std::string expression) {
@@ -81,11 +102,7 @@ namespace ormi::backends::cuda::fusion {
             std::string index;
             if (tile) {
                 const auto& strides = tile->inputs[input.index];
-                for (
-                    std::size_t dimension = 0;
-                    dimension < strides.size();
-                    ++dimension
-                ) {
+                for (std::size_t dimension = 0; dimension < strides.size(); ++dimension) {
                     if (strides[dimension] == 0) {
                         continue;
                     }
@@ -94,8 +111,7 @@ namespace ormi::backends::cuda::fusion {
                     }
                     index += "index" + std::to_string(dimension);
                     if (strides[dimension] != 1) {
-                        index += " * " +
-                            std::to_string(strides[dimension]);
+                        index += " * " + std::to_string(strides[dimension]);
                     }
                 }
                 if (index.empty()) {
@@ -116,8 +132,7 @@ namespace ormi::backends::cuda::fusion {
             bool physical_order
         ) {
             const auto index = input_index(input, tile, physical_order);
-            auto expression =
-                "input" + std::to_string(input.index) + "[" + index + "]";
+            auto expression = "input" + std::to_string(input.index) + "[" + index + "]";
             if (dtype == core::DType::float16) {
                 return "ormi_half_value(" + expression + ")";
             }
@@ -147,10 +162,7 @@ namespace ormi::backends::cuda::fusion {
         }
     }
 
-    std::string offset(
-        std::string_view index,
-        const std::vector<core::runtime::fusion::Axis>& axes
-    ) {
+    std::string offset(std::string_view index, const std::vector<core::runtime::fusion::Axis>& axes) {
         if (axes.empty()) {
             return "0";
         }
@@ -188,57 +200,30 @@ namespace ormi::backends::cuda::fusion {
                    << value(static_cast<core::runtime::fusion::Index>(i)) << " = ";
             const auto& instruction = node.instruction;
 
-            if (
-                const auto* input =
-                    std::get_if<core::runtime::fusion::Input>(&instruction)
-            ) {
+            if (const auto* input = std::get_if<core::runtime::fusion::Input>(&instruction)) {
                 if (input->index >= expression.inputs.size()) {
                     ORMI_THROW(OperationError, "Fusion expression references an invalid input.");
                 }
-                source << input_value(
-                    node.dtype,
-                    *input,
-                    tile,
-                    physical_order
-                );
-            } else if (
-                const auto* constant =
-                    std::get_if<core::runtime::fusion::Constant>(&instruction)
-            ) {
+                source << input_value(node.dtype, *input, tile, physical_order);
+            } else if (const auto* constant = std::get_if<core::runtime::fusion::Constant>(&instruction)) {
                 source << literal(node.dtype, *constant);
-            } else if (
-                const auto* cast_node =
-                    std::get_if<core::runtime::fusion::Cast>(&instruction)
-            ) {
+            } else if (const auto* cast_node = std::get_if<core::runtime::fusion::Cast>(&instruction)) {
                 require_prior(cast_node->input, i);
                 source << cast_value(node.dtype, value(cast_node->input));
-            } else if (
-                const auto* unary_node =
-                    std::get_if<core::runtime::fusion::Unary>(&instruction)
-            ) {
+            } else if (const auto* unary_node = std::get_if<core::runtime::fusion::Unary>(&instruction)) {
                 require_prior(unary_node->input, i);
-                const auto operation = unary(
-                    node.dtype,
-                    unary_node->op,
-                    value(unary_node->input)
-                );
-                source << (i == expression.output && !expression.reduction
-                    ? operation
-                    : rounded(node.dtype, operation));
-            } else if (
-                const auto* binary_node =
-                    std::get_if<core::runtime::fusion::Binary>(&instruction)
-            ) {
+                const auto operation = unary(node.dtype, unary_node->op, value(unary_node->input));
+                source
+                    << (i == expression.output && !expression.reduction ? operation
+                                                                        : rounded(node.dtype, operation));
+            } else if (const auto* binary_node = std::get_if<core::runtime::fusion::Binary>(&instruction)) {
                 require_prior(binary_node->lhs, i);
                 require_prior(binary_node->rhs, i);
-                const auto operation = binary(
-                    binary_node->op,
-                    value(binary_node->lhs),
-                    value(binary_node->rhs)
-                );
-                source << (i == expression.output && !expression.reduction
-                    ? operation
-                    : rounded(node.dtype, operation));
+                const auto operation =
+                    binary(binary_node->op, value(binary_node->lhs), value(binary_node->rhs));
+                source
+                    << (i == expression.output && !expression.reduction ? operation
+                                                                        : rounded(node.dtype, operation));
             }
 
             source << ";\n";

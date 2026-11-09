@@ -7,6 +7,9 @@ import numpy as np
 from benchmarks.frameworks.model import Spec
 from benchmarks.frameworks.workloads import corpus, make_data
 
+###
+###
+###
 
 class WorkloadTest(unittest.TestCase):
     def test_full_suite_has_three_scales_per_workload_and_dtype(self) -> None:
@@ -26,6 +29,7 @@ class WorkloadTest(unittest.TestCase):
         second = make_data(spec).values
 
         self.assertEqual(first.keys(), second.keys())
+
         for name in first:
             np.testing.assert_array_equal(first[name], second[name])
 
@@ -58,6 +62,9 @@ class WorkloadTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             Spec("pointwise", "test", 0, 1, 1)
 
+###
+###
+###
 
 if __name__ == "__main__":
     unittest.main()

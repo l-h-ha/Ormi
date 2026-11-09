@@ -1,6 +1,10 @@
 import os
 from pathlib import Path
 
+###
+###
+###
+
 _dll_directories = []
 
 if os.name == "nt":
@@ -8,6 +12,7 @@ if os.name == "nt":
     _dll_directories.append(os.add_dll_directory(str(extension_dir)))
 
     libraries_dirs = sorted(extension_dir.parent.parent.glob("ormi_*.libs"))
+
     for libraries_dir in libraries_dirs:
         _dll_directories.append(os.add_dll_directory(str(libraries_dir)))
 

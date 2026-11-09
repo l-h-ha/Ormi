@@ -4,12 +4,17 @@ set(cuda_target_args)
 if(ORMI_ENABLE_CUDA)
     enable_language(CUDA)
     find_package(CUDAToolkit REQUIRED)
+    find_path(ORMI_CURAND_INCLUDE_DIR curand_kernel.h
+        HINTS ${CUDAToolkit_INCLUDE_DIRS}
+        REQUIRED
+    )
 
     add_library(ormi_cuda_backend SHARED
         backends/cuda/allocator.cu
         backends/cuda/backend.cpp
         backends/cuda/blas/cublas.cu
         backends/cuda/cast.cu
+        backends/cuda/indexing.cu
         backends/cuda/check.cu
         backends/cuda/fill.cu
         backends/cuda/fractional.cu
@@ -31,9 +36,11 @@ if(ORMI_ENABLE_CUDA)
         backends/cuda/pointwise/binary.cu
         backends/cuda/pointwise/unary.cu
         backends/cuda/record.cu
+        backends/cuda/random.cu
         backends/cuda/reduction.cpp
         backends/cuda/reduction/finite.cu
         backends/cuda/reduction/sum.cu
+        backends/cuda/reduction/max.cu
         backends/cuda/state.cu
     )
     add_library(ormi::cuda ALIAS ormi_cuda_backend)
@@ -51,6 +58,7 @@ if(ORMI_ENABLE_CUDA)
     target_include_directories(ormi_cuda_backend PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${ORMI_CURAND_INCLUDE_DIR}
     )
     target_link_libraries(ormi_cuda_backend
         PRIVATE

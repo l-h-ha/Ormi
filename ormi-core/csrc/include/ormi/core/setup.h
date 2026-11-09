@@ -5,6 +5,8 @@
 namespace ormi::core {
     class Tensor;
 
+    // Owns backend-specific state. Moving transfers ownership. Destruction calls Drop once.
+    // A non-null state requires valid Run and Drop functions. Tensor lifetimes belong to the caller.
     class Setup final {
     public:
         using Run = void (*)(void* state, Tensor& out);

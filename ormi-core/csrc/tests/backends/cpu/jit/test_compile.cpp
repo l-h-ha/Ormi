@@ -255,6 +255,22 @@ namespace {
         EXPECT_EQ(ormi::backends::cpu::jit::compile(warm.expression).get(), expected.get());
     }
 
+    TEST(CPUJITCompileTest, cacheLookupDoesNotCompileMissingKernel) {
+        const auto missing = graph(53);
+
+        EXPECT_FALSE(ormi::backends::cpu::jit::cached(missing.expression));
+        EXPECT_FALSE(missing.root->realized());
+    }
+
+    TEST(CPUJITCompileTest, cacheLookupRetainsCompiledKernel) {
+        const auto value = graph(59);
+        const auto compiled = ormi::backends::cpu::jit::compile(value.expression);
+
+        EXPECT_TRUE(ormi::backends::cpu::jit::cached(value.expression));
+        EXPECT_EQ(ormi::backends::cpu::jit::compile(value.expression), compiled);
+        EXPECT_FALSE(value.root->realized());
+    }
+
     TEST(CPUJITCompileTest, publishesOneResultForConcurrentBatchMisses) {
         constexpr std::size_t workers = 4;
         const auto first = graph(43);

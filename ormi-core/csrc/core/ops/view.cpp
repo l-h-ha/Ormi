@@ -4,8 +4,8 @@
 #include <optional>
 #include <vector>
 
-#include <ormi/core/autograd.h>
 #include <ormi/core/attrs.h>
+#include <ormi/core/autograd.h>
 #include <ormi/core/error.h>
 #include <ormi/core/op.h>
 #include <ormi/core/ops/view.h>
@@ -70,10 +70,7 @@ namespace ormi::core::ops {
             .scalar = std::monostate{}
         };
 
-        std::vector<std::int64_t> normalize_axes(
-            std::vector<std::int64_t> axes,
-            std::size_t rank
-        ) {
+        std::vector<std::int64_t> normalize_axes(std::vector<std::int64_t> axes, std::size_t rank) {
             if (axes.size() != rank) {
                 ORMI_THROW(ShapeError, "Transpose requires one axis for each input dimension.");
             }
@@ -100,10 +97,7 @@ namespace ormi::core::ops {
             return axes;
         }
 
-        std::optional<std::vector<std::int64_t>> reshape_strides(
-            const Tensor& input,
-            const Shape& shape
-        ) {
+        std::optional<std::vector<std::int64_t>> reshape_strides(const Tensor& input, const Shape& shape) {
             if (input.numel() == 0 || input.rank() == 0) {
                 return contiguous_strides(shape);
             }
@@ -119,23 +113,14 @@ namespace ormi::core::ops {
                 const auto input_axis = axis - 1;
                 input_elements *= input.shape()[input_axis];
                 const bool chunk_ends =
-                    input_axis == 0 ||
-                    (
-                        input.shape()[input_axis - 1] != 1 &&
-                        input_strides[input_axis - 1] != input_elements * chunk_stride
-                    );
+                    input_axis == 0 || (input.shape()[input_axis - 1] != 1 &&
+                                        input_strides[input_axis - 1] != input_elements * chunk_stride);
 
                 if (!chunk_ends) {
                     continue;
                 }
 
-                while (
-                    output_axis > 0 &&
-                    (
-                        output_elements < input_elements ||
-                        shape[output_axis - 1] == 1
-                    )
-                ) {
+                while (output_axis > 0 && (output_elements < input_elements || shape[output_axis - 1] == 1)) {
                     --output_axis;
                     strides[output_axis] = output_elements * chunk_stride;
                     output_elements *= shape[output_axis];
@@ -184,10 +169,7 @@ namespace ormi::core::ops {
         );
     }
 
-    std::shared_ptr<Tensor> transpose(
-        const std::shared_ptr<Tensor>& input,
-        std::vector<std::int64_t> axes
-    ) {
+    std::shared_ptr<Tensor> transpose(const std::shared_ptr<Tensor>& input, std::vector<std::int64_t> axes) {
         if (!input) {
             ORMI_THROW(OperationError, "Transpose requires a tensor.");
         }

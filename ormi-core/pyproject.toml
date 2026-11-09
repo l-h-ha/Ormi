@@ -1,6 +1,6 @@
 [project]
 name = "ormi-core"
-version = "0.1.0a6"
+version = "0.1.0a7"
 description = "Lazy tensors and automatic differentiation for Python and C++."
 readme = "README.md"
 authors = [{ name = "Ha H. Le" }]
@@ -11,10 +11,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-cuda = ["ormi-cuda==0.1.0a6"]
+cuda = ["ormi-cuda==0.1.0a7"]
 
 [build-system]
-requires = ["scikit-build-core>=1.0.0", "pybind11>=2.11.0", "PyYAML>=6.0"]
+requires = ["scikit-build-core>=1.0.0", "pybind11>=3.0.0", "PyYAML>=6.0"]
 build-backend = "scikit_build_core.build"
 
 [tool.scikit-build]
@@ -34,8 +34,8 @@ sdist.include = [
     "vcpkg.json",
     "benchmarks/",
     "csrc/",
+    "docs/",
     "example/",
-    "python-examples/",
     "src/",
     "tests/",
 ]

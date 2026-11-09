@@ -75,7 +75,6 @@ namespace ormi::backends::cuda::fusion::execution {
             State& cuda_state,
             std::shared_ptr<Compiled> compiled
         ) {
-            // Resolve launch settings and workspace requirements before creating the call.
             const auto reduction = expression.reduction.has_value();
             const auto elements = static_cast<unsigned long long>(
                 expression.elements
@@ -164,7 +163,7 @@ namespace ormi::backends::cuda::fusion::execution {
                 static_cast<std::size_t>(finish_thread_count) * value_bytes
             );
 
-            // Own all setup resources before allocation or argument binding can fail.
+            // Take ownership before allocating or binding arguments, so failures release resources.
             auto result = std::unique_ptr<Call>(new Call{
                 .compiled = std::move(compiled),
                 .cuda_state = &cuda_state,

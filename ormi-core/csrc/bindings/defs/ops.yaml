@@ -63,6 +63,7 @@ functions:
   - {python: log, module: ops, namespace: ormi::core::ops, cpp: log, args: [{name: input, py_type: Tensor}], returns: Tensor}
   - {python: sin, module: ops, namespace: ormi::core::ops, cpp: sin, args: [{name: input, py_type: Tensor}], returns: Tensor}
   - {python: cos, module: ops, namespace: ormi::core::ops, cpp: cos, args: [{name: input, py_type: Tensor}], returns: Tensor}
+  - {python: rsqrt, module: ops, namespace: ormi::core::ops, cpp: rsqrt, args: [{name: input, py_type: Tensor}], returns: Tensor}
   - python: caputo
     module: ops
     namespace: ormi::core::ops

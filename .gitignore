@@ -18,6 +18,7 @@ __pycache__/
 /ormi-cuda/build-*/
 /ormi-cuda/dist/
 /ormi/build/
+/ormi/dist/
 _skbuild/
 .skbuild-info.json
 _deps/

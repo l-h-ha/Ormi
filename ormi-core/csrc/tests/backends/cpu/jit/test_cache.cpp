@@ -1,4 +1,5 @@
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -113,6 +114,142 @@ namespace {
         EXPECT_NE(baseline, avx2);
     }
 
+    TEST(CPUJITCacheTest, entryCheckDoesNotCreateMissingDirectoriesOrFiles) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+
+        EXPECT_FALSE(ormi::backends::cpu::jit::cache::has_entries());
+        EXPECT_FALSE(std::filesystem::exists(cache.path));
+
+        std::filesystem::create_directories(cache.path);
+        EXPECT_FALSE(ormi::backends::cpu::jit::cache::has_entries());
+        EXPECT_TRUE(std::filesystem::is_empty(cache.path));
+    }
+
+    TEST(CPUJITCacheTest, entryCheckIgnoresUnrelatedFilesAndOrphanedSources) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        std::filesystem::create_directories(cache.path);
+        std::ofstream(cache.path / ".maintenance.lock") << "";
+        std::ofstream(cache.path / "unrelated.lock") << "";
+        std::ofstream(cache.path / "unrelated.dll") << "";
+        std::ofstream(cache.path / "unrelated.so") << "";
+        std::ofstream(source(cache, "orphan")) << "orphan";
+
+        EXPECT_FALSE(ormi::backends::cpu::jit::cache::has_entries());
+        EXPECT_EQ(read(source(cache, "orphan")), "orphan");
+        EXPECT_EQ(std::distance(
+            std::filesystem::directory_iterator(cache.path),
+            std::filesystem::directory_iterator{}
+        ), 5);
+    }
+
+    TEST(CPUJITCacheTest, entryCheckIncludesCopiedLibrariesWithoutLocks) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        std::filesystem::create_directories(cache.path);
+        std::ofstream(library(cache, "copied")) << "library";
+
+        EXPECT_TRUE(ormi::backends::cpu::jit::cache::has_entries());
+        EXPECT_FALSE(ormi::backends::cpu::jit::cache::find("copied", {}));
+    }
+
+    TEST(CPUJITCacheTest, entryCheckIncludesWriterLocksBeforeLibraryPublication) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        std::filesystem::create_directories(cache.path);
+        auto lock = source(cache, "publishing");
+        lock.replace_extension(".lock");
+        ormi::platform::FileLock lease(lock);
+
+        EXPECT_TRUE(ormi::backends::cpu::jit::cache::has_entries());
+        EXPECT_FALSE(std::filesystem::exists(library(cache, "publishing")));
+    }
+
+    TEST(CPUJITCacheTest, entryCheckIncludesCaseVariantsForCaseInsensitiveFilesystems) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        std::filesystem::create_directories(cache.path);
+        auto copied = library(cache, "copied");
+        auto extension = std::string(ormi::platform::shared_extension());
+        for (auto& character : extension) {
+            character = static_cast<char>(std::toupper(static_cast<unsigned char>(character)));
+        }
+        copied.replace_extension(extension);
+        std::ofstream(copied) << "library";
+        std::ofstream(source(cache, "copied")) << "copied";
+
+        EXPECT_TRUE(ormi::backends::cpu::jit::cache::has_entries());
+#if defined(_WIN32)
+        EXPECT_TRUE(ormi::backends::cpu::jit::cache::find("copied", {}));
+#endif
+        std::filesystem::remove(copied);
+        auto copied_lock = source(cache, "copied");
+        copied_lock.replace_extension(".lock");
+        std::filesystem::remove(copied_lock);
+        EXPECT_FALSE(ormi::backends::cpu::jit::cache::has_entries());
+        auto lock = source(cache, "publishing");
+        lock.replace_extension(".LoCk");
+        std::ofstream(lock) << "";
+        EXPECT_TRUE(ormi::backends::cpu::jit::cache::has_entries());
+    }
+
+    TEST(CPUJITCacheTest, entryCheckObservesLaterPublicationAndDirectoryChanges) {
+        Directory cache;
+        const auto other = cache.path / "other";
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        EXPECT_FALSE(ormi::backends::cpu::jit::cache::has_entries());
+
+        {
+            const auto built = ormi::backends::cpu::jit::cache::get("later", build);
+        }
+        EXPECT_TRUE(ormi::backends::cpu::jit::cache::has_entries());
+        environment("ORMI_CPU_JIT_CACHE_DIR", other.string().c_str());
+        EXPECT_FALSE(ormi::backends::cpu::jit::cache::has_entries());
+        EXPECT_FALSE(std::filesystem::exists(other));
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        EXPECT_TRUE(ormi::backends::cpu::jit::cache::has_entries());
+    }
+
+    TEST(CPUJITCacheTest, entryCheckReportsInvalidCacheDirectory) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        std::ofstream(cache.path) << "file";
+
+        EXPECT_THROW(ormi::backends::cpu::jit::cache::has_entries(), ormi::jitError);
+    }
+
+#if !defined(_WIN32)
+    TEST(CPUJITCacheTest, entryCheckAllowsKnownPathsWhenDirectoryCannotBeListed) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        std::filesystem::create_directories(cache.path);
+        std::ofstream(source(cache, "readable")) << "readable";
+        std::ofstream(library(cache, "readable")) << "library";
+        auto lock = source(cache, "readable");
+        lock.replace_extension(".lock");
+        std::ofstream(lock) << "";
+        const auto permissions = std::filesystem::status(cache.path).permissions();
+        std::filesystem::permissions(cache.path, std::filesystem::perms::owner_exec);
+        std::error_code error;
+        const std::filesystem::directory_iterator iterator(cache.path, error);
+        if (!error) {
+            std::filesystem::permissions(cache.path, permissions);
+            GTEST_SKIP() << "This user can list directories without read permission.";
+        }
+
+        bool possible = false;
+        bool found = false;
+        EXPECT_NO_THROW({
+            possible = ormi::backends::cpu::jit::cache::has_entries();
+            found = static_cast<bool>(ormi::backends::cpu::jit::cache::find("readable", {}));
+        });
+        std::filesystem::permissions(cache.path, permissions);
+        EXPECT_TRUE(possible);
+        EXPECT_TRUE(found);
+    }
+#endif
+
     TEST(CPUJITCacheTest, findsCompleteArtifactWithoutBuilding) {
         Directory cache;
         environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
@@ -135,6 +272,174 @@ namespace {
         EXPECT_EQ(builds, 1);
         EXPECT_EQ(found->library, built.library);
         EXPECT_TRUE(found->cached);
+    }
+
+    TEST(CPUJITCacheTest, missingLibraryDoesNotCreateLockFiles) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+
+        EXPECT_FALSE(ormi::backends::cpu::jit::cache::find("missing", {}));
+        EXPECT_FALSE(std::filesystem::exists(cache.path));
+
+        std::filesystem::create_directories(cache.path);
+        for (int i = 0; i < 3; ++i) {
+            EXPECT_FALSE(ormi::backends::cpu::jit::cache::find("missing", {}));
+        }
+        EXPECT_TRUE(std::filesystem::is_empty(cache.path));
+
+        std::ofstream(source(cache, "orphan")) << "orphan";
+        EXPECT_FALSE(ormi::backends::cpu::jit::cache::find("orphan", {}));
+        auto lock = source(cache, "orphan");
+        lock.replace_extension(".lock");
+        EXPECT_FALSE(std::filesystem::exists(lock));
+        EXPECT_EQ(read(source(cache, "orphan")), "orphan");
+    }
+
+    TEST(CPUJITCacheTest, missingLookupFindsLaterPublicationAndDirectoryChanges) {
+        Directory cache;
+        const auto other = cache.path / "other";
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        std::filesystem::create_directories(cache.path);
+        EXPECT_FALSE(ormi::backends::cpu::jit::cache::find("later", {}));
+
+        {
+            const auto built = ormi::backends::cpu::jit::cache::get("later", build);
+            EXPECT_TRUE(ormi::backends::cpu::jit::cache::find("later", {}));
+        }
+        environment("ORMI_CPU_JIT_CACHE_DIR", other.string().c_str());
+        EXPECT_FALSE(ormi::backends::cpu::jit::cache::find("later", {}));
+        EXPECT_FALSE(std::filesystem::exists(other));
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        EXPECT_TRUE(ormi::backends::cpu::jit::cache::find("later", {}));
+    }
+
+    TEST(CPUJITCacheTest, findRejectsIncompleteAndMismatchedEntries) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        std::filesystem::create_directories(cache.path);
+        std::ofstream(library(cache, "missing source")) << "library";
+        EXPECT_FALSE(ormi::backends::cpu::jit::cache::find("missing source", {}));
+
+        std::ofstream(source(cache, "wrong source")) << "other source";
+        std::ofstream(library(cache, "wrong source")) << "library";
+        EXPECT_FALSE(ormi::backends::cpu::jit::cache::find("wrong source", {}));
+
+        std::filesystem::create_directory(library(cache, "directory"));
+        std::ofstream(source(cache, "directory")) << "directory";
+        EXPECT_FALSE(ormi::backends::cpu::jit::cache::find("directory", {}));
+    }
+
+    TEST(CPUJITCacheTest, findWaitsForInProgressPublication) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        std::filesystem::create_directories(cache.path);
+        std::promise<void> staged;
+        std::promise<void> publish;
+        auto ready = publish.get_future();
+        auto building = std::async(std::launch::async, [&] {
+            auto lock = source(cache, "publishing");
+            lock.replace_extension(".lock");
+            ormi::platform::FileLock lease(lock);
+            staged.set_value();
+            ready.wait();
+            std::ofstream(library(cache, "publishing")) << "library";
+            std::ofstream(source(cache, "publishing")) << "publishing";
+        });
+        staged.get_future().wait();
+        auto lookup = std::async(std::launch::async, [] {
+            return ormi::backends::cpu::jit::cache::find("publishing", {});
+        });
+        EXPECT_EQ(lookup.wait_for(std::chrono::milliseconds(100)), std::future_status::timeout);
+        publish.set_value();
+        building.get();
+        EXPECT_TRUE(lookup.get());
+        EXPECT_TRUE(ormi::backends::cpu::jit::cache::find("publishing", {}));
+    }
+
+    TEST(CPUJITCacheTest, findsCopiedArtifactWithoutALockFile) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        std::filesystem::create_directories(cache.path);
+        std::ofstream(source(cache, "copied")) << "copied";
+        std::ofstream(library(cache, "copied")) << "library";
+        auto lock = source(cache, "copied");
+        lock.replace_extension(".lock");
+        EXPECT_FALSE(std::filesystem::exists(lock));
+
+        const auto found = ormi::backends::cpu::jit::cache::find("copied", {});
+
+        ASSERT_TRUE(found.has_value());
+        EXPECT_TRUE(std::filesystem::is_regular_file(lock));
+        EXPECT_EQ(found->library, library(cache, "copied"));
+    }
+
+    TEST(CPUJITCacheTest, findReportsInvalidCacheDirectory) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        std::ofstream(cache.path) << "file";
+
+        EXPECT_THROW(ormi::backends::cpu::jit::cache::find("missing", {}), ormi::jitError);
+    }
+
+    TEST(CPUJITCacheTest, existingLockDistinguishesMissingFilesFromOpenErrors) {
+        Directory cache;
+        const auto missing = cache.path / "missing.lock";
+        {
+            ormi::platform::FileLock lock(
+                missing, ormi::platform::Lock::shared, ormi::platform::FileLock::Open::existing
+            );
+            EXPECT_FALSE(lock.opened());
+        }
+        EXPECT_FALSE(std::filesystem::exists(cache.path));
+
+        const auto blocked = cache.path / "blocked.lock";
+        std::filesystem::create_directories(blocked);
+        EXPECT_THROW(
+            ormi::platform::FileLock(
+                blocked, ormi::platform::Lock::shared, ormi::platform::FileLock::Open::existing
+            ),
+            ormi::jitError
+        );
+    }
+
+    TEST(CPUJITCacheTest, findLeaseBlocksDiscard) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        {
+            const auto built = ormi::backends::cpu::jit::cache::get("leased find", build);
+        }
+        auto found = ormi::backends::cpu::jit::cache::find("leased find", {});
+        ASSERT_TRUE(found.has_value());
+        auto discarding = std::async(std::launch::async, [] {
+            ormi::backends::cpu::jit::cache::discard("leased find");
+        });
+
+        EXPECT_EQ(discarding.wait_for(std::chrono::milliseconds(100)), std::future_status::timeout);
+        found.reset();
+        discarding.get();
+        EXPECT_FALSE(ormi::backends::cpu::jit::cache::find("leased find", {}));
+    }
+
+    TEST(CPUJITCacheTest, findValidatesAfterWriterReleasesLock) {
+        Directory cache;
+        environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+        std::filesystem::create_directories(cache.path);
+        using Artifact = ormi::backends::cpu::jit::cache::Artifact;
+        std::future<std::optional<Artifact>> lookup;
+        {
+            auto lock = source(cache, "writer");
+            lock.replace_extension(".lock");
+            ormi::platform::FileLock lease(lock);
+            std::ofstream(library(cache, "writer")) << "library";
+            std::ofstream(source(cache, "writer")) << "incomplete";
+            lookup = std::async(std::launch::async, [] {
+                return ormi::backends::cpu::jit::cache::find("writer", {});
+            });
+
+            EXPECT_EQ(lookup.wait_for(std::chrono::milliseconds(100)), std::future_status::timeout);
+            std::ofstream(source(cache, "writer")) << "writer";
+        }
+        EXPECT_TRUE(lookup.get());
     }
 
     TEST(CPUJITCacheTest, publishesStagedSourceAndLibrary) {
@@ -712,5 +1017,7 @@ namespace {
 
         const auto repaired = ormi::platform::run(helper, compile);
         EXPECT_EQ(repaired.code, 0) << repaired.output;
+        const auto reloaded = ormi::platform::run(helper, load);
+        EXPECT_EQ(reloaded.code, 0) << reloaded.output;
     }
 }

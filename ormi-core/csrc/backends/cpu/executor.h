@@ -3,8 +3,8 @@
 #include <cstddef>
 
 namespace ormi::backends::cpu::executor {
-    // Caller exceptions propagate after workers finish. An exception escaping
-    // a worker callback terminates the process; catch it inside the callback.
+    // Rethrow caller exceptions after workers finish. An exception escaping
+    // a worker callback terminates the process. Catch it inside the callback.
     using Function = void (*)(
         void*,
         std::size_t,

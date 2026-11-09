@@ -34,7 +34,7 @@ namespace ormi::core {
         void count_storage();
         Device recording_device() const;
 
-        // Roots own the graph; steps and copies borrow its tensors.
+        // Roots own the graph. Steps and copies borrow its tensors.
         std::vector<std::shared_ptr<Tensor>> outputs_;
         std::vector<Update> updates_;
         std::vector<runtime::Step> steps_;

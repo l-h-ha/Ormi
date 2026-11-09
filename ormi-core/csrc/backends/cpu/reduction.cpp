@@ -6,6 +6,7 @@
 #include <ormi/core/tensor.h>
 
 #include "backends/cpu/reduction.h"
+#include "backends/cpu/reduction/max.h"
 #include "backends/cpu/reduction/sum.h"
 
 namespace ormi::backends::cpu {
@@ -17,6 +18,9 @@ namespace ormi::backends::cpu {
         bool keepdims
     ) {
         switch (op) {
+            case core::ops::ReduceOp::max:
+                reduce_max(out, input, axes);
+                return;
             case core::ops::ReduceOp::sum:
                 reduce_sum(out, input, axes, keepdims);
                 return;

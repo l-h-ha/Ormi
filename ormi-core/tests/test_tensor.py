@@ -5,6 +5,9 @@ import pytest
 
 import ormi_core as oc
 
+###
+###
+###
 
 @pytest.mark.parametrize(
     ("dtype", "numpy_dtype", "values"),
@@ -24,7 +27,6 @@ def test_round_trips_every_public_dtype(dtype, numpy_dtype, values):
     assert result.dtype == numpy_dtype
     np.testing.assert_array_equal(result, np.asarray(values, dtype=numpy_dtype))
 
-
 def test_tensor_metadata_and_device_string(matrix):
     tensor = oc.Tensor(matrix, device="cpu")
 
@@ -37,14 +39,12 @@ def test_tensor_metadata_and_device_string(matrix):
     assert tensor.is_contiguous()
     assert repr(tensor).startswith("Tensor(shape=[2, 2]")
 
-
 def test_lazy_creation_realizes_on_numpy():
     tensor = oc.ones((2, 3))
 
     assert not tensor.realized
     np.testing.assert_array_equal(tensor.numpy(), np.ones((2, 3), dtype=np.float32))
     assert tensor.realized
-
 
 def test_numpy_export_honors_view_strides(matrix):
     tensor = oc.Tensor(matrix)
@@ -59,10 +59,10 @@ def test_numpy_export_honors_view_strides(matrix):
         np.array([[1.0, 1.0, 1.0], [2.0, 2.0, 2.0]], dtype=np.float32),
     )
 
-
 def test_item_requires_one_element():
     scalar = oc.Tensor(3.5)
     assert scalar.shape == ()
     assert scalar.item() == pytest.approx(3.5)
+
     with pytest.raises(oc.OperationError):
         oc.Tensor([1.0, 2.0]).item()

@@ -11,10 +11,11 @@ namespace ormi::backends::cpu {
         std::size_t offset = 0;
 
         for (std::size_t axis = tensor.rank(); axis > 0; --axis) {
-            const auto index = axis - 1;
-            const auto coordinate = linear % static_cast<std::size_t>(dims[index]);
-            linear /= static_cast<std::size_t>(dims[index]);
-            offset += coordinate * static_cast<std::size_t>(strides[index]);
+            const auto input_axis = axis - 1;
+            const auto extent = static_cast<std::size_t>(dims[input_axis]);
+            const auto coordinate = linear % extent;
+            linear /= extent;
+            offset += coordinate * static_cast<std::size_t>(strides[input_axis]);
         }
 
         return offset;

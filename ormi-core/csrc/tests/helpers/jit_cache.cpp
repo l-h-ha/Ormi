@@ -8,6 +8,7 @@
 #include <ormi/core/device.h>
 #include <ormi/core/dtype.h>
 #include <ormi/core/ops/pointwise.h>
+#include <ormi/core/plan.h>
 #include <ormi/core/shape.h>
 #include <ormi/core/tensor.h>
 
@@ -49,6 +50,11 @@ int main(int argc, char** argv) {
         const auto output = ormi::core::ops::exp(
             ormi::core::ops::mul(input, input)
         );
+        ormi::core::Plan plan({output});
+        if (plan.steps() != 1 || output->realized()) {
+            return 5;
+        }
+        plan.run();
         const auto value = *static_cast<const float*>(output->data());
         return std::abs(value - std::exp(0.25f)) < 1e-6f ? 0 : 3;
     } catch (const std::exception& error) {

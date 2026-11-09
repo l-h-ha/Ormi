@@ -42,8 +42,10 @@ namespace ormi::core::ops {
             const std::shared_ptr<Tensor>& upstream,
             Grads& gradients
         ) {
-            gradients.add(node->parents()[0], unbroadcast(upstream, node->parents()[0]->shape()));
-            gradients.add(node->parents()[1], unbroadcast(upstream, node->parents()[1]->shape()));
+            const auto& lhs = node->parents()[0];
+            const auto& rhs = node->parents()[1];
+            gradients.add(lhs, unbroadcast(upstream, lhs->shape()));
+            gradients.add(rhs, unbroadcast(upstream, rhs->shape()));
         }
 
         void adjoint_sub(
@@ -51,8 +53,10 @@ namespace ormi::core::ops {
             const std::shared_ptr<Tensor>& upstream,
             Grads& gradients
         ) {
-            gradients.add(node->parents()[0], unbroadcast(upstream, node->parents()[0]->shape()));
-            gradients.add(node->parents()[1], unbroadcast(neg(upstream), node->parents()[1]->shape()));
+            const auto& lhs = node->parents()[0];
+            const auto& rhs = node->parents()[1];
+            gradients.add(lhs, unbroadcast(upstream, lhs->shape()));
+            gradients.add(rhs, unbroadcast(neg(upstream), rhs->shape()));
         }
 
         void adjoint_mul(
@@ -60,10 +64,12 @@ namespace ormi::core::ops {
             const std::shared_ptr<Tensor>& upstream,
             Grads& gradients
         ) {
-            const auto lhs = mul(upstream, node->parents()[1]);
-            const auto rhs = mul(upstream, node->parents()[0]);
-            gradients.add(node->parents()[0], unbroadcast(lhs, node->parents()[0]->shape()));
-            gradients.add(node->parents()[1], unbroadcast(rhs, node->parents()[1]->shape()));
+            const auto& lhs = node->parents()[0];
+            const auto& rhs = node->parents()[1];
+            const auto lhs_gradient = mul(upstream, rhs);
+            const auto rhs_gradient = mul(upstream, lhs);
+            gradients.add(lhs, unbroadcast(lhs_gradient, lhs->shape()));
+            gradients.add(rhs, unbroadcast(rhs_gradient, rhs->shape()));
         }
 
         void adjoint_div(
@@ -79,6 +85,60 @@ namespace ormi::core::ops {
             gradients.add(lhs, unbroadcast(lhs_gradient, lhs->shape()));
             gradients.add(rhs, unbroadcast(rhs_gradient, rhs->shape()));
         }
+
+        void adjoint_minimum(
+            const std::shared_ptr<Tensor>& node,
+            const std::shared_ptr<Tensor>& upstream,
+            Grads& gradients
+        ) {
+            const auto& lhs = node->parents()[0];
+            const auto& rhs = node->parents()[1];
+            const auto direction = sign(sub(lhs, rhs));
+            const auto two = add(ones_like(direction), ones_like(direction));
+            const auto left = div(sub(ones_like(direction), direction), two);
+            gradients.add(lhs, unbroadcast(mul(upstream, left), lhs->shape()));
+            gradients.add(rhs, unbroadcast(mul(upstream, sub(ones_like(left), left)), rhs->shape()));
+        }
+
+        void compute_minimum(Tensor& out) {
+            compute_binary(BinaryOp::minimum, out);
+        }
+
+        const Op minimum_op{
+            .name = "minimum",
+            .output = Output::allocate,
+            .parents = 2,
+            .compute = compute_minimum,
+            .adjoint = adjoint_minimum,
+            .scalar = BinaryOp::minimum
+        };
+
+        void adjoint_maximum(
+            const std::shared_ptr<Tensor>& node,
+            const std::shared_ptr<Tensor>& upstream,
+            Grads& gradients
+        ) {
+            const auto& lhs = node->parents()[0];
+            const auto& rhs = node->parents()[1];
+            const auto direction = sign(sub(lhs, rhs));
+            const auto two = add(ones_like(direction), ones_like(direction));
+            const auto left = div(add(ones_like(direction), direction), two);
+            gradients.add(lhs, unbroadcast(mul(upstream, left), lhs->shape()));
+            gradients.add(rhs, unbroadcast(mul(upstream, sub(ones_like(left), left)), rhs->shape()));
+        }
+
+        void compute_maximum(Tensor& out) {
+            compute_binary(BinaryOp::maximum, out);
+        }
+
+        const Op maximum_op{
+            .name = "maximum",
+            .output = Output::allocate,
+            .parents = 2,
+            .compute = compute_maximum,
+            .adjoint = adjoint_maximum,
+            .scalar = BinaryOp::maximum
+        };
 
         const Op add_op{
             .name = "add",
@@ -188,31 +248,33 @@ namespace ormi::core::ops {
         }
     }
 
-    std::shared_ptr<Tensor> add(
-        const std::shared_ptr<Tensor>& lhs,
-        const std::shared_ptr<Tensor>& rhs
-    ) {
+    std::shared_ptr<Tensor> minimum(const std::shared_ptr<Tensor>& lhs, const std::shared_ptr<Tensor>& rhs) {
+        if ((lhs && !is_floating(lhs->dtype())) || (rhs && !is_floating(rhs->dtype()))) {
+            ORMI_THROW(DTypeError, "Minimum requires floating-point tensors.");
+        }
+        return binary(op_ref<minimum_op>(), lhs, rhs);
+    }
+
+    std::shared_ptr<Tensor> maximum(const std::shared_ptr<Tensor>& lhs, const std::shared_ptr<Tensor>& rhs) {
+        if ((lhs && !is_floating(lhs->dtype())) || (rhs && !is_floating(rhs->dtype()))) {
+            ORMI_THROW(DTypeError, "Maximum requires floating-point tensors.");
+        }
+        return binary(op_ref<maximum_op>(), lhs, rhs);
+    }
+
+    std::shared_ptr<Tensor> add(const std::shared_ptr<Tensor>& lhs, const std::shared_ptr<Tensor>& rhs) {
         return binary(op_ref<add_op>(), lhs, rhs);
     }
 
-    std::shared_ptr<Tensor> sub(
-        const std::shared_ptr<Tensor>& lhs,
-        const std::shared_ptr<Tensor>& rhs
-    ) {
+    std::shared_ptr<Tensor> sub(const std::shared_ptr<Tensor>& lhs, const std::shared_ptr<Tensor>& rhs) {
         return binary(op_ref<sub_op>(), lhs, rhs);
     }
 
-    std::shared_ptr<Tensor> mul(
-        const std::shared_ptr<Tensor>& lhs,
-        const std::shared_ptr<Tensor>& rhs
-    ) {
+    std::shared_ptr<Tensor> mul(const std::shared_ptr<Tensor>& lhs, const std::shared_ptr<Tensor>& rhs) {
         return binary(op_ref<mul_op>(), lhs, rhs);
     }
 
-    std::shared_ptr<Tensor> div(
-        const std::shared_ptr<Tensor>& lhs,
-        const std::shared_ptr<Tensor>& rhs
-    ) {
+    std::shared_ptr<Tensor> div(const std::shared_ptr<Tensor>& lhs, const std::shared_ptr<Tensor>& rhs) {
         return binary(op_ref<div_op>(), lhs, rhs);
     }
 }

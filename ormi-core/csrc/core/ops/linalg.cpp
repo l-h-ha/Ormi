@@ -12,8 +12,8 @@
 #include <ormi/core/shape.h>
 #include <ormi/core/tensor.h>
 
-#include "core/runtime/dispatch/linalg.h"
 #include "core/precision.h"
+#include "core/runtime/dispatch/linalg.h"
 
 namespace ormi::core::ops {
     namespace {
@@ -59,9 +59,7 @@ namespace ormi::core::ops {
             const std::shared_ptr<Tensor>& gradient,
             const std::shared_ptr<Tensor>& input
         ) {
-            return input->rank() == 1
-                ? reshape(gradient, input->shape())
-                : gradient;
+            return input->rank() == 1 ? reshape(gradient, input->shape()) : gradient;
         }
 
         void adjoint_matmul(
@@ -75,24 +73,14 @@ namespace ormi::core::ops {
             const auto matrix_lhs = lhs_matrix(lhs);
             const auto matrix_rhs = rhs_matrix(rhs);
             const auto matrix_upstream = shape.lhs_vector || shape.rhs_vector
-                ? reshape(upstream, matrix_output_shape(shape))
-                : upstream;
-            const auto rhs_transposed = transpose(
-                matrix_rhs,
-                swap_last_axes(matrix_rhs->rank())
-            );
-            const auto lhs_transposed = transpose(
-                matrix_lhs,
-                swap_last_axes(matrix_lhs->rank())
-            );
-            const auto lhs_gradient = unbroadcast(
-                matmul(matrix_upstream, rhs_transposed),
-                matrix_lhs->shape()
-            );
-            const auto rhs_gradient = unbroadcast(
-                matmul(lhs_transposed, matrix_upstream),
-                matrix_rhs->shape()
-            );
+                                             ? reshape(upstream, matrix_output_shape(shape))
+                                             : upstream;
+            const auto rhs_transposed = transpose(matrix_rhs, swap_last_axes(matrix_rhs->rank()));
+            const auto lhs_transposed = transpose(matrix_lhs, swap_last_axes(matrix_lhs->rank()));
+            const auto lhs_gradient =
+                unbroadcast(matmul(matrix_upstream, rhs_transposed), matrix_lhs->shape());
+            const auto rhs_gradient =
+                unbroadcast(matmul(lhs_transposed, matrix_upstream), matrix_rhs->shape());
             gradients.add(lhs, restore_vector_gradient(lhs_gradient, lhs));
             gradients.add(rhs, restore_vector_gradient(rhs_gradient, rhs));
         }
@@ -126,14 +114,8 @@ namespace ormi::core::ops {
         const auto& rhs_dims = rhs.dims();
         const auto lhs_matrix_rank = lhs_vector ? 1 : 2;
         const auto rhs_matrix_rank = rhs_vector ? 1 : 2;
-        const Shape lhs_batch(std::vector<std::int64_t>(
-            lhs_dims.begin(),
-            lhs_dims.end() - lhs_matrix_rank
-        ));
-        const Shape rhs_batch(std::vector<std::int64_t>(
-            rhs_dims.begin(),
-            rhs_dims.end() - rhs_matrix_rank
-        ));
+        const Shape lhs_batch(std::vector<std::int64_t>(lhs_dims.begin(), lhs_dims.end() - lhs_matrix_rank));
+        const Shape rhs_batch(std::vector<std::int64_t>(rhs_dims.begin(), rhs_dims.end() - rhs_matrix_rank));
         auto batch = broadcast(lhs_batch, rhs_batch);
         auto output_dims = batch.dims();
         const auto rows = static_cast<std::size_t>(lhs_vector ? 1 : lhs[lhs.rank() - 2]);
@@ -159,10 +141,7 @@ namespace ormi::core::ops {
         };
     }
 
-    std::shared_ptr<Tensor> matmul(
-        const std::shared_ptr<Tensor>& lhs,
-        const std::shared_ptr<Tensor>& rhs
-    ) {
+    std::shared_ptr<Tensor> matmul(const std::shared_ptr<Tensor>& lhs, const std::shared_ptr<Tensor>& rhs) {
         if (!lhs || !rhs) {
             ORMI_THROW(OperationError, "Matmul requires two tensors.");
         }
@@ -192,9 +171,7 @@ namespace ormi::core::ops {
             );
         }
 
-        const auto promoted = lhs_dtype == rhs_dtype
-            ? lhs_dtype
-            : promote(lhs_dtype, rhs_dtype);
+        const auto promoted = lhs_dtype == rhs_dtype ? lhs_dtype : promote(lhs_dtype, rhs_dtype);
         const auto dtype = precision::apply(matmul_op.precision, promoted);
         const auto promoted_lhs = lhs_dtype == dtype ? lhs : cast(lhs, dtype);
         const auto promoted_rhs = rhs_dtype == dtype ? rhs : cast(rhs, dtype);

@@ -14,6 +14,8 @@ namespace ormi::backends::cuda {
 }
 
 namespace ormi::backends::cuda::fusion::execution {
+    // Own the compiled module, launch-argument storage, and any reduction workspace in Setup.
+    // Tensor pointers are borrowed from the graph owner. Execution reads their current data pointers.
     core::Setup prepare(
         core::Tensor& out,
         std::span<core::Tensor* const> auxiliary_outputs,
@@ -21,6 +23,7 @@ namespace ormi::backends::cuda::fusion::execution {
         State& cuda_state,
         std::shared_ptr<Compiled> compiled
     );
+    // Direct execution without a saved Setup.
     void run(
         core::Tensor& out,
         std::span<core::Tensor* const> auxiliary_outputs,

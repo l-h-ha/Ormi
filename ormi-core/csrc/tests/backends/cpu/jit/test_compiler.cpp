@@ -249,7 +249,8 @@ namespace {
         environment("ORMI_CPU_JIT_CXX", "Z:/ormi/missing/compiler.exe");
         environment("ORMI_CPU_JIT_CXX_ID", "gcc");
 
-        EXPECT_THROW((void)ormi::backends::cpu::jit::resolve(), ormi::jitError);
+        EXPECT_THROW((void)ormi::backends::cpu::jit::resolve(),
+            ormi::backends::cpu::jit::CompilerUnavailable);
     }
 
     TEST(CPUJITCompilerTest, rejectsIncompatibleAutomaticCompiler) {

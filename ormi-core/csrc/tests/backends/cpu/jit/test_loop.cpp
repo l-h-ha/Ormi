@@ -53,6 +53,32 @@ namespace {
         }));
     }
 
+    TEST(CPUJITLoopTest, distinguishesSingletonReductionDimensions) {
+        const auto input = tensor({1, 1, 3, 2});
+        const auto mapped = ormi::core::ops::add(ormi::core::ops::mul(input, input), input);
+        for (const std::vector<std::int64_t> axes : {
+                 std::vector<std::int64_t>{0, 1, 2},
+                 std::vector<std::int64_t>{0, 2}
+             }) {
+            const auto output = ormi::core::ops::mean(mapped, axes, true);
+            const auto expression = ormi::core::runtime::fusion::build(*output);
+            ASSERT_TRUE(expression.has_value());
+
+            const auto result = ormi::backends::cpu::jit::plan(*expression);
+            ASSERT_TRUE(result.strided);
+            std::vector<unsigned> visits(input->rank(), 0);
+            for (const auto axis : result.output_dimensions) {
+                ASSERT_LT(axis, visits.size());
+                ++visits[axis];
+            }
+            for (const auto axis : result.reduced_dimensions) {
+                ASSERT_LT(axis, visits.size());
+                ++visits[axis];
+            }
+            EXPECT_EQ(visits, (std::vector<unsigned>{1, 1, 1, 1}));
+        }
+    }
+
     TEST(CPUJITLoopTest, keepsScalarBroadcastInOneFlatLoop) {
         const auto result = loop(tensor({16}), tensor({}));
 

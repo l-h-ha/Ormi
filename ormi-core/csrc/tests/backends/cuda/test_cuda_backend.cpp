@@ -24,6 +24,7 @@ namespace {
         EXPECT_NE(backend->ops.reduce, nullptr);
         EXPECT_NE(backend->ops.binary, nullptr);
         EXPECT_NE(backend->ops.unary, nullptr);
+        EXPECT_NE(backend->ops.scatter_scalar, nullptr);
         EXPECT_NE(backend->fractional.execute, nullptr);
         EXPECT_NE(backend->fractional.prepare, nullptr);
         EXPECT_NE(backend->fusion.supports, nullptr);

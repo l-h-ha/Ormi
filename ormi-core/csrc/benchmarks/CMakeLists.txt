@@ -24,7 +24,12 @@ endif()
 
 add_executable(ormi_runtime_bench
     main.cpp
+    nn/modules/bench_linear.cpp
+    nn/modules/bench_normalization.cpp
+    nn/modules/bench_stateful.cpp
+    nn/bench_functional.cpp
     graph/bench_autograd.cpp
+    graph/bench_partial.cpp
     graph/bench_cast.cpp
     graph/bench_add.cpp
     graph/bench_unary.cpp
@@ -42,6 +47,7 @@ add_executable(ormi_runtime_bench
     optim/bench_grad_scaler.cpp
     optim/bench_sgd.cpp
     training/bench_dense.cpp
+    training/bench_minibatch.cpp
     training/bench_step.cpp
     runtime/fusion/bench_build.cpp
     runtime/fusion/bench_expr.cpp

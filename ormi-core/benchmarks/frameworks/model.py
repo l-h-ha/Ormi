@@ -6,12 +6,14 @@ from typing import Literal
 
 import numpy as np
 
-
 Framework = Literal["ormi", "pytorch", "tensorflow"]
 Tier = Literal["direct", "optimized"]
 DTypeName = Literal["float16", "float32", "float64"]
 WorkloadName = Literal["pointwise", "reduction", "dense", "pinn"]
 
+###
+###
+###
 
 @dataclass(frozen=True)
 class Spec:
@@ -34,17 +36,14 @@ class Spec:
             f"b{self.batch}-f{self.features}-w{self.width}"
         )
 
-
 @dataclass(frozen=True)
 class Data:
     values: dict[str, np.ndarray]
-
 
 @dataclass(frozen=True)
 class Observation:
     names: tuple[str, ...]
     values: tuple[float, ...]
-
 
 @dataclass
 class Case:
@@ -56,7 +55,6 @@ class Case:
     values: Callable[[], tuple[np.ndarray, ...]]
     observe: Callable[[], Observation]
     synchronize: Callable[[], None]
-
 
 @dataclass(frozen=True)
 class Result:
@@ -79,7 +77,6 @@ class Result:
         )
         return result
 
-
 @dataclass(frozen=True)
 class Unavailable:
     workload: str
@@ -90,10 +87,8 @@ class Unavailable:
     def json(self) -> dict[str, str]:
         return asdict(self)
 
-
 class Unsupported(RuntimeError):
     pass
-
 
 def output_observation(value: np.ndarray) -> Observation:
     array = np.asarray(value, dtype=np.float64)
@@ -106,13 +101,13 @@ def output_observation(value: np.ndarray) -> Observation:
         ),
     )
 
-
 def gradient_observation(
     loss: np.ndarray,
     gradients: Sequence[np.ndarray],
 ) -> Observation:
     names = ["loss"]
     values = [float(np.asarray(loss, dtype=np.float64).reshape(()))]
+
     for index, gradient in enumerate(gradients):
         array = np.asarray(gradient, dtype=np.float64)
         names.extend((f"gradient_{index}_mean", f"gradient_{index}_l2"))
@@ -120,8 +115,8 @@ def gradient_observation(
             float(np.mean(array, dtype=np.float64)),
             float(np.sqrt(np.sum(array * array, dtype=np.float64))),
         ))
-    return Observation(tuple(names), tuple(values))
 
+    return Observation(tuple(names), tuple(values))
 
 def step_observation(
     loss: np.ndarray,
@@ -129,8 +124,10 @@ def step_observation(
 ) -> Observation:
     names = ["loss"]
     values = [float(np.asarray(loss, dtype=np.float64).reshape(()))]
+
     for index, parameter in enumerate(parameters):
         array = np.asarray(parameter, dtype=np.float64)
         names.append(f"parameter_{index}_mean")
         values.append(float(np.mean(array, dtype=np.float64)))
+
     return Observation(tuple(names), tuple(values))

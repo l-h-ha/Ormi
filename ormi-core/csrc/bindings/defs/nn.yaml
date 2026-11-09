@@ -1,0 +1,523 @@
+# Edit NN exports here to regenerate C++ bindings and _C/nn.pyi.
+# Shape and device adapters live in bindings/glue.cpp. Tensor math lives in nn/.
+includes:
+  - bindings/glue.h
+  - bindings/nn.h
+  - ormi/nn/modules/module.h
+  - ormi/nn/modules/linear.h
+  - ormi/nn/modules/activation.h
+  - ormi/nn/modules/sequential.h
+  - ormi/nn/modules/normalization.h
+  - ormi/nn/modules/batch_norm.h
+  - ormi/nn/modules/dropout.h
+  - ormi/nn/dropout.h
+  - ormi/nn/losses/mse.h
+  - ormi/nn/activation.h
+  - ormi/nn/normalization.h
+  - ormi/nn/losses/regression.h
+  - ormi/nn/losses/classification.h
+  - ormi/nn/losses/divergence.h
+
+classes:
+  - name: Module
+    module: nn
+    cpp_type: ormi::nn::Module
+    holder: py::smart_holder
+    trampoline: ormi::bindings::PyModule
+    constructors:
+      - signature: ""
+    methods:
+      - name: forward
+        cpp: forward
+        args: [{name: input, py_type: Tensor}]
+        returns: Tensor
+      - name: __call__
+        cpp: forward
+        args: [{name: input, py_type: Tensor}]
+        returns: Tensor
+      - name: parameters
+        cpp: parameters
+        returns: list[Tensor]
+      - name: children
+        cpp: children
+        returns: list[Module]
+      - name: buffers
+        cpp: buffers
+        returns: list[Tensor]
+      - name: state
+        cpp: state
+        returns: dict[str, Tensor]
+      - name: train
+        cpp: train
+        args: [{name: mode, py_type: bool, default: true}]
+        returns: None
+      - name: eval
+        cpp: eval
+        returns: None
+      - name: register_buffer
+        expr: "&ormi::bindings::PyModule::register_buffer"
+        args:
+          - {name: buffer, py_type: Tensor}
+          - {name: name, py_type: str, default: 'std::string{}', py_default: "''"}
+        returns: None
+      - name: register_parameter
+        expr: "&ormi::bindings::PyModule::register_parameter"
+        args:
+          - {name: parameter, py_type: Tensor}
+          - {name: name, py_type: str, default: 'std::string{}', py_default: "''"}
+        returns: None
+      - name: register_module
+        expr: "&ormi::bindings::PyModule::register_module"
+        args:
+          - {name: module, py_type: Module}
+          - {name: name, py_type: str, default: 'std::string{}', py_default: "''"}
+        returns: None
+
+    properties_readonly:
+      - {name: training, cpp: training, py_type: bool}
+
+  - name: BatchNorm
+    module: nn
+    cpp_type: ormi::nn::BatchNorm
+    base: ormi::nn::Module
+    py_base: Module
+    holder: py::smart_holder
+    final: true
+    constructors:
+      - factory: ormi::bindings::batch_norm_from_python
+        args:
+          - {name: num_features, py_type: int}
+          - {name: eps, py_type: float, default: 1e-5}
+          - {name: momentum, py_type: float, default: 0.1}
+          - {name: affine, py_type: bool, default: true}
+          - {name: track_running_stats, py_type: bool, default: true}
+          - {name: axis, py_type: int, default: -1}
+          - {name: dtype, py_type: DType, default: ormi::core::DType::float32, py_default: DType.float32}
+          - name: device
+            py_type: Device | str | None
+            default: py::str("cpu")
+            py_default: "'cpu'"
+    properties_readonly:
+      - {name: num_features, cpp: num_features, py_type: int}
+      - {name: axis, cpp: axis, py_type: int}
+      - {name: eps, cpp: eps, py_type: float}
+      - {name: momentum, cpp: momentum, py_type: float}
+      - {name: weight, cpp: weight, py_type: Tensor | None}
+      - {name: bias, cpp: bias, py_type: Tensor | None}
+      - {name: running_mean, cpp: running_mean, py_type: Tensor | None}
+      - {name: running_var, cpp: running_var, py_type: Tensor | None}
+
+  - name: Dropout
+    module: nn
+    cpp_type: ormi::nn::Dropout
+    base: ormi::nn::Module
+    py_base: Module
+    holder: py::smart_holder
+    final: true
+    constructors:
+      - signature: double, std::optional<std::uint64_t>
+        args:
+          - {name: p, py_type: float, default: 0.5}
+          - {name: seed, py_type: int | None, default: std::nullopt, py_default: None}
+    properties_readonly:
+      - {name: p, cpp: p, py_type: float}
+      - {name: seed, cpp: seed, py_type: int}
+
+  - name: Linear
+    module: nn
+    cpp_type: ormi::nn::Linear
+    base: ormi::nn::Module
+    py_base: Module
+    holder: py::smart_holder
+    final: true
+    constructors:
+      - factory: ormi::bindings::linear_from_python
+        args:
+          - {name: in_features, py_type: int}
+          - {name: out_features, py_type: int}
+          - {name: bias, py_type: bool, default: true}
+          - name: dtype
+            py_type: DType
+            default: ormi::core::DType::float32
+            py_default: DType.float32
+          - name: device
+            py_type: Device | str | None
+            default: py::str("cpu")
+            py_default: "'cpu'"
+          - name: seed
+            py_type: int | None
+            default: std::nullopt
+            py_default: None
+      - signature: std::shared_ptr<ormi::core::Tensor>, std::shared_ptr<ormi::core::Tensor>
+        args:
+          - {name: weight, py_type: Tensor}
+          - {name: bias, py_type: Tensor | None, default: null}
+    properties_readonly:
+      - {name: weight, cpp: weight, py_type: Tensor}
+      - {name: bias, cpp: bias, py_type: Tensor | None}
+      - {name: in_features, cpp: in_features, py_type: int}
+      - {name: out_features, cpp: out_features, py_type: int}
+
+  - name: LayerNorm
+    module: nn
+    cpp_type: ormi::nn::LayerNorm
+    base: ormi::nn::Module
+    py_base: Module
+    holder: py::smart_holder
+    final: true
+    constructors:
+      - factory: ormi::bindings::layer_norm_from_python
+        args:
+          - {name: normalized_shape, py_type: "int | Sequence[int]"}
+          - {name: eps, py_type: float, default: 1e-5}
+          - {name: elementwise_affine, py_type: bool, default: true}
+          - {name: bias, py_type: bool, default: true}
+          - name: dtype
+            py_type: DType
+            default: ormi::core::DType::float32
+            py_default: DType.float32
+          - name: device
+            py_type: Device | str | None
+            default: py::str("cpu")
+            py_default: "'cpu'"
+    properties_readonly:
+      - {name: normalized_shape, binding: ormi::bindings::layer_norm_shape, py_type: "tuple[int, ...]"}
+      - {name: eps, cpp: eps, py_type: float}
+      - {name: weight, cpp: weight, py_type: Tensor | None}
+      - {name: bias, cpp: bias, py_type: Tensor | None}
+
+  - name: Sin
+    module: nn
+    cpp_type: ormi::nn::Sin
+    base: ormi::nn::Module
+    py_base: Module
+    holder: py::smart_holder
+    final: true
+    constructors:
+      - signature: ""
+
+  - name: ReLU
+    module: nn
+    cpp_type: ormi::nn::ReLU
+    base: ormi::nn::Module
+    py_base: Module
+    holder: py::smart_holder
+    final: true
+    constructors:
+      - signature: ""
+
+  - name: Sigmoid
+    module: nn
+    cpp_type: ormi::nn::Sigmoid
+    base: ormi::nn::Module
+    py_base: Module
+    holder: py::smart_holder
+    final: true
+    constructors:
+      - signature: ""
+
+  - name: Tanh
+    module: nn
+    cpp_type: ormi::nn::Tanh
+    base: ormi::nn::Module
+    py_base: Module
+    holder: py::smart_holder
+    final: true
+    constructors:
+      - signature: ""
+
+  - name: Softplus
+    module: nn
+    cpp_type: ormi::nn::Softplus
+    base: ormi::nn::Module
+    py_base: Module
+    holder: py::smart_holder
+    final: true
+    constructors:
+      - signature: ""
+
+  - name: GELU
+    module: nn
+    cpp_type: ormi::nn::GELU
+    base: ormi::nn::Module
+    py_base: Module
+    holder: py::smart_holder
+    final: true
+    constructors:
+      - signature: ""
+
+  - name: SiLU
+    module: nn
+    cpp_type: ormi::nn::SiLU
+    base: ormi::nn::Module
+    py_base: Module
+    holder: py::smart_holder
+    final: true
+    constructors:
+      - signature: ""
+
+  - name: Softsign
+    module: nn
+    cpp_type: ormi::nn::Softsign
+    base: ormi::nn::Module
+    py_base: Module
+    holder: py::smart_holder
+    final: true
+    constructors:
+      - signature: ""
+
+  - name: Mish
+    module: nn
+    cpp_type: ormi::nn::Mish
+    base: ormi::nn::Module
+    py_base: Module
+    holder: py::smart_holder
+    final: true
+    constructors:
+      - signature: ""
+
+  - name: Softmax
+    module: nn
+    cpp_type: ormi::nn::Softmax
+    base: ormi::nn::Module
+    py_base: Module
+    holder: py::smart_holder
+    final: true
+    constructors:
+      - signature: std::int64_t
+        args: [{name: axis, py_type: int, default: -1}]
+
+  - name: LogSoftmax
+    module: nn
+    cpp_type: ormi::nn::LogSoftmax
+    base: ormi::nn::Module
+    py_base: Module
+    holder: py::smart_holder
+    final: true
+    constructors:
+      - signature: std::int64_t
+        args: [{name: axis, py_type: int, default: -1}]
+
+  - name: LeakyReLU
+    module: nn
+    cpp_type: ormi::nn::LeakyReLU
+    base: ormi::nn::Module
+    py_base: Module
+    holder: py::smart_holder
+    final: true
+    constructors:
+      - signature: double
+        args: [{name: negative_slope, py_type: float, default: 0.01}]
+
+  - name: Sequential
+    module: nn
+    cpp_type: ormi::nn::Sequential
+    base: ormi::nn::Module
+    py_base: Module
+    holder: py::smart_holder
+    final: true
+    constructors:
+      - signature: std::vector<std::shared_ptr<ormi::nn::Module>>
+        args:
+          - name: layers
+            py_type: Sequence[Module]
+            default: std::vector<std::shared_ptr<ormi::nn::Module>>{}
+            py_default: ()
+    methods:
+      - name: append
+        cpp: append
+        args: [{name: layer, py_type: Module}]
+        returns: None
+
+functions:
+  - python: dropout
+    module: nn
+    namespace: ormi::nn
+    cpp: dropout
+    args:
+      - {name: input, py_type: Tensor}
+      - {name: p, py_type: float, default: 0.5}
+      - {name: training, py_type: bool, default: true}
+      - {name: seed, py_type: int | None, default: std::nullopt, py_default: None}
+    returns: Tensor
+  - python: layer_norm
+    module: nn
+    binding: ormi::bindings::layer_norm
+    args:
+      - {name: input, py_type: Tensor}
+      - {name: normalized_shape, py_type: "int | Sequence[int]"}
+      - {name: weight, py_type: Tensor | None, default: null}
+      - {name: bias, py_type: Tensor | None, default: null}
+      - {name: eps, py_type: float, default: 1e-5}
+    returns: Tensor
+  - python: relu
+    module: nn
+    namespace: ormi::nn
+    cpp: relu
+    args:
+      - {name: input, py_type: Tensor}
+    returns: Tensor
+  - python: sigmoid
+    module: nn
+    namespace: ormi::nn
+    cpp: sigmoid
+    args:
+      - {name: input, py_type: Tensor}
+    returns: Tensor
+  - python: tanh
+    module: nn
+    namespace: ormi::nn
+    cpp: tanh
+    args:
+      - {name: input, py_type: Tensor}
+    returns: Tensor
+  - python: softplus
+    module: nn
+    namespace: ormi::nn
+    cpp: softplus
+    args:
+      - {name: input, py_type: Tensor}
+    returns: Tensor
+  - python: leaky_relu
+    module: nn
+    namespace: ormi::nn
+    cpp: leaky_relu
+    args:
+      - {name: input, py_type: Tensor}
+      - {name: negative_slope, py_type: float, default: 0.01}
+    returns: Tensor
+  - python: gelu
+    module: nn
+    namespace: ormi::nn
+    cpp: gelu
+    args:
+      - {name: input, py_type: Tensor}
+    returns: Tensor
+  - python: silu
+    module: nn
+    namespace: ormi::nn
+    cpp: silu
+    args:
+      - {name: input, py_type: Tensor}
+    returns: Tensor
+  - python: softsign
+    module: nn
+    namespace: ormi::nn
+    cpp: softsign
+    args:
+      - {name: input, py_type: Tensor}
+    returns: Tensor
+  - python: mish
+    module: nn
+    namespace: ormi::nn
+    cpp: mish
+    args:
+      - {name: input, py_type: Tensor}
+    returns: Tensor
+  - python: softmax
+    module: nn
+    namespace: ormi::nn
+    cpp: softmax
+    args:
+      - {name: input, py_type: Tensor}
+      - {name: axis, py_type: int, default: -1}
+    returns: Tensor
+  - python: log_softmax
+    module: nn
+    namespace: ormi::nn
+    cpp: log_softmax
+    args:
+      - {name: input, py_type: Tensor}
+      - {name: axis, py_type: int, default: -1}
+    returns: Tensor
+  - python: l1_loss
+    module: nn
+    namespace: ormi::nn
+    cpp: l1_loss
+    args:
+      - {name: prediction, py_type: Tensor}
+      - {name: target, py_type: Tensor}
+      - {name: reduction, py_type: str, default: "\"mean\"", py_default: "'mean'"}
+    returns: Tensor
+  - python: huber_loss
+    module: nn
+    namespace: ormi::nn
+    cpp: huber_loss
+    args:
+      - {name: prediction, py_type: Tensor}
+      - {name: target, py_type: Tensor}
+      - {name: delta, py_type: float, default: 1}
+      - {name: reduction, py_type: str, default: "\"mean\"", py_default: "'mean'"}
+    returns: Tensor
+  - python: smooth_l1_loss
+    module: nn
+    namespace: ormi::nn
+    cpp: smooth_l1_loss
+    args:
+      - {name: prediction, py_type: Tensor}
+      - {name: target, py_type: Tensor}
+      - {name: beta, py_type: float, default: 1}
+      - {name: reduction, py_type: str, default: "\"mean\"", py_default: "'mean'"}
+    returns: Tensor
+  - python: binary_cross_entropy
+    module: nn
+    namespace: ormi::nn
+    cpp: binary_cross_entropy
+    args:
+      - {name: prediction, py_type: Tensor}
+      - {name: target, py_type: Tensor}
+      - {name: reduction, py_type: str, default: "\"mean\"", py_default: "'mean'"}
+      - {name: eps, py_type: float, default: 1e-7}
+    returns: Tensor
+  - python: binary_cross_entropy_with_logits
+    module: nn
+    namespace: ormi::nn
+    cpp: binary_cross_entropy_with_logits
+    args:
+      - {name: logits, py_type: Tensor}
+      - {name: target, py_type: Tensor}
+      - {name: reduction, py_type: str, default: "\"mean\"", py_default: "'mean'"}
+      - {name: pos_weight, py_type: Tensor | None, default: "nullptr", py_default: "None"}
+    returns: Tensor
+  - python: cross_entropy
+    module: nn
+    namespace: ormi::nn
+    cpp: cross_entropy
+    args:
+      - {name: logits, py_type: Tensor}
+      - {name: target, py_type: Tensor}
+      - {name: axis, py_type: int, default: -1}
+      - {name: reduction, py_type: str, default: "\"mean\"", py_default: "'mean'"}
+      - {name: ignore_index, py_type: int, default: -100}
+      - {name: label_smoothing, py_type: float, default: 0}
+    returns: Tensor
+  - python: nll_loss
+    module: nn
+    namespace: ormi::nn
+    cpp: nll_loss
+    args:
+      - {name: log_probabilities, py_type: Tensor}
+      - {name: target, py_type: Tensor}
+      - {name: axis, py_type: int, default: -1}
+      - {name: reduction, py_type: str, default: "\"mean\"", py_default: "'mean'"}
+      - {name: ignore_index, py_type: int, default: -100}
+    returns: Tensor
+  - python: kl_div
+    module: nn
+    namespace: ormi::nn
+    cpp: kl_div
+    args:
+      - {name: log_probabilities, py_type: Tensor}
+      - {name: target, py_type: Tensor}
+      - {name: reduction, py_type: str, default: "\"batchmean\"", py_default: "'batchmean'"}
+      - {name: log_target, py_type: bool, default: false}
+    returns: Tensor
+  - python: mse_loss
+    module: nn
+    namespace: ormi::nn
+    cpp: mse_loss
+    args:
+      - {name: prediction, py_type: Tensor}
+      - {name: target, py_type: Tensor}
+      - {name: reduction, py_type: str, default: '"mean"', py_default: "'mean'"}
+    returns: Tensor

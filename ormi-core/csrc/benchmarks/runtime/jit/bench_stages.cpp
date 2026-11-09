@@ -413,6 +413,25 @@ namespace {
         ormi::backends::cpu::jit::cache::discard(source, context);
     }
 
+    void bmDiskFind(benchmark::State& state, bool hit) {
+        const auto source = "ORMI CPU JIT find benchmark " +
+            std::to_string(artifact_sequence.fetch_add(1));
+        constexpr std::string_view context = "benchmark";
+        const auto seeded = ormi::backends::cpu::jit::cache::get(
+            source, context, writeBenchmarkArtifact
+        );
+        const auto requested = hit ? source : source + " missing";
+
+        for (auto _ : state) {
+            const auto found = ormi::backends::cpu::jit::cache::find(requested, context);
+            benchmark::DoNotOptimize(found.has_value());
+            if (found.has_value() != hit) {
+                state.SkipWithError("CPU JIT disk lookup returned an unexpected result.");
+                break;
+            }
+        }
+    }
+
     void bmLibraryLoad(benchmark::State& state) {
         const auto root = chain(1);
         const auto expression = ormi::core::runtime::fusion::build(*root).value();
@@ -527,6 +546,8 @@ BENCHMARK(bmBatchMemoryLookup)
     ->Arg(2)
     ->Arg(7);
 BENCHMARK(bmDiskLookup)->Name("runtime/jit/disk_lookup");
+BENCHMARK_CAPTURE(bmDiskFind, hit, true)->Name("runtime/jit/disk_find/hit")->UseRealTime();
+BENCHMARK_CAPTURE(bmDiskFind, miss, false)->Name("runtime/jit/disk_find/miss")->UseRealTime();
 BENCHMARK(bmLibraryLoad)->Name("runtime/jit/library_load");
 BENCHMARK(bmPrepare)->Name("runtime/jit/prepare");
 BENCHMARK(bmEmit)->Name("runtime/jit/emit");

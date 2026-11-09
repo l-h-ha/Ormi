@@ -40,11 +40,7 @@ namespace ormi::backends::cpu {
             if (bytes == 0) {
                 return nullptr;
             }
-            return ::operator new(
-                bytes,
-                std::align_val_t{alignment},
-                std::nothrow
-            );
+            return ::operator new(bytes, std::align_val_t{alignment}, std::nothrow);
         }
 
         void aligned_deallocate(void* ptr) {

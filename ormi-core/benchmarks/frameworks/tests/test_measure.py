@@ -7,6 +7,9 @@ import numpy as np
 from benchmarks.frameworks.measure import percentile, verify
 from benchmarks.frameworks.model import Case, Observation, Spec
 
+###
+###
+###
 
 def case(framework: str) -> Case:
     return Case(
@@ -19,7 +22,6 @@ def case(framework: str) -> Case:
         observe=lambda: Observation((), ()),
         synchronize=lambda: None,
     )
-
 
 class MeasurementTest(unittest.TestCase):
     def test_percentile_interpolates_ordered_samples(self) -> None:
@@ -37,6 +39,9 @@ class MeasurementTest(unittest.TestCase):
         with self.assertRaises(AssertionError):
             verify(spec, [reference, candidate], values)
 
+###
+###
+###
 
 if __name__ == "__main__":
     unittest.main()

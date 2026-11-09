@@ -2,15 +2,16 @@
 name = "ormi-workspace"
 version = "0.1.0"
 license = { text = "MIT" }
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.14"
 dependencies = [
-    "ormi-core",
+    "ormi",
 ]
 
 [tool.uv.workspace]
-members = ["ormi-core", "ormi-cuda"]
+members = ["ormi", "ormi-core", "ormi-cuda"]
 
 [tool.uv.sources]
+ormi = { workspace = true }
 ormi-core = { workspace = true }
 ormi-cuda = { workspace = true }
 
@@ -20,4 +21,6 @@ dev = [
     "pytest>=9.0.3",
     "pytest-benchmark>=5.2.3",
     "PyYAML>=6.0",
+    "pyright==1.1.414",
+    "typing-extensions>=4.2",
 ]

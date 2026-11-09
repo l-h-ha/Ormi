@@ -59,7 +59,7 @@ namespace ormi::backends::cuda::fusion {
 
         using Cache = std::unordered_map<std::uint64_t, std::vector<Entry>>;
 
-        // Reuse the caller's hash storage and preserve the inlined lookup path.
+        // Reuse the caller's hash storage and keep this lookup inline.
         __forceinline__ const Entry* find_entry(
             const Cache& cache,
             const std::uint64_t& hash,
@@ -121,6 +121,8 @@ namespace ormi::backends::cuda::fusion {
             return entry->compiled;
         }
 
+        // A second caller may have compiled this expression while we waited. Recheck before
+        // generating source or calling NVRTC. Shared cache tables are replaced, never modified.
         std::lock_guard lock(mutex);
         current = published.load(std::memory_order_acquire);
         if (const auto* entry = find_entry(*current, hash, device, major, minor, expression)) {

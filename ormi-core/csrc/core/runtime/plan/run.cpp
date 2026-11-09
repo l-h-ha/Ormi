@@ -13,6 +13,8 @@ namespace ormi::core {
             step.run();
         }
 
+        // Keep explicit Plan updates after the steps, so they read this run's computed values.
+        // NN state-update nodes, if present, execute within the step sequence above.
         for (const auto& copy : copies_) {
             const auto bytes = copy.destination->bytes();
             if (bytes == 0) {

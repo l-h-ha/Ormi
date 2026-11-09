@@ -2,61 +2,54 @@
 
 ## Unreleased
 
-### Fixed
+### Added
 
-- Pin Linux CUDA wheel repair to `patchelf 0.17.2.4` to avoid a cuBLAS
-  load-time crash caused by `patchelf 0.18.0`.
-- Release CPU JIT cache leases before repairing invalid libraries, avoiding
-  a deadlock when recovery tries to acquire the same entry's write lock.
-- Preserve CPU/CUDA cache inspection errors during scanning and deletion
-  instead of overwriting them or treating them as missing files.
-- Remove any stale `.ok` compiler-probe result when caching a process-launch
-  failure.
-- Initialize CUDA graph handles to null before capture so early failure cleanup
-  does not destroy uninitialized handles.
-- Fix timeout tests that assumed the child reached `main()` before its deadline,
-  and make CUDA grouped-launch tests compile with GCC.
+- Build and publish `ormi` with `ormi-core` and `ormi-cuda`. Check version pins
+  and test clean installs on Windows and Linux with CPython 3.10-3.13.
+- Add the C++ neural network API and generate its Python bindings from YAML.
+  Add Linear, Sequential, LayerNorm, BatchNorm, Dropout, common activations
+  and losses, `rsqrt`, and indexed selection.
+- Support custom Python layers with named parameters, buffers, and children.
+  Python builds require pybind11 3.0 or newer.
+- Add `batches` and `fit` with seeded shuffling, progress reporting, and one
+  Plan per batch shape. Keep the short final batch by default. The PINN and
+  minibatch examples use `fit`.
+- Add `Tensor.copy_from` to update existing input storage for Plan runs and
+  CUDA replay. Source and destination shapes and dtypes must match.
+- Add `ormi.save` and `ormi.load` for parameters and buffers, including shared
+  tensors. Files do not store optimizer state or training progress.
+- Add single-input `grad` and lazy higher-order `partial` derivatives for
+  points that can affect each other.
 
 ### Changed
 
-- Move Plan construction to `core/runtime/plan/build.cpp`, execution and update
-  copies to `core/runtime/plan/run.cpp`, and recording and replay to
-  `core/runtime/plan/record.cpp`.
-- Use the same lowering code for tensor realization and Plans. Represent step
-  kinds and pending preparation explicitly. Separate fusion layout calculations
-  from graph traversal.
-- Require static operation descriptors through `op_ref<descriptor>()` when
-  constructing lazy C++ tensors. Move prepared backend state to
-  `ormi/core/setup.h`; `op.h` continues to include it.
-- Use backend ID and device index consistently for device equality.
-- Test C++20 syntax and standard-library headers during automatic CPU compiler
-  discovery, and cache the result for each compiler and environment.
-  `ORMI_CPU_JIT_CXX` skips this probe and automatic selection; compiler lookup
-  still waits until an uncached CPU kernel needs compilation.
-- Separate CPU JIT discovery, invocation, probing, code generation, compilation,
-  artifact loading, and execution. Separate execution policy from worker-pool
-  synchronization and thread ownership.
-- Separate CUDA fusion code generation, NVRTC compilation, module loading,
-  execution, and cache management.
-- Move Linux process execution and shared-library loading into
-  `platform/linux/process.cpp` and `platform/linux/library.cpp`.
+- Run CPU graphs without a compatible C++ compiler. Reuse cached fused kernels
+  when available and run precompiled operations otherwise. Invalid settings
+  and compiler failures still raise errors.
+- Check C++20 syntax and headers during automatic CPU compiler discovery.
+- Walk strided CPU unary and broadcast inputs in spans. Skip fusion source
+  generation when building a Plan without a compiler and with an empty JIT cache.
+- Split large AVX2 matmuls across CPU workers and reuse right-hand panels.
+- Bump the backend ABI to 18 for indexed operations, dropout masks, and scalar
+  scatter. The core and CUDA plugin must match.
+- Separate Plan construction (`plan/build.cpp`), execution (`plan/run.cpp`),
+  and recording and replay (`plan/record.cpp`) under `core/runtime/`.
+- Separate CPU JIT compiler discovery, invocation, and cache handling.
+  Separate CUDA compilation from kernel loading and execution.
 
-### Performance
+### Fixed
 
-- Improve AVX2 matmul worker partitioning, right-hand panel reuse, and cache
-  blocking for large transposed-left products.
-- Calculate CPU JIT broadcast addresses before inner loops for MSVC
-  vectorization and reuse prepared execution storage instead of allocating
-  temporary arrays.
-- Do not allocate a buffer-cleanup list when all grouped outputs already have
-  buffers. Failed runs release only buffers allocated during that run.
-
-### Tests and Benchmarks
-
-- Expand CPU/CUDA coverage for concurrency, ownership, failure recovery,
-  compiler selection, cache maintenance, generated kernels, and platform loaders.
-- Add separate measurements for loop planning, code generation, JIT execution,
-  scheduling, and Plan steps. CPU matmul benchmarks now use wall time.
+- Stage the SLEEF DLL for Windows C++ examples when SLEEF is enabled.
+- Defer layers appended during a Sequential forward pass until its next call.
+- Use distinct CPU JIT reduction indices for singleton axes with equal strides.
+- Release CPU JIT cache locks before repairing invalid libraries. Report cache
+  inspection errors and discard stale compiler probe results.
+- Initialize CUDA graph handles to null before capture so cleanup can check them
+  if capture fails.
+- Pin Linux CUDA wheel repair to `patchelf 0.17.2.4` to avoid cuBLAS load failures.
+- Fix process tests that assumed the child reached `main()` before a timeout.
+  Link the MinGW helper statically so tests can replace `PATH`. Fix GCC builds
+  of the CUDA grouped-launch tests.
 
 ## 0.1.0a6 - 2026-08-12
 

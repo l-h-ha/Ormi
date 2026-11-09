@@ -13,6 +13,8 @@ namespace ormi::core::runtime {
 }
 
 namespace ormi::core {
+    // Construction resolves and caches the backend table and may load an optional plugin.
+    // The device index selects a device within that backend, for example CUDA device 0.
     class Device {
     public:
         Device();

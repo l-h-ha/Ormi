@@ -198,7 +198,7 @@ namespace ormi::backends::cpu::jit {
             const auto executable = platform::find(explicit_compiler);
             if (!executable) {
                 ORMI_THROW(
-                    jitError,
+                    CompilerUnavailable,
                     "ORMI_CPU_JIT_CXX does not resolve to an executable: " +
                         explicit_compiler
                 );
@@ -258,7 +258,7 @@ namespace ormi::backends::cpu::jit {
         }
 
         ORMI_THROW(
-            jitError,
+            CompilerUnavailable,
             "No compatible CPU JIT compiler was found. Install a supported "
             "compiler or set ORMI_CPU_JIT_CXX." +
                 (diagnostics.empty()
@@ -270,5 +270,17 @@ namespace ormi::backends::cpu::jit {
     const Toolchain& toolchain() {
         static const Toolchain value = resolve();
         return value;
+    }
+
+    bool compiler_available() {
+        static const bool available = [] {
+            try {
+                (void)toolchain();
+                return true;
+            } catch (const CompilerUnavailable&) {
+                return false;
+            }
+        }();
+        return available;
     }
 }

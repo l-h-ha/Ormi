@@ -35,11 +35,7 @@ namespace ormi::backends::cpu {
             const auto* gradient_data = static_cast<const T*>(gradient.data());
             const auto elements = out.numel();
 
-            if (
-                out.is_contiguous() &&
-                parameter.is_contiguous() &&
-                gradient.is_contiguous()
-            ) {
+            if (out.is_contiguous() && parameter.is_contiguous() && gradient.is_contiguous()) {
                 for (std::size_t i = 0; i < elements; ++i) {
                     out_data[i] = updated(parameter_data[i], gradient_data[i], step_size);
                 }
@@ -50,11 +46,8 @@ namespace ormi::backends::cpu {
                 const auto out_offset = storage_offset(i, out);
                 const auto parameter_offset = storage_offset(i, parameter);
                 const auto gradient_offset = storage_offset(i, gradient);
-                out_data[out_offset] = updated(
-                    parameter_data[parameter_offset],
-                    gradient_data[gradient_offset],
-                    step_size
-                );
+                out_data[out_offset] =
+                    updated(parameter_data[parameter_offset], gradient_data[gradient_offset], step_size);
             }
         }
     }

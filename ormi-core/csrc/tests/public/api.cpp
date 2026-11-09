@@ -28,6 +28,11 @@
 #include <ormi/core/setup.h>
 #include <ormi/core/shape.h>
 #include <ormi/core/tensor.h>
+#include <ormi/nn/losses/mse.h>
+#include <ormi/nn/modules/activation.h>
+#include <ormi/nn/modules/linear.h>
+#include <ormi/nn/modules/module.h>
+#include <ormi/nn/modules/sequential.h>
 
 template <typename T>
 concept ExposesBackend = requires(const T& value) {

@@ -1,6 +1,7 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <mutex>
 #include <span>
@@ -12,6 +13,7 @@
 #include <ormi/core/error.h>
 
 #include "backends/cpu/jit/artifact.h"
+#include "backends/cpu/jit/cache.h"
 #include "backends/cpu/jit/codegen.h"
 #include "backends/cpu/jit/compile.h"
 #include "backends/cpu/jit/loop.h"
@@ -61,6 +63,8 @@ namespace ormi::backends::cpu::jit {
 
         using Cache = std::unordered_map<std::uint64_t, std::vector<Entry>>;
 
+        // entries points into owner. Keep that snapshot alive while another thread publishes
+        // a replacement table. Replacing published does not invalidate these pointers.
         struct FrontCache {
             std::shared_ptr<const Cache> owner;
             std::array<const Entry*, 4> entries{};
@@ -155,6 +159,42 @@ namespace ormi::backends::cpu::jit {
                 units[i]->compiled = std::move(compiled[i]);
             }
         }
+    }
+
+    bool cached(const core::runtime::fusion::Expr& expression) {
+        if (find_memory(expression)) {
+            return true;
+        }
+
+        std::lock_guard lock(cache_mutex);
+        auto current = published.load(std::memory_order_acquire);
+        const core::runtime::fusion::Key key(expression);
+        if (const auto* entry = find_entry(*current, expression, key.hash())) {
+            remember(std::move(current), *entry);
+            return true;
+        }
+        // Only positive scans are remembered. Every artifact lookup still validates its files.
+        static std::filesystem::path populated_directory;
+        const auto directory = cache::directory();
+        if (populated_directory != directory) {
+            if (!cache::has_entries()) {
+                return false;
+            }
+            populated_directory = directory;
+        }
+
+        const auto loop = plan(expression);
+        auto compiled = artifact::find(emit(expression, loop), launch(expression, loop));
+        if (!compiled) {
+            return false;
+        }
+
+        auto next = std::make_shared<Cache>(*current);
+        auto& entries = (*next)[key.hash()];
+        entries.emplace_back(expression, std::move(compiled));
+        published.store(next, std::memory_order_release);
+        remember(std::move(next), entries.back());
+        return true;
     }
 
     std::shared_ptr<Compiled> compile(

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Published ormi-core version
+        description: Published ORMI package version
         required: true
         type: string
   workflow_run:
@@ -72,6 +72,16 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
+      - name: Create clean Python environment
+        shell: bash
+        run: |
+          python -m venv "$RUNNER_TEMP/ormi-release"
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            echo "$RUNNER_TEMP/ormi-release/Scripts" >> "$GITHUB_PATH"
+          else
+            echo "$RUNNER_TEMP/ormi-release/bin" >> "$GITHUB_PATH"
+          fi
+
       - name: Setup MSVC
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
@@ -91,16 +101,28 @@ jobs:
           echo "ORMI_CPU_JIT_CXX=$(command -v g++)" >> "$GITHUB_ENV"
           echo "ORMI_CPU_JIT_CXX_ID=gcc" >> "$GITHUB_ENV"
 
-      - name: Install published wheel
-        run: python -m pip install numpy pytest
+      - name: Install test dependencies
+        run: python -m pip install numpy "tqdm>=4.67,<5" pytest
 
       - name: Install ORMI from its package index
         run: >-
           python -m pip install
-          --no-deps
           --only-binary=:all:
           --index-url https://l-h-ha.github.io/Ormi/whl/
-          ormi-core==${{ needs.release.outputs.version }}
+          ormi==${{ needs.release.outputs.version }}
+
+      - name: Check installed dependencies
+        run: python -m pip check
+
+      - name: Verify installed Python API
+        working-directory: ${{ runner.temp }}
+        env:
+          ORMI_CPU_JIT_CACHE_DIR: ${{ runner.temp }}/ormi-release-api-jit
+        run: >-
+          python -I -m pytest --noconftest --import-mode=importlib
+          --rootdir "${{ github.workspace }}/ormi/release-tests"
+          "${{ github.workspace }}/ormi/release-tests"
+          -q -p no:cacheprovider
 
       - name: Verify CPU without a compiler
         env:
@@ -110,6 +132,18 @@ jobs:
             ${{ runner.os == 'Windows' && 'msvc' || 'gcc' }}
         run: >-
           python -m pytest ormi-core/release-tests/test_cpu.py
+          -q -p no:cacheprovider
+
+      - name: Verify CPU training without a compiler
+        working-directory: ${{ runner.temp }}
+        env:
+          ORMI_CPU_JIT_CACHE_DIR: ${{ runner.temp }}/ormi-compiler-free-jit
+          ORMI_CPU_JIT_CXX: ormi-compiler-does-not-exist
+          ORMI_CPU_JIT_CXX_ID: gcc
+        run: >-
+          python -I -m pytest --noconftest --import-mode=importlib
+          --rootdir "${{ github.workspace }}/ormi/release-tests"
+          "${{ github.workspace }}/ormi/release-tests"
           -q -p no:cacheprovider
 
       - name: Verify uncached CPU JIT

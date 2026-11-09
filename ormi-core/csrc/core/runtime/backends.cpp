@@ -114,7 +114,7 @@ namespace ormi::core::runtime {
             );
         }
         if (backend->abi != backend_abi) {
-            ORMI_THROW(DeviceError, "Backend ABI is incompatible with this ORMI core.");
+            ORMI_THROW(DeviceError, "Backend interface version does not match this ORMI core.");
         }
 
         install(id, *backend, std::move(loaded));

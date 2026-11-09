@@ -1,0 +1,7 @@
+{
+    "include": ["tests/typing/valid.py", "examples/pinn.py", "examples/minibatch.py"],
+    "typeCheckingMode": "standard",
+    "strict": ["tests/typing/valid.py"],
+    "extraPaths": [],
+    "pythonVersion": "3.10"
+}

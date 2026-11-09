@@ -16,7 +16,7 @@ namespace ormi::backends::cpu::jit::codegen::reduction {
                 ++level
             ) {
                 const auto dimension = code.loop.output_dimensions[level];
-                // Worker bounds count output elements; the outer loop counts slabs.
+                // Worker bounds count output elements. The outer loop counts slabs.
                 const auto first = level == 0 && code.loop.ranged;
                 const auto begin = first
                     ? (

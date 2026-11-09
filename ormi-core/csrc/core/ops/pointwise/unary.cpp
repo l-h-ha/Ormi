@@ -9,30 +9,29 @@
 #include <ormi/core/ops/pointwise.h>
 #include <ormi/core/tensor.h>
 
-#include "core/runtime/dispatch/pointwise.h"
 #include "core/precision.h"
+#include "core/runtime/dispatch/pointwise.h"
 
 namespace ormi::core::ops {
     namespace {
-
         void compute_neg(Tensor& out) {
-            runtime::pointwise::unary(core::ops::UnaryOp::neg, out, *out.parents()[0]);
+            runtime::pointwise::unary(UnaryOp::neg, out, *out.parents()[0]);
         }
 
         void compute_exp(Tensor& out) {
-            runtime::pointwise::unary(core::ops::UnaryOp::exp, out, *out.parents()[0]);
+            runtime::pointwise::unary(UnaryOp::exp, out, *out.parents()[0]);
         }
 
         void compute_log(Tensor& out) {
-            runtime::pointwise::unary(core::ops::UnaryOp::log, out, *out.parents()[0]);
+            runtime::pointwise::unary(UnaryOp::log, out, *out.parents()[0]);
         }
 
         void compute_sin(Tensor& out) {
-            runtime::pointwise::unary(core::ops::UnaryOp::sin, out, *out.parents()[0]);
+            runtime::pointwise::unary(UnaryOp::sin, out, *out.parents()[0]);
         }
 
         void compute_cos(Tensor& out) {
-            runtime::pointwise::unary(core::ops::UnaryOp::cos, out, *out.parents()[0]);
+            runtime::pointwise::unary(UnaryOp::cos, out, *out.parents()[0]);
         }
 
         void adjoint_neg(
@@ -56,7 +55,8 @@ namespace ormi::core::ops {
             const std::shared_ptr<Tensor>& upstream,
             Grads& gradients
         ) {
-            gradients.add(node->parents()[0], div(upstream, node->parents()[0]));
+            const auto& input = node->parents()[0];
+            gradients.add(input, div(upstream, input));
         }
 
         void adjoint_sin(
@@ -64,7 +64,8 @@ namespace ormi::core::ops {
             const std::shared_ptr<Tensor>& upstream,
             Grads& gradients
         ) {
-            gradients.add(node->parents()[0], mul(upstream, cos(node->parents()[0])));
+            const auto& input = node->parents()[0];
+            gradients.add(input, mul(upstream, cos(input)));
         }
 
         void adjoint_cos(
@@ -72,7 +73,9 @@ namespace ormi::core::ops {
             const std::shared_ptr<Tensor>& upstream,
             Grads& gradients
         ) {
-            gradients.add(node->parents()[0], neg(mul(upstream, sin(node->parents()[0]))));
+            const auto& input = node->parents()[0];
+            const auto gradient = mul(upstream, sin(input));
+            gradients.add(input, neg(gradient));
         }
 
         const Op neg_op{
@@ -140,7 +143,7 @@ namespace ormi::core::ops {
             }
 
             if (!is_floating(input->dtype())) {
-                ORMI_THROW(DTypeError, "Transcendental operations require floating-point tensors.");
+                ORMI_THROW(DTypeError, "This operation requires a floating-point tensor.");
             }
 
             if (!precision::state.enabled) {

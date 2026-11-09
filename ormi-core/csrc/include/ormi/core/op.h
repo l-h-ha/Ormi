@@ -22,8 +22,12 @@ namespace ormi::core {
         float32
     };
 
+    // Parents are realized before compute runs. Allocating outputs already have storage.
+    // Alias callbacks run before the output borrows storage and must not call out.data().
     using Compute = void (*)(Tensor&);
+    // Return owned kernel/workspace state for repeated execution, or an empty Setup for compute.
     using Prepare = Setup (*)(Tensor&);
+    // Adjoint: build gradient expressions and add them to Grads without running kernels.
     using Adjoint = void (*)(
         const std::shared_ptr<Tensor>&,
         const std::shared_ptr<Tensor>&,
@@ -32,6 +36,8 @@ namespace ormi::core {
 
     using ScalarOp = std::variant<std::monostate, ops::UnaryOp, ops::BinaryOp>;
 
+    // Each operation has one static descriptor. Nodes point to it through OpRef.
+    // scalar identifies operations the fusion builder can put inside a kernel.
     struct Op {
         std::string_view name;
         Output output;

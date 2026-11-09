@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <limits>
 #include <optional>
+#include <span>
 #include <utility>
 #include <variant>
 
@@ -21,9 +22,7 @@ namespace ormi::backends::cpu::jit {
             return std::all_of(
                 iteration.axes.begin(),
                 iteration.axes.end(),
-                [](const core::runtime::fusion::Axis& axis) {
-                    return axis.stride == axis.divisor;
-                }
+                [](const core::runtime::fusion::Axis& axis) { return axis.stride == axis.divisor; }
             );
         }
 
@@ -54,19 +53,12 @@ namespace ormi::backends::cpu::jit {
             return std::any_of(
                 expression.nodes.begin(),
                 expression.nodes.end(),
-                [](const core::runtime::fusion::Node& node) {
-                    return node.dtype == core::DType::float16;
-                }
+                [](const core::runtime::fusion::Node& node) { return node.dtype == core::DType::float16; }
             );
         }
 
-        bool vectorizable_arithmetic(
-            const core::runtime::fusion::Expr& expression
-        ) {
-            if (
-                expression.dtype != core::DType::float32 &&
-                expression.dtype != core::DType::float64
-            ) {
+        bool vectorizable_arithmetic(const core::runtime::fusion::Expr& expression) {
+            if (expression.dtype != core::DType::float32 && expression.dtype != core::DType::float64) {
                 return false;
             }
 
@@ -74,22 +66,19 @@ namespace ormi::backends::cpu::jit {
                 expression.nodes.begin(),
                 expression.nodes.end(),
                 [](const core::runtime::fusion::Node& node) {
-                    const auto* unary =
-                        std::get_if<core::runtime::fusion::Unary>(
-                            &node.instruction
-                        );
+                    const auto* unary = std::get_if<core::runtime::fusion::Unary>(&node.instruction);
+                    const auto* binary = std::get_if<core::runtime::fusion::Binary>(&node.instruction);
+                    if (binary && (binary->op == core::ops::BinaryOp::minimum ||
+                                   binary->op == core::ops::BinaryOp::maximum)) {
+                        return true;
+                    }
                     return unary && unary->op != core::ops::UnaryOp::neg;
                 }
             );
         }
 
-        bool vectorizable_math(
-            const core::runtime::fusion::Expr& expression
-        ) {
-            if (
-                expression.dtype != core::DType::float32 ||
-                expression.reduction
-            ) {
+        bool vectorizable_math(const core::runtime::fusion::Expr& expression) {
+            if (expression.dtype != core::DType::float32 || expression.reduction) {
                 return false;
             }
 
@@ -98,11 +87,17 @@ namespace ormi::backends::cpu::jit {
                 if (node.dtype != core::DType::float32) {
                     return false;
                 }
-                const auto* unary =
-                    std::get_if<core::runtime::fusion::Unary>(
-                        &node.instruction
-                    );
+                const auto* binary = std::get_if<core::runtime::fusion::Binary>(&node.instruction);
+                if (binary && (binary->op == core::ops::BinaryOp::minimum ||
+                               binary->op == core::ops::BinaryOp::maximum)) {
+                    return false;
+                }
+                const auto* unary = std::get_if<core::runtime::fusion::Unary>(&node.instruction);
                 if (unary && unary->op != core::ops::UnaryOp::neg) {
+                    if (unary->op != core::ops::UnaryOp::exp && unary->op != core::ops::UnaryOp::log &&
+                        unary->op != core::ops::UnaryOp::sin && unary->op != core::ops::UnaryOp::cos) {
+                        return false;
+                    }
                     found = true;
                 }
             }
@@ -112,15 +107,14 @@ namespace ormi::backends::cpu::jit {
         std::optional<std::size_t> dimension(
             std::size_t logical_stride,
             std::size_t extent,
-            const std::vector<std::size_t>& shape
+            const std::vector<std::size_t>& shape,
+            std::span<const std::size_t> assigned = {}
         ) {
             std::size_t divisor = 1;
             for (std::size_t i = shape.size(); i > 0; --i) {
                 const auto dimension = i - 1;
-                if (
-                    divisor == logical_stride &&
-                    shape[dimension] == extent
-                ) {
+                if (divisor == logical_stride && shape[dimension] == extent &&
+                    std::find(assigned.begin(), assigned.end(), dimension) == assigned.end()) {
                     return dimension;
                 }
                 divisor *= shape[dimension];
@@ -140,8 +134,7 @@ namespace ormi::backends::cpu::jit {
                 std::vector<std::size_t>(expression.shape.size(), 0)
             );
             for (const auto& node : expression.nodes) {
-                const auto* input =
-                    std::get_if<core::runtime::fusion::Input>(&node.instruction);
+                const auto* input = std::get_if<core::runtime::fusion::Input>(&node.instruction);
                 if (!input) {
                     continue;
                 }
@@ -157,12 +150,7 @@ namespace ormi::backends::cpu::jit {
                     continue;
                 }
                 for (const auto& axis : input->axes) {
-                    const auto output_dimension =
-                        dimension(
-                            axis.divisor,
-                            axis.extent,
-                            expression.shape
-                        );
+                    const auto output_dimension = dimension(axis.divisor, axis.extent, expression.shape);
                     if (!output_dimension) {
                         return std::nullopt;
                     }
@@ -174,28 +162,23 @@ namespace ormi::backends::cpu::jit {
 
         std::optional<std::vector<std::size_t>> dimensions(
             const core::runtime::fusion::Iteration& iteration,
-            const std::vector<std::size_t>& shape
+            const std::vector<std::size_t>& shape,
+            std::vector<std::size_t>& assigned
         ) {
             std::vector<std::size_t> result;
             result.reserve(iteration.axes.size());
             for (const auto& axis : iteration.axes) {
-                const auto value = dimension(
-                    axis.stride,
-                    axis.extent,
-                    shape
-                );
+                const auto value = dimension(axis.stride, axis.extent, shape, assigned);
                 if (!value) {
                     return std::nullopt;
                 }
                 result.push_back(*value);
+                assigned.push_back(*value);
             }
             return result;
         }
 
-        std::size_t stride_cost(
-            const std::vector<std::vector<std::size_t>>& strides,
-            std::size_t dimension
-        ) {
+        std::size_t stride_cost(const std::vector<std::vector<std::size_t>>& strides, std::size_t dimension) {
             std::size_t result = 0;
             for (const auto& input : strides) {
                 result = std::max(result, input[dimension]);
@@ -206,10 +189,9 @@ namespace ormi::backends::cpu::jit {
         void tile_global_reduction(const core::runtime::fusion::Expr& expression, Loop& loop) {
             for (const auto dimension : loop.reduced_dimensions) {
                 const bool unit_stride = std::all_of(
-                    loop.strides.begin(), loop.strides.end(),
-                    [dimension](const std::vector<std::size_t>& input) {
-                        return input[dimension] <= 1;
-                    }
+                    loop.strides.begin(),
+                    loop.strides.end(),
+                    [dimension](const std::vector<std::size_t>& input) { return input[dimension] <= 1; }
                 );
                 if (unit_stride) {
                     return;
@@ -226,15 +208,12 @@ namespace ormi::backends::cpu::jit {
                     continue;
                 }
                 const bool serves_input = std::any_of(
-                    loop.strides.begin(), loop.strides.end(),
-                    [dimension](const std::vector<std::size_t>& input) {
-                        return input[dimension] <= 1;
-                    }
+                    loop.strides.begin(),
+                    loop.strides.end(),
+                    [dimension](const std::vector<std::size_t>& input) { return input[dimension] <= 1; }
                 );
-                if (
-                    serves_input &&
-                    (!tile_axis || expression.shape[dimension] > expression.shape[*tile_axis])
-                ) {
+                if (serves_input &&
+                    (!tile_axis || expression.shape[dimension] > expression.shape[*tile_axis])) {
                     tile_axis = dimension;
                 }
             }
@@ -247,7 +226,8 @@ namespace ormi::backends::cpu::jit {
 
         void plan_global_reduction(const core::runtime::fusion::Expr& expression, Loop& loop) {
             const auto largest = std::max_element(
-                loop.reduced_dimensions.begin(), loop.reduced_dimensions.end(),
+                loop.reduced_dimensions.begin(),
+                loop.reduced_dimensions.end(),
                 [&expression, &loop](std::size_t lhs, std::size_t rhs) {
                     if (expression.shape[lhs] != expression.shape[rhs]) {
                         return expression.shape[lhs] < expression.shape[rhs];
@@ -257,7 +237,8 @@ namespace ormi::backends::cpu::jit {
             );
             loop.split = *largest;
             std::stable_sort(
-                loop.reduced_dimensions.begin(), loop.reduced_dimensions.end(),
+                loop.reduced_dimensions.begin(),
+                loop.reduced_dimensions.end(),
                 [&loop](std::size_t lhs, std::size_t rhs) {
                     return stride_cost(loop.strides, lhs) > stride_cost(loop.strides, rhs);
                 }
@@ -268,16 +249,11 @@ namespace ormi::backends::cpu::jit {
             const auto inner = loop.reduced_dimensions.back();
             const auto width = lanes(expression.dtype);
             const bool unit_stride = std::all_of(
-                loop.strides.begin(), loop.strides.end(),
-                [inner](const std::vector<std::size_t>& input) {
-                    return input[inner] <= 1;
-                }
+                loop.strides.begin(),
+                loop.strides.end(),
+                [inner](const std::vector<std::size_t>& input) { return input[inner] <= 1; }
             );
-            if (
-                vectorizable_arithmetic(expression) &&
-                unit_stride &&
-                expression.shape[inner] >= width * 8
-            ) {
+            if (vectorizable_arithmetic(expression) && unit_stride && expression.shape[inner] >= width * 8) {
                 loop.vectorized = true;
                 loop.lanes = width;
                 if (loop.split == inner) {
@@ -292,15 +268,14 @@ namespace ormi::backends::cpu::jit {
             if (!loop.output_dimensions.empty() && !loop.reduced_dimensions.empty()) {
                 const auto output_axis = loop.output_dimensions.front();
                 const auto tile = expression.shape.size() == 2 ? 32u : 16u;
-                if (
-                    expression.shape[output_axis] >= tile &&
+                if (expression.shape[output_axis] >= tile &&
                     std::all_of(
-                        loop.strides.begin(), loop.strides.end(),
+                        loop.strides.begin(),
+                        loop.strides.end(),
                         [output_axis](const std::vector<std::size_t>& input) {
                             return input[output_axis] <= 1;
                         }
-                    )
-                ) {
+                    )) {
                     loop.tile = tile;
                     loop.vectorized = true;
                     loop.tile_axis = output_axis;
@@ -314,16 +289,11 @@ namespace ormi::backends::cpu::jit {
             const auto inner = loop.reduced_dimensions.back();
             const auto width = lanes(expression.dtype);
             const bool unit_stride = std::all_of(
-                loop.strides.begin(), loop.strides.end(),
-                [inner](const std::vector<std::size_t>& input) {
-                    return input[inner] <= 1;
-                }
+                loop.strides.begin(),
+                loop.strides.end(),
+                [inner](const std::vector<std::size_t>& input) { return input[inner] <= 1; }
             );
-            if (
-                vectorizable_arithmetic(expression) &&
-                unit_stride &&
-                expression.shape[inner] >= width * 8
-            ) {
+            if (vectorizable_arithmetic(expression) && unit_stride && expression.shape[inner] >= width * 8) {
                 loop.vectorized = true;
                 loop.lanes = width;
             }
@@ -331,18 +301,17 @@ namespace ormi::backends::cpu::jit {
 
         bool plan_direct_reduction(const core::runtime::fusion::Expr& expression, Loop& loop) {
             const auto strides = strided_strides(expression);
-            const auto output = dimensions(expression.reduction->output, expression.shape);
-            const auto reduced = dimensions(expression.reduction->reduced, expression.shape);
-            const bool empty_shape = std::any_of(
-                expression.shape.begin(), expression.shape.end(),
-                [](std::size_t extent) {
+            // Singleton axes can share a stride, but each still needs its own loop index.
+            std::vector<std::size_t> assigned;
+            assigned.reserve(expression.shape.size());
+            const auto output = dimensions(expression.reduction->output, expression.shape, assigned);
+            const auto reduced = dimensions(expression.reduction->reduced, expression.shape, assigned);
+            const bool empty_shape =
+                std::any_of(expression.shape.begin(), expression.shape.end(), [](std::size_t extent) {
                     return extent == 0;
-                }
-            );
-            if (
-                !strides || !output || !reduced || empty_shape ||
-                output->size() + reduced->size() != expression.shape.size()
-            ) {
+                });
+            if (!strides || !output || !reduced || empty_shape ||
+                output->size() + reduced->size() != expression.shape.size()) {
                 return false;
             }
 
@@ -357,8 +326,8 @@ namespace ormi::backends::cpu::jit {
             plan_output_reduction(expression, loop);
 
             if (expression.reduction->output.size > 1 && !loop.output_dimensions.empty()) {
-                const auto slab = expression.reduction->output.size /
-                    expression.shape[loop.output_dimensions.front()];
+                const auto slab =
+                    expression.reduction->output.size / expression.shape[loop.output_dimensions.front()];
                 const auto unit = loop.tile != 0 ? loop.tile * slab : slab;
                 if (expression.reduction->output.size > unit) {
                     loop.ranged = true;
@@ -372,29 +341,19 @@ namespace ormi::backends::cpu::jit {
             const core::runtime::fusion::Expr& expression,
             const std::vector<std::vector<std::size_t>>& strides
         ) {
-            if (
-                expression.shape.size() != 2 ||
-                expression.shape[0] < 32 ||
-                expression.shape[1] < 32
-            ) {
+            if (expression.shape.size() != 2 || expression.shape[0] < 32 || expression.shape[1] < 32) {
                 return false;
             }
 
-            return std::any_of(
-                strides.begin(),
-                strides.end(),
-                [](const std::vector<std::size_t>& input) {
-                    return input.size() == 2 &&
-                        input[0] == 1 &&
-                        input[1] > 1;
-                }
-            );
+            return std::any_of(strides.begin(), strides.end(), [](const std::vector<std::size_t>& input) {
+                return input.size() == 2 && input[0] == 1 && input[1] > 1;
+            });
         }
 
         struct Analysis {
             bool float16;
             bool arithmetic;
-            // Candidate inner span; absent for linear/scalar-only inputs.
+            // Candidate inner span, absent when all inputs are linear or scalar.
             std::optional<std::size_t> span;
         };
 
@@ -405,11 +364,8 @@ namespace ormi::backends::cpu::jit {
         ) {
             const auto width = analysis.float16 ? 8 : lanes(expression.dtype);
             const auto minimum = analysis.float16 ? 64 : width * 8;
-            if (
-                !analysis.arithmetic || analysis.span ||
-                !contiguous(expression.reduction->reduced) ||
-                expression.reduction->reduced.size < minimum
-            ) {
+            if (!analysis.arithmetic || analysis.span || !contiguous(expression.reduction->reduced) ||
+                expression.reduction->reduced.size < minimum) {
                 return;
             }
 
@@ -462,8 +418,7 @@ namespace ormi::backends::cpu::jit {
             }
 
             for (const auto& node : expression.nodes) {
-                const auto* input =
-                    std::get_if<core::runtime::fusion::Input>(&node.instruction);
+                const auto* input = std::get_if<core::runtime::fusion::Input>(&node.instruction);
                 if (!input || input->linear || input->axes.empty()) {
                     continue;
                 }
@@ -491,19 +446,14 @@ namespace ormi::backends::cpu::jit {
         }
     }
 
-    std::size_t parallel_work(
-        const core::runtime::fusion::Expr& expression,
-        bool paired_math
-    ) noexcept {
+    std::size_t parallel_work(const core::runtime::fusion::Expr& expression, bool paired_math) noexcept {
         constexpr std::size_t transcendental_weight = 16;
         constexpr auto limit = std::numeric_limits<std::size_t>::max();
         std::size_t weight = 1;
 
         for (std::size_t i = 0; i < expression.nodes.size(); ++i) {
             const auto& node = expression.nodes[i];
-            const auto* unary = std::get_if<core::runtime::fusion::Unary>(
-                &node.instruction
-            );
+            const auto* unary = std::get_if<core::runtime::fusion::Unary>(&node.instruction);
             if (!unary || unary->op == core::ops::UnaryOp::neg) {
                 continue;
             }
@@ -532,28 +482,17 @@ namespace ormi::backends::cpu::jit {
         Loop result;
         result.inputs.assign(expression.inputs.size(), Access::indexed);
 
-        const bool has_noncontiguous_input = std::any_of(
-            expression.inputs.begin(),
-            expression.inputs.end(),
-            [](const core::Tensor* input) {
+        const bool has_noncontiguous_input =
+            std::any_of(expression.inputs.begin(), expression.inputs.end(), [](const core::Tensor* input) {
                 return !input->is_contiguous();
-            }
-        );
-        const bool has_strided_input = has_noncontiguous_input && std::any_of(
-            expression.inputs.begin(),
-            expression.inputs.end(),
-            [](const core::Tensor* input) {
+            });
+        const bool has_strided_input =
+            has_noncontiguous_input &&
+            std::any_of(expression.inputs.begin(), expression.inputs.end(), [](const core::Tensor* input) {
                 return !input->is_contiguous() && !broadcast_view(*input);
-            }
-        );
+            });
 
-        if (
-            expression.reduction &&
-            (
-                has_noncontiguous_input ||
-                !contiguous(expression.reduction->reduced)
-            )
-        ) {
+        if (expression.reduction && (has_noncontiguous_input || !contiguous(expression.reduction->reduced))) {
             if (plan_direct_reduction(expression, result)) {
                 return result;
             }
@@ -589,19 +528,20 @@ namespace ormi::backends::cpu::jit {
         // Preserve input classifications when a later node needs the indexed fallback.
         for (std::size_t index = 0; index < expression.nodes.size(); ++index) {
             const auto& node = expression.nodes[index];
+            const auto* binary = std::get_if<core::runtime::fusion::Binary>(&node.instruction);
+            if (binary &&
+                (binary->op == core::ops::BinaryOp::minimum || binary->op == core::ops::BinaryOp::maximum)) {
+                arithmetic = false;
+            }
             if (float16) {
-                if (
-                    node.dtype != core::DType::float16 &&
-                    node.dtype != core::DType::float32
-                ) {
+                if (node.dtype != core::DType::float16 && node.dtype != core::DType::float32) {
                     return result;
                 }
             } else if (expression.reduction && node.dtype != expression.dtype) {
                 return result;
             }
 
-            if (const auto* cast =
-                    std::get_if<core::runtime::fusion::Cast>(&node.instruction)) {
+            if (const auto* cast = std::get_if<core::runtime::fusion::Cast>(&node.instruction)) {
                 if (!float16) {
                     continue;
                 }
@@ -609,30 +549,22 @@ namespace ormi::backends::cpu::jit {
                     return result;
                 }
                 const auto source = expression.nodes[cast->input].dtype;
-                if (
-                    source != core::DType::float16 &&
-                    source != core::DType::float32
-                ) {
+                if (source != core::DType::float16 && source != core::DType::float32) {
                     return result;
                 }
             }
 
-            if (const auto* unary =
-                    std::get_if<core::runtime::fusion::Unary>(&node.instruction);
+            if (const auto* unary = std::get_if<core::runtime::fusion::Unary>(&node.instruction);
                 unary && unary->op != core::ops::UnaryOp::neg) {
                 arithmetic = false;
             }
 
-            const auto* input =
-                std::get_if<core::runtime::fusion::Input>(&node.instruction);
+            const auto* input = std::get_if<core::runtime::fusion::Input>(&node.instruction);
             if (!input) {
                 continue;
             }
             if (input->index >= result.inputs.size()) {
-                ORMI_THROW(
-                    OperationError,
-                    "Fusion expression references an invalid input."
-                );
+                ORMI_THROW(OperationError, "Fusion expression references an invalid input.");
             }
 
             if (input->linear) {
@@ -649,9 +581,7 @@ namespace ormi::backends::cpu::jit {
                     return result;
                 }
 
-                const auto limit = axis.divisor == 1
-                    ? axis.extent
-                    : axis.divisor;
+                const auto limit = axis.divisor == 1 ? axis.extent : axis.divisor;
                 if (limit == 0) {
                     return result;
                 }
@@ -659,11 +589,7 @@ namespace ormi::backends::cpu::jit {
             }
         }
 
-        const Analysis analysis{
-            .float16 = float16,
-            .arithmetic = arithmetic,
-            .span = span
-        };
+        const Analysis analysis{.float16 = float16, .arithmetic = arithmetic, .span = span};
         if (expression.reduction) {
             plan_contiguous_reduction(expression, analysis, result);
         } else if (analysis.span) {

@@ -6,9 +6,11 @@ import numpy as np
 
 from .model import DTypeName, Data, Spec, WorkloadName
 
-
 LEARNING_RATE = 0.001
 
+###
+###
+###
 
 def quick_specs() -> list[Spec]:
     return [
@@ -17,7 +19,6 @@ def quick_specs() -> list[Spec]:
         Spec("dense", "medium", 32, 32, 64),
         Spec("pinn", "medium", 32, 1, 32),
     ]
-
 
 def full_specs() -> list[Spec]:
     return [
@@ -35,7 +36,6 @@ def full_specs() -> list[Spec]:
         Spec("pinn", "large", 256, 1, 64),
     ]
 
-
 def corpus(
     suite: str,
     workloads: set[WorkloadName] | None = None,
@@ -51,6 +51,7 @@ def corpus(
 
     if workloads:
         selected = [spec for spec in selected if spec.name in workloads]
+
     if scales:
         selected = [spec for spec in selected if spec.scale in scales]
 
@@ -60,7 +61,6 @@ def corpus(
         for spec in selected
         for dtype in requested_dtypes
     ]
-
 
 def make_data(spec: Spec) -> Data:
     rng = np.random.default_rng(spec.seed)

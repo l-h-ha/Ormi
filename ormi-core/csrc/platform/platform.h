@@ -15,6 +15,7 @@ namespace ormi::platform {
         exclusive
     };
 
+    // Check state first. Read the exit code only for a normal compiler exit.
     struct Process {
         enum class State {
             exited,
@@ -32,13 +33,28 @@ namespace ormi::platform {
         std::vector<std::string> environment;
     };
 
+    // Holds an interprocess file lock until destruction. Release a shared lock before
+    // requesting an exclusive lock on the same cache entry. Lock upgrades are unsupported.
     class FileLock {
     public:
+        enum class Open {
+            create,
+            existing
+        };
+
         explicit FileLock(
             const std::filesystem::path& path,
             Lock mode = Lock::exclusive
         );
+        FileLock(
+            const std::filesystem::path& path,
+            Lock mode,
+            Open policy
+        );
         ~FileLock();
+
+        // Opening an absent file with Open::existing leaves the lock unopened.
+        bool opened() const noexcept { return handle_ != -1; }
 
         FileLock(const FileLock&) = delete;
         FileLock& operator=(const FileLock&) = delete;
@@ -47,6 +63,7 @@ namespace ormi::platform {
         std::intptr_t handle_ = -1;
     };
 
+    // Owns one loaded shared library. Symbol pointers are valid only while it remains loaded.
     class Library {
     public:
         explicit Library(const std::filesystem::path& path);
@@ -64,6 +81,8 @@ namespace ormi::platform {
     };
 
     std::optional<std::filesystem::path> find(std::string_view executable);
+    // Execute directly, without a shell. arguments excludes the executable name.
+    // An empty environment inherits the parent's environment. A nonempty list replaces it.
     Process run(
         const std::filesystem::path& executable,
         std::span<const std::string> arguments,

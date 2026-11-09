@@ -47,25 +47,44 @@ ormi_stage_runtime(ormi_api_test)
 add_test(NAME ApiTest COMMAND ormi_api_test)
 
 set(ORMI_RUNTIME_TEST_SRCS
+    nn/modules/test_module.cpp
+    nn/modules/test_state.cpp
+    nn/modules/test_activation.cpp
+    nn/modules/test_linear.cpp
+    nn/modules/test_normalization.cpp
+    nn/modules/test_batch_norm.cpp
+    nn/modules/test_dropout.cpp
+    nn/test_state.cpp
+    nn/modules/test_batch_norm.cpp
+    nn/modules/test_dropout.cpp
+    nn/test_state.cpp
+    nn/losses/test_mse.cpp
+    nn/losses/test_classification.cpp
+    nn/test_training.cpp
     core/test_autocast.cpp
     core/test_dtype.cpp
     core/test_float16.cpp
     core/test_shape.cpp
     core/test_setup.cpp
     core/test_tensor.cpp
+    core/test_tensor_copy.cpp
     core/test_autograd.cpp
     core/test_training.cpp
     core/autograd/test_fractional.cpp
     core/autograd/test_linalg.cpp
+    core/autograd/test_partial.cpp
     core/autograd/test_reduction.cpp
     core/autograd/test_view.cpp
     core/ops/test_cast.cpp
+    core/ops/test_index.cpp
+    core/ops/test_select.cpp
     core/ops/test_creation.cpp
     core/ops/test_finite.cpp
     core/ops/test_fractional.cpp
     core/ops/test_fractional_accuracy.cpp
     core/ops/test_linalg.cpp
     core/ops/test_pointwise.cpp
+    core/ops/test_rsqrt.cpp
     core/ops/test_reduction.cpp
     core/ops/test_view.cpp
     core/optim/test_grad_scaler.cpp
@@ -96,6 +115,7 @@ endif()
 
 set(ORMI_BACKEND_TEST_SRCS
     backends/cpu/test_cpu_backend.cpp
+    backends/cpu/test_pointwise.cpp
     backends/cpu/jit/test_accuracy.cpp
     backends/cpu/jit/test_cache.cpp
     backends/cpu/jit/test_codegen.cpp
@@ -174,11 +194,31 @@ add_test(
         missing
         "${ORMI_TEST_JIT_COMPILER_CACHE}"
 )
+add_test(
+    NAME CPUJITAutomaticCompilerFallbackTest
+    COMMAND ormi_jit_compiler_helper
+        absent
+        "${ORMI_TEST_JIT_COMPILER_CACHE}"
+)
+foreach(cache_state missing empty)
+    add_test(
+        NAME CPUJITLaterPublication_${cache_state}
+        COMMAND ormi_jit_compiler_helper
+            publish-${cache_state}
+            "${ORMI_TEST_JIT_COMPILER_CACHE}"
+            "${CMAKE_CXX_COMPILER}"
+            "${ORMI_TEST_CXX_ID}"
+    )
+endforeach()
 
 add_executable(ormi_process_helper
     helpers/process.cpp
 )
 target_compile_features(ormi_process_helper PRIVATE cxx_std_20)
+if(MINGW)
+    # Environment-replacement tests run this helper without PATH.
+    target_link_options(ormi_process_helper PRIVATE -static)
+endif()
 
 add_executable(ormi_compiler_probe_helper helpers/compiler_probe.cpp)
 target_compile_features(ormi_compiler_probe_helper PRIVATE cxx_std_20)
@@ -447,6 +487,8 @@ if(ORMI_ENABLE_CUDA)
         backends/cuda/test_cuda_optimizer.cpp
         backends/cuda/test_cuda_plan.cpp
         backends/cuda/test_cuda_pointwise.cpp
+        backends/cuda/test_cuda_nn.cpp
+        backends/cuda/test_cuda_select.cpp
         backends/cuda/test_cuda_record.cpp
         backends/cuda/test_cuda_reduction.cpp
     )

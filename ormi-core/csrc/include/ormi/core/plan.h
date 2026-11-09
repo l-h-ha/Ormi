@@ -6,10 +6,13 @@
 namespace ormi::core {
     class Tensor;
 
+    // A fixed sequence of steps that reads and writes the original tensors directly.
+    // Runs and replays that share tensor storage must not overlap.
     class Plan final {
         class Impl;
 
     public:
+        // Retains the Plan's tensors and workspace, even after the Plan is destroyed.
         class Replay final {
         public:
             ~Replay();
@@ -19,6 +22,7 @@ namespace ormi::core {
             Replay(Replay&&) noexcept;
             Replay& operator=(Replay&&) noexcept;
 
+            // Run the recording without rebuilding or walking the tensor graph.
             void run();
 
         private:
@@ -31,11 +35,15 @@ namespace ormi::core {
             friend class Plan::Impl;
         };
 
+        // Copy value into destination after all scheduled steps have finished submitting work.
+        // Both must be contiguous and match shape, dtype, and device. Destination must be realized.
         struct Update {
             std::shared_ptr<Tensor> destination;
             std::shared_ptr<Tensor> value;
         };
 
+        // Outputs must be lazy. Already-realized dependencies are treated as inputs.
+        // Construction prepares steps and may compile kernels. Call run() to execute them.
         explicit Plan(
             std::vector<std::shared_ptr<Tensor>> outputs,
             std::vector<Update> updates = {}
@@ -47,9 +55,13 @@ namespace ormi::core {
         Plan(Plan&&) noexcept;
         Plan& operator=(Plan&&) noexcept;
 
+        // Rerun all steps and explicit updates, reusing output storage and reading current leaf values.
+        // CUDA work may still be queued when this call returns.
         void run();
+        // Requires a successful run, one device, and backend recording support.
         Replay record();
         std::size_t steps() const noexcept;
+        // Count only step output allocations and reported setup workspace.
         std::size_t storage_buffers() const noexcept;
         std::size_t storage_bytes() const noexcept;
 

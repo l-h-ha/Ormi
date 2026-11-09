@@ -24,8 +24,7 @@ namespace ormi::backends::cuda {
 
         template <typename To, typename From>
         inline constexpr bool checked_int_cast =
-            std::is_same_v<To, std::int32_t> &&
-            (std::is_floating_point_v<From> || is_half<From>);
+            std::is_same_v<To, std::int32_t> && (std::is_floating_point_v<From> || is_half<From>);
 
         template <typename From>
         __device__ double floating_value(From value) {
@@ -43,11 +42,7 @@ namespace ormi::backends::cuda {
                 constexpr double int32_max = 2147483647.0;
                 const auto number = floating_value(value);
 
-                if (
-                    !::isfinite(number) ||
-                    number < int32_min ||
-                    number > int32_max
-                ) {
+                if (!::isfinite(number) || number < int32_min || number > int32_max) {
                     atomicExch(invalid, 1);
                     return 0;
                 }
@@ -79,8 +74,7 @@ namespace ormi::backends::cuda {
             std::size_t elements,
             int* invalid
         ) {
-            std::size_t linear =
-                static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+            std::size_t linear = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
             const auto stride = static_cast<std::size_t>(blockDim.x) * gridDim.x;
 
             for (; linear < elements; linear += stride) {
@@ -96,8 +90,7 @@ namespace ormi::backends::cuda {
             elementwise::Index index,
             int* invalid
         ) {
-            std::size_t linear =
-                static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+            std::size_t linear = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
             const auto stride = static_cast<std::size_t>(blockDim.x) * gridDim.x;
 
             for (; linear < elements; linear += stride) {
@@ -107,12 +100,7 @@ namespace ormi::backends::cuda {
         }
 
         template <typename To, typename From>
-        void submit_cast(
-            core::Tensor& out,
-            const core::Tensor& input,
-            cudaStream_t stream,
-            int* invalid
-        ) {
+        void submit_cast(core::Tensor& out, const core::Tensor& input, cudaStream_t stream, int* invalid) {
             const auto elements = out.numel();
             auto* out_data = static_cast<To*>(out.data());
             const auto* input_data = static_cast<const From*>(input.data());
@@ -140,11 +128,7 @@ namespace ormi::backends::cuda {
         }
 
         template <typename To, typename From>
-        void launch_cast(
-            core::Tensor& out,
-            const core::Tensor& input,
-            State& cuda_state
-        ) {
+        void launch_cast(core::Tensor& out, const core::Tensor& input, State& cuda_state) {
             if constexpr (!checked_int_cast<To, From>) {
                 submit_cast<To, From>(out, input, cuda_state.stream(), nullptr);
                 return;
@@ -170,10 +154,7 @@ namespace ormi::backends::cuda {
                     ),
                     "cudaMemcpyAsyncCastStatus"
                 );
-                check(
-                    cudaStreamSynchronize(cuda_state.stream()),
-                    "cudaStreamSynchronizeCastStatus"
-                );
+                check(cudaStreamSynchronize(cuda_state.stream()), "cudaStreamSynchronizeCastStatus");
             } catch (...) {
                 memory->deallocate(invalid, sizeof(int));
                 throw;
@@ -182,10 +163,7 @@ namespace ormi::backends::cuda {
             memory->deallocate(invalid, sizeof(int));
 
             if (host_invalid != 0) {
-                ORMI_THROW(
-                    DTypeError,
-                    "CUDA cast to Int32 requires finite values within the Int32 range."
-                );
+                ORMI_THROW(DTypeError, "CUDA cast to Int32 requires finite values within the Int32 range.");
             }
         }
 

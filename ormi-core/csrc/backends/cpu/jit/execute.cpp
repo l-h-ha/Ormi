@@ -40,7 +40,7 @@ namespace ormi::backends::cpu::jit::execution {
             const Compiled& compiled;
             core::DType dtype;
             std::size_t elements;
-            // Partial kernels partition the reduction; other kernels partition outputs.
+            // Partial kernels partition the reduction. Other kernels partition outputs.
             std::size_t range;
             core::ops::ReduceOp reduction;
             std::size_t reduced;

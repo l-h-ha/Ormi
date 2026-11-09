@@ -14,17 +14,12 @@ namespace ormi::core::runtime {
         [[noreturn]] void unsupported(const Device& device, std::string_view operation) {
             ORMI_THROW(
                 OperationError,
-                "Backend '" + std::string(device.name()) +
-                    "' does not support " + std::string(operation) + "."
+                "Backend '" + std::string(device.name()) + "' does not support " + std::string(operation) +
+                    "."
             );
         }
 
-        void unsupported_binary(
-            ops::BinaryOp,
-            Tensor& out,
-            const Tensor&,
-            const Tensor&
-        ) {
+        void unsupported_binary(ops::BinaryOp, Tensor& out, const Tensor&, const Tensor&) {
             unsupported(out.device(), "pointwise binary operations");
         }
 
@@ -34,6 +29,10 @@ namespace ormi::core::runtime {
 
         void unsupported_cast(Tensor& out, const Tensor&) {
             unsupported(out.device(), "casts");
+        }
+
+        void unsupported_bernoulli(Tensor& out, const Bernoulli&) {
+            unsupported(out.device(), "Bernoulli masks");
         }
 
         void unsupported_matmul(Tensor& out, const Tensor&, const Tensor&) {
@@ -52,10 +51,7 @@ namespace ormi::core::runtime {
 
         bool unsupported_finite(std::span<const Tensor* const> inputs) {
             if (inputs.empty() || inputs.front() == nullptr) {
-                ORMI_THROW(
-                    OperationError,
-                    "The selected backend does not support finiteness queries."
-                );
+                ORMI_THROW(OperationError, "The selected backend does not support finiteness queries.");
             }
             unsupported(inputs.front()->device(), "finiteness queries");
         }
@@ -64,70 +60,46 @@ namespace ormi::core::runtime {
             unsupported(out.device(), "SGD");
         }
 
-        void unsupported_fractional(
-            ops::FractionalOp,
-            Tensor& out,
-            const Tensor&,
-            const Tensor*,
-            const Caputo&
-        ) {
+        void
+        unsupported_fractional(ops::FractionalOp, Tensor& out, const Tensor&, const Tensor*, const Caputo&) {
             unsupported(out.device(), "fractional differentiation");
         }
 
+        void unsupported_index(Tensor& out, const Tensor&, const Tensor&, const Pick&) {
+            unsupported(out.device(), "indexed selection");
+        }
+
         void validate_memory(const Backend& backend, std::string_view name) {
-            if (
-                !backend.memory.allocator ||
-                !backend.memory.synchronize ||
-                !backend.memory.copy ||
-                !backend.memory.copy_async ||
-                !backend.memory.fill ||
-                !backend.memory.fill_scalar
-            ) {
-                ORMI_THROW(
-                    DeviceError,
-                    std::string(name) +
-                        " backend returned incomplete memory functions."
-                );
+            if (!backend.memory.allocator || !backend.memory.synchronize || !backend.memory.copy ||
+                !backend.memory.copy_async || !backend.memory.fill || !backend.memory.fill_scalar) {
+                ORMI_THROW(DeviceError, std::string(name) + " backend returned incomplete memory functions.");
             }
         }
 
         void validate_groups(const Backend& backend, std::string_view name) {
             const bool records =
-                backend.recording.record ||
-                backend.recording.replay ||
-                backend.recording.release;
+                backend.recording.record || backend.recording.replay || backend.recording.release;
             const bool recording_complete =
-                backend.recording.record &&
-                backend.recording.replay &&
-                backend.recording.release;
+                backend.recording.record && backend.recording.replay && backend.recording.release;
             if (records && !recording_complete) {
                 ORMI_THROW(
                     DeviceError,
-                    std::string(name) +
-                        " backend returned incomplete recording functions."
+                    std::string(name) + " backend returned incomplete recording functions."
                 );
             }
 
-            if (
-                (
-                    backend.fusion.supports ||
-                    backend.fusion.prepare ||
-                    backend.fusion.prepare_many
-                ) &&
-                !backend.fusion.execute
-            ) {
+            if ((backend.fusion.supports || backend.fusion.prepare || backend.fusion.prepare_many) &&
+                !backend.fusion.execute) {
                 ORMI_THROW(
                     DeviceError,
-                    std::string(name) +
-                        " backend returned fusion metadata without execution."
+                    std::string(name) + " backend returned fusion metadata without execution."
                 );
             }
 
             if (backend.fractional.prepare && !backend.fractional.execute) {
                 ORMI_THROW(
                     DeviceError,
-                    std::string(name) +
-                        " backend returned fractional preparation without execution."
+                    std::string(name) + " backend returned fractional preparation without execution."
                 );
             }
         }
@@ -135,7 +107,7 @@ namespace ormi::core::runtime {
 
     Backend normalize(Backend backend, std::string_view name) {
         if (backend.abi != backend_abi) {
-            ORMI_THROW(DeviceError, "Backend ABI is incompatible with this ORMI core.");
+            ORMI_THROW(DeviceError, "Backend interface version does not match this ORMI core.");
         }
 
         validate_memory(backend, name);
@@ -161,6 +133,13 @@ namespace ormi::core::runtime {
         }
         if (!backend.ops.sgd) {
             backend.ops.sgd = unsupported_sgd;
+        }
+        if (!backend.ops.pick)
+            backend.ops.pick = unsupported_index;
+        if (!backend.ops.unpick)
+            backend.ops.unpick = unsupported_index;
+        if (!backend.ops.bernoulli) {
+            backend.ops.bernoulli = unsupported_bernoulli;
         }
         if (!backend.fractional.execute) {
             backend.fractional.execute = unsupported_fractional;

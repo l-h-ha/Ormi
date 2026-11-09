@@ -24,13 +24,15 @@ from .model import (
 )
 from .workloads import corpus, make_data
 
-
 ADAPTERS = {
     "ormi": "benchmarks.frameworks.adapters.ormi",
     "pytorch": "benchmarks.frameworks.adapters.pytorch",
     "tensorflow": "benchmarks.frameworks.adapters.tensorflow",
 }
 
+###
+###
+###
 
 def jit_artifacts(path: Path) -> dict[str, int]:
     sources = {
@@ -51,7 +53,6 @@ def jit_artifacts(path: Path) -> dict[str, int]:
         ),
     }
 
-
 def artifact_delta(
     before: dict[str, int],
     after: dict[str, int],
@@ -60,7 +61,6 @@ def artifact_delta(
         name: after[name] - before[name]
         for name in before
     }
-
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(
@@ -102,7 +102,7 @@ def parser() -> argparse.ArgumentParser:
         "--label",
         default="",
         help=(
-            "Human-readable build and machine label stored with JSON results, "
+            "Build and machine label saved in JSON results, "
             "for example windows-msvc-openblas-sleef."
         ),
     )
@@ -114,7 +114,7 @@ def parser() -> argparse.ArgumentParser:
         "--jit-cache",
         type=Path,
         help=(
-            "ORMI CPU JIT cache directory. By default, each invocation gets a "
+            "ORMI CPU JIT cache directory. By default, each run gets a "
             "new directory below .benchmarks/framework-jit."
         ),
     )
@@ -122,12 +122,10 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--list", action="store_true")
     return result
 
-
 def positive(arguments: argparse.Namespace) -> None:
     for name in ("threads", "rounds", "calls_per_round", "warmup"):
         if getattr(arguments, name) <= 0:
             raise SystemExit(f"--{name.replace('_', '-')} must be positive.")
-
 
 def configure_environment(threads: int, configured_cache: Path | None) -> Path:
     jit_cache = configured_cache or (
@@ -145,13 +143,13 @@ def configure_environment(threads: int, configured_cache: Path | None) -> Path:
     os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
     return jit_cache
 
-
 def load_adapters(
     frameworks: list[Framework],
     threads: int,
 ) -> tuple[dict[Framework, ModuleType], dict[Framework, str]]:
     loaded = {}
     failed = {}
+
     for framework in frameworks:
         try:
             adapter = importlib.import_module(ADAPTERS[framework])
@@ -159,19 +157,19 @@ def load_adapters(
             loaded[framework] = adapter
         except Exception as error:
             failed[framework] = str(error)
-    return loaded, failed
 
+    return loaded, failed
 
 def print_specs(specs: list[Spec]) -> None:
     for spec in specs:
         print(spec.key)
-
 
 def print_results(results: list[Result]) -> None:
     print(
         f"{'framework':<12} {'mode':<9} {'prepare':>10} {'first':>10} "
         f"{'median':>10} {'p10':>10} {'p90':>10} {'iter/s':>12}"
     )
+
     for result in results:
         print(
             f"{result.framework:<12} {result.mode:<9} "
@@ -181,6 +179,9 @@ def print_results(results: list[Result]) -> None:
             f"{result.iterations_per_second:>12.1f}"
         )
 
+###
+###
+###
 
 def main() -> None:
     arguments = parser().parse_args()
@@ -191,6 +192,7 @@ def main() -> None:
         set(arguments.scales) if arguments.scales else None,
         list(arguments.dtypes),
     )
+
     if arguments.list:
         print_specs(specs)
         return
@@ -214,17 +216,19 @@ def main() -> None:
     })
 
     print(f"Python {platform.python_version()} on {platform.platform()}")
+
     if arguments.label:
         print(f"run label {arguments.label}")
     else:
-        print("run label unset; add --label before citing these results")
-    print("; ".join(
+        print("Run label unset. Add --label before citing these results.")
+
+    print(", ".join(
         f"{framework} {versions[framework]}"
         for framework in arguments.frameworks
     ))
     print(
-        f"device {arguments.device}; threads {arguments.threads}; "
-        f"suite {arguments.suite}; rounds {arguments.rounds}; "
+        f"device {arguments.device}, threads {arguments.threads}, "
+        f"suite {arguments.suite}, rounds {arguments.rounds}, "
         f"calls/round {arguments.calls_per_round}"
     )
     print(f"ORMI CPU JIT cache {jit_cache}")
@@ -237,12 +241,15 @@ def main() -> None:
     unavailable = []
     jit_workloads = []
     requested_tiers: list[Tier] = list(arguments.tiers)
+
     for spec in specs:
         jit_before = jit_artifacts(jit_cache)
         data = make_data(spec)
         cases = []
+
         for framework in arguments.frameworks:
             adapter = adapters.get(framework)
+
             if adapter is None:
                 for tier in requested_tiers:
                     unavailable.append(Unavailable(
@@ -251,6 +258,7 @@ def main() -> None:
                         tier=tier,
                         reason=import_failures[framework],
                     ))
+
                 continue
 
             for tier in requested_tiers:
@@ -294,17 +302,19 @@ def main() -> None:
             "workload": spec.key,
             **created,
         })
+
         if created["entries"]:
             print(
                 f"ORMI CPU JIT created {created['entries']} cache "
                 f"entr{'y' if created['entries'] == 1 else 'ies'} "
-                f"({created['source_bytes']} source bytes; "
+                f"({created['source_bytes']} source bytes, "
                 f"{created['library_bytes']} library bytes)."
             )
 
     if unavailable:
         print()
         print("Unavailable cases")
+
         for item in unavailable:
             print(
                 f"{item.workload}: {item.framework} {item.tier}: "
@@ -362,7 +372,6 @@ def main() -> None:
             json.dumps(payload, indent=2),
             encoding="utf-8",
         )
-
 
 if __name__ == "__main__":
     main()

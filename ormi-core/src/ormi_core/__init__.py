@@ -27,10 +27,16 @@ from ._ext._C import (
     jitError,
     ops,
     optim,
+    partial,
     synchronize,
     tensor,
 )
 from .autocast import autocast
+from . import nn
+
+###
+###
+###
 
 full = ops.full
 zeros = ops.zeros
@@ -41,7 +47,7 @@ sgd = optim.sgd
 GradScaler = optim.GradScaler
 ScalePolicy = optim.ScalePolicy
 
-__version__ = "0.1.0a6"
+__version__ = "0.1.0a7"
 
 __all__ = [
     "Autocast",
@@ -74,10 +80,12 @@ __all__ = [
     "int32",
     "jit",
     "jitError",
+    "nn",
     "ones",
     "ones_like",
     "ops",
     "optim",
+    "partial",
     "sgd",
     "synchronize",
     "tensor",

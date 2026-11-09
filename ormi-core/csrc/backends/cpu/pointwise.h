@@ -11,9 +11,5 @@ namespace ormi::backends::cpu {
         const core::Tensor& rhs
     );
 
-    void pointwise_unary(
-        core::ops::UnaryOp op,
-        core::Tensor& out,
-        const core::Tensor& t
-    );
+    void pointwise_unary(core::ops::UnaryOp op, core::Tensor& out, const core::Tensor& input);
 }

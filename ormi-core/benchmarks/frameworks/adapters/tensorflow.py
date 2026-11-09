@@ -19,14 +19,18 @@ from ..model import (
 )
 from ..workloads import LEARNING_RATE
 
-
 _configured = False
 
+###
+###
+###
 
 def configure(threads: int) -> None:
     global _configured
+
     if _configured:
         return
+
     tf.config.threading.set_intra_op_parallelism_threads(threads)
     tf.config.threading.set_inter_op_parallelism_threads(1)
     set_synchronous = getattr(
@@ -34,14 +38,14 @@ def configure(threads: int) -> None:
         "set_synchronous_execution",
         None,
     )
+
     if set_synchronous is not None:
         set_synchronous(True)
-    _configured = True
 
+    _configured = True
 
 def version() -> str:
     return tf.__version__
-
 
 def _dtype(name: str) -> tf.dtypes.DType:
     return {
@@ -50,18 +54,17 @@ def _dtype(name: str) -> tf.dtypes.DType:
         "float64": tf.float64,
     }[name]
 
-
 def _device(name: str) -> str:
     if name.startswith("cuda"):
         if not tf.config.list_physical_devices("GPU"):
             raise Unsupported("TensorFlow cannot access a CUDA device.")
-        return "/GPU:0"
-    return "/CPU:0"
 
+        return "/GPU:0"
+
+    return "/CPU:0"
 
 def _numpy(value: tf.Tensor | tf.Variable) -> np.ndarray:
     return np.asarray(value.numpy())
-
 
 def _case(
     tier: Tier,
@@ -73,10 +76,13 @@ def _case(
 ) -> Case:
     def synchronize() -> None:
         wait = getattr(tf.experimental, "async_wait", None)
+
         if wait is not None:
             wait()
             return
+
         value = latest()
+
         if value is not None:
             value.numpy()
 
@@ -91,7 +97,6 @@ def _case(
         synchronize=synchronize,
     )
 
-
 def _compile(function: Callable[..., object], tier: Tier) -> Callable[..., object]:
     return (
         function
@@ -99,10 +104,10 @@ def _compile(function: Callable[..., object], tier: Tier) -> Callable[..., objec
         else tf.function(function, autograph=False, jit_compile=True)
     )
 
-
 def _pointwise(spec: Spec, data: Data, tier: Tier, placement: str) -> Case:
     start = time.perf_counter_ns()
     dtype = _dtype(spec.dtype)
+
     with tf.device(placement):
         input_ = tf.convert_to_tensor(data.values["input"], dtype=dtype)
         scale = tf.convert_to_tensor(data.values["scale"], dtype=dtype)
@@ -120,6 +125,7 @@ def _pointwise(spec: Spec, data: Data, tier: Tier, placement: str) -> Case:
             )
 
         execute = _compile(expression, tier)
+
     last: tf.Tensor | None = None
 
     def run() -> None:
@@ -129,6 +135,7 @@ def _pointwise(spec: Spec, data: Data, tier: Tier, placement: str) -> Case:
     def values() -> tuple[np.ndarray, ...]:
         if last is None:
             raise RuntimeError("TensorFlow pointwise workload has not run.")
+
         return (_numpy(last),)
 
     def observe() -> Observation:
@@ -136,10 +143,10 @@ def _pointwise(spec: Spec, data: Data, tier: Tier, placement: str) -> Case:
 
     return _case(tier, start, run, values, observe, lambda: last)
 
-
 def _reduction(spec: Spec, data: Data, tier: Tier, placement: str) -> Case:
     start = time.perf_counter_ns()
     dtype = _dtype(spec.dtype)
+
     with tf.device(placement):
         input_ = tf.convert_to_tensor(data.values["input"], dtype=dtype)
         row = tf.convert_to_tensor(data.values["row"], dtype=dtype)
@@ -154,6 +161,7 @@ def _reduction(spec: Spec, data: Data, tier: Tier, placement: str) -> Case:
             return tf.reduce_mean(transformed * transformed, axis=(0, 2))
 
         execute = _compile(expression, tier)
+
     last: tf.Tensor | None = None
 
     def run() -> None:
@@ -163,6 +171,7 @@ def _reduction(spec: Spec, data: Data, tier: Tier, placement: str) -> Case:
     def values() -> tuple[np.ndarray, ...]:
         if last is None:
             raise RuntimeError("TensorFlow reduction workload has not run.")
+
         return (_numpy(last),)
 
     def observe() -> Observation:
@@ -170,10 +179,10 @@ def _reduction(spec: Spec, data: Data, tier: Tier, placement: str) -> Case:
 
     return _case(tier, start, run, values, observe, lambda: last)
 
-
 def _dense(spec: Spec, data: Data, tier: Tier, placement: str) -> Case:
     start = time.perf_counter_ns()
     dtype = _dtype(spec.dtype)
+
     with tf.device(placement):
         input_ = tf.convert_to_tensor(data.values["input"], dtype=dtype)
         target = tf.convert_to_tensor(data.values["target"], dtype=dtype)
@@ -187,10 +196,12 @@ def _dense(spec: Spec, data: Data, tier: Tier, placement: str) -> Case:
                 weight, bias = parameters
                 error = tf.linalg.matmul(input_, weight) + bias - target
                 loss = tf.reduce_mean(error * error)
+
             gradients = tape.gradient(loss, parameters)
             return (loss, *gradients)
 
         execute = _compile(expression, tier)
+
     last: tuple[tf.Tensor, ...] | None = None
 
     def run() -> None:
@@ -200,6 +211,7 @@ def _dense(spec: Spec, data: Data, tier: Tier, placement: str) -> Case:
     def values() -> tuple[np.ndarray, ...]:
         if last is None:
             raise RuntimeError("TensorFlow dense workload has not run.")
+
         return tuple(_numpy(value) for value in last)
 
     def observe() -> Observation:
@@ -218,10 +230,10 @@ def _dense(spec: Spec, data: Data, tier: Tier, placement: str) -> Case:
         lambda: None if last is None else last[0],
     )
 
-
 def _pinn(spec: Spec, data: Data, tier: Tier, placement: str) -> Case:
     start = time.perf_counter_ns()
     dtype = _dtype(spec.dtype)
+
     with tf.device(placement):
         input_ = tf.convert_to_tensor(data.values["input"], dtype=dtype)
         parameters: tuple[tf.Variable, ...] = (
@@ -251,6 +263,7 @@ def _pinn(spec: Spec, data: Data, tier: Tier, placement: str) -> Case:
             with tf.GradientTape() as parameter_tape:
                 with tf.GradientTape() as second_tape:
                     second_tape.watch(input_)
+
                     with tf.GradientTape() as first_tape:
                         first_tape.watch(input_)
                         (
@@ -267,20 +280,26 @@ def _pinn(spec: Spec, data: Data, tier: Tier, placement: str) -> Case:
                             tf.linalg.matmul(hidden, second_weight) +
                             second_bias
                         )
+
                     first = first_tape.gradient(prediction, input_)
+
                 second = second_tape.gradient(first, input_)
                 residual = second + prediction
                 loss = tf.reduce_mean(residual * residual)
+
             gradients = parameter_tape.gradient(loss, parameters)
+
             for parameter, gradient in zip(
                 parameters,
                 gradients,
                 strict=True,
             ):
                 parameter.assign_sub(LEARNING_RATE * gradient)
+
             return loss
 
         execute = _compile(expression, tier)
+
     last_loss: tf.Tensor | None = None
 
     def run() -> None:
@@ -290,6 +309,7 @@ def _pinn(spec: Spec, data: Data, tier: Tier, placement: str) -> Case:
     def values() -> tuple[np.ndarray, ...]:
         if last_loss is None:
             raise RuntimeError("TensorFlow PINN workload has not run.")
+
         return (
             _numpy(last_loss),
             *(_numpy(parameter) for parameter in parameters),
@@ -311,15 +331,19 @@ def _pinn(spec: Spec, data: Data, tier: Tier, placement: str) -> Case:
         lambda: last_loss,
     )
 
-
 def prepare(spec: Spec, data: Data, tier: Tier, device_name: str) -> Case:
     placement = _device(device_name)
+
     if spec.name == "pointwise":
         return _pointwise(spec, data, tier, placement)
+
     if spec.name == "reduction":
         return _reduction(spec, data, tier, placement)
+
     if spec.name == "dense":
         return _dense(spec, data, tier, placement)
+
     if spec.name == "pinn":
         return _pinn(spec, data, tier, placement)
+
     raise ValueError(f"Unknown workload: {spec.name}")

@@ -236,7 +236,7 @@ namespace ormi::backends::cpu::jit::cache {
             }
         }
 
-        // The caller holds the entry's write lock throughout publication.
+        // The caller holds the entry's write lock while saving these files.
         void publish(const Files& paths, std::string_view generated, Build build) {
             const auto suffix =
                 "." + std::to_string(platform::process_id()) + ".tmp";
@@ -496,6 +496,33 @@ namespace ormi::backends::cpu::jit::cache {
         return platform::cache_directory() / "jit" / std::string(abi);
     }
 
+    bool has_entries() {
+        if (!directory_exists()) {
+            return false;
+        }
+
+        std::error_code error;
+        std::filesystem::directory_iterator iterator(directory(), error);
+        const std::filesystem::directory_iterator end;
+        while (!error && iterator != end) {
+            const auto& path = iterator->path();
+            auto extension = path.extension().string();
+            for (auto& character : extension) {
+                character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+            }
+            if (
+                (extension == platform::shared_extension() || extension == ".lock") &&
+                is_key(path.stem().string())
+            ) {
+                return true;
+            }
+            iterator.increment(error);
+        }
+
+        // A directory scan can fail even when a known library path is readable.
+        return static_cast<bool>(error);
+    }
+
     std::string key(std::string_view generated) {
         return key(generated, {});
     }
@@ -564,8 +591,17 @@ namespace ormi::backends::cpu::jit::cache {
         const auto paths = files(generated, context);
         auto lease = std::make_unique<platform::FileLock>(
             paths.lock,
-            platform::Lock::shared
+            platform::Lock::shared,
+            platform::FileLock::Open::existing
         );
+        if (!lease->opened()) {
+            // Copied libraries may have no lock file. Missing libraries need no new lock.
+            std::error_code error;
+            if (!std::filesystem::is_regular_file(paths.library, error) || error) {
+                return std::nullopt;
+            }
+            lease = std::make_unique<platform::FileLock>(paths.lock, platform::Lock::shared);
+        }
         if (!valid(paths, generated)) {
             return std::nullopt;
         }

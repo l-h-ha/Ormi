@@ -88,7 +88,7 @@ function(ormi_write_catalog input output)
         list(FIND ids "${id}" id_position)
         if(id_position EQUAL -1)
             message(FATAL_ERROR
-                "Backend IDs must be contiguous from 0; ID ${id} is missing."
+                "Backend IDs must be contiguous from 0. ID ${id} is missing."
             )
         endif()
 

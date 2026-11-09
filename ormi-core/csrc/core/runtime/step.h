@@ -11,6 +11,8 @@
 #include "core/runtime/fusion/expr.h"
 
 namespace ormi::core::runtime {
+    // One scheduled alias, direct operation, or fused kernel. The graph owner keeps the
+    // borrowed tensor pointers alive. Setup owns any prepared kernel and workspace state.
     class Step final {
     public:
         static Step alias(Tensor& output);
@@ -48,6 +50,7 @@ namespace ormi::core::runtime {
         std::size_t setup_buffers() const noexcept;
         std::size_t setup_bytes() const noexcept;
         void prepare();
+        // Parents must already have storage. Repeated calls recompute into existing outputs.
         void run();
 
     private:

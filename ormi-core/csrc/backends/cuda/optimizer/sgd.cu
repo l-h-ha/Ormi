@@ -20,8 +20,7 @@ namespace ormi::backends::cuda {
         __device__ T updated(T parameter, T gradient, double step_size) {
             if constexpr (std::is_same_v<T, __half>) {
                 return __float2half_rn(
-                    __half2float(parameter) -
-                    static_cast<float>(step_size) * __half2float(gradient)
+                    __half2float(parameter) - static_cast<float>(step_size) * __half2float(gradient)
                 );
             } else {
                 return parameter - static_cast<T>(step_size) * gradient;
@@ -36,8 +35,7 @@ namespace ormi::backends::cuda {
             std::size_t elements,
             double step_size
         ) {
-            std::size_t linear =
-                static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+            std::size_t linear = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
             const auto stride = static_cast<std::size_t>(blockDim.x) * gridDim.x;
 
             for (; linear < elements; linear += stride) {
@@ -54,24 +52,14 @@ namespace ormi::backends::cuda {
             double step_size,
             elementwise::BinaryIndex index
         ) {
-            std::size_t linear =
-                static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+            std::size_t linear = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
             const auto stride = static_cast<std::size_t>(blockDim.x) * gridDim.x;
 
             for (; linear < elements; linear += stride) {
                 std::size_t parameter_offset = 0;
                 std::size_t gradient_offset = 0;
-                elementwise::storage_offsets(
-                    linear,
-                    index,
-                    parameter_offset,
-                    gradient_offset
-                );
-                out[linear] = updated(
-                    parameter[parameter_offset],
-                    gradient[gradient_offset],
-                    step_size
-                );
+                elementwise::storage_offsets(linear, index, parameter_offset, gradient_offset);
+                out[linear] = updated(parameter[parameter_offset], gradient[gradient_offset], step_size);
             }
         }
 

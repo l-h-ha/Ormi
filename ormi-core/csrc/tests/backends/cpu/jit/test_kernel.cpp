@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -34,6 +35,8 @@
 #include "platform/platform.h"
 
 namespace {
+    std::atomic<std::size_t> next_cache_id{0};
+
     void environment(const char* name, const char* value) {
 #if defined(_WIN32)
         _putenv_s(name, value);
@@ -52,21 +55,28 @@ namespace {
             : path_(
                 std::filesystem::temp_directory_path() /
                 ("ormi-jit-kernel-test-" +
-                    std::to_string(ormi::platform::process_id()))
+                    std::to_string(ormi::platform::process_id()) + "-" +
+                    std::to_string(next_cache_id.fetch_add(1, std::memory_order_relaxed)))
             )
         {
+            if (const char* previous = std::getenv("ORMI_CPU_JIT_CACHE_DIR")) {
+                previous_ = previous;
+            }
+            // Compiled DLLs can remain loaded after a test finishes.
             std::error_code ignored;
             std::filesystem::remove_all(path_, ignored);
             environment("ORMI_CPU_JIT_CACHE_DIR", path_.string().c_str());
         }
 
         ~Cache() {
+            environment("ORMI_CPU_JIT_CACHE_DIR", previous_.c_str());
             std::error_code ignored;
             std::filesystem::remove_all(path_, ignored);
         }
 
     private:
         std::filesystem::path path_;
+        std::string previous_;
     };
 
     template <typename T>

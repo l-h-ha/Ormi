@@ -78,7 +78,7 @@ namespace ormi::backends::cpu::jit::artifact {
                 try {
                     return load(value->library, kernels, functions);
                 } catch (const jitError&) {
-                    // Release the read lease before discard takes an exclusive lock.
+                    // Release the shared lock before discard takes an exclusive lock.
                 }
             }
             cache::discard(source, identity);
@@ -141,7 +141,7 @@ namespace ormi::backends::cpu::jit::artifact {
                 if (!value.cached) {
                     throw;
                 }
-                // Release the read lease before discard takes an exclusive lock.
+                // Release the shared lock before discard takes an exclusive lock.
             }
         }
 

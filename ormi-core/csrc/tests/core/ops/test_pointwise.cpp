@@ -1,5 +1,7 @@
+#include <array>
 #include <cmath>
 #include <memory>
+#include <string_view>
 
 #include <gtest/gtest.h>
 
@@ -13,6 +15,8 @@
 #include <ormi/core/ops/view.h>
 #include <ormi/core/shape.h>
 #include <ormi/core/tensor.h>
+
+#include "backends/cpu/pointwise.h"
 
 namespace {
     std::shared_ptr<ormi::core::Tensor> floatTensor(ormi::core::Shape shape) {
@@ -29,6 +33,28 @@ namespace {
             std::move(shape),
             ormi::core::DType::float64
         );
+    }
+
+    TEST(CPUPointwiseTest, reportsFloatingPointRequirementForTranscendentals) {
+        const auto device = ormi::core::Device::cpu();
+        ormi::core::Tensor input(device, {1}, ormi::core::DType::int32);
+        ormi::core::Tensor output(device, {1}, ormi::core::DType::int32);
+        const std::array operations{
+            ormi::core::ops::UnaryOp::exp,
+            ormi::core::ops::UnaryOp::log,
+            ormi::core::ops::UnaryOp::sin,
+            ormi::core::ops::UnaryOp::cos
+        };
+
+        for (const auto operation : operations) {
+            try {
+                ormi::backends::cpu::pointwise_unary(operation, output, input);
+                FAIL() << "An integer transcendental operation must throw.";
+            } catch (const ormi::DTypeError& error) {
+                const std::string_view message(error.what());
+                EXPECT_NE(message.find("requires a floating-point tensor"), std::string_view::npos);
+            }
+        }
     }
 
     TEST(PointwiseTest, addConstructsLazyTensor) {
@@ -305,10 +331,7 @@ namespace {
         const auto result = ormi::core::ops::add(lhs, rhs);
         const auto exponential = ormi::core::ops::exp(rhs);
 
-        EXPECT_FLOAT_EQ(
-            static_cast<float>(*static_cast<const ormi::core::Float16*>(result->data())),
-            2.0f
-        );
+        EXPECT_FLOAT_EQ(static_cast<float>(*static_cast<const ormi::core::Float16*>(result->data())), 2.0f);
         EXPECT_NEAR(
             static_cast<float>(*static_cast<const ormi::core::Float16*>(exponential->data())),
             std::exp(0.5f),

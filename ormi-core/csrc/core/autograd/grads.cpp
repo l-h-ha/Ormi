@@ -27,9 +27,10 @@ namespace ormi::core {
 
         if (found == values_.end()) {
             values_.emplace(tensor.get(), std::move(gradient));
-        } else {
-            found->second = ops::add(found->second, gradient);
+            return;
         }
+
+        found->second = ops::add(found->second, gradient);
     }
 
     std::shared_ptr<Tensor> Grads::get(const std::shared_ptr<Tensor>& tensor) const {

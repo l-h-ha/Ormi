@@ -6,6 +6,7 @@
 #include <ormi/core/tensor.h>
 
 #include "backends/cuda/reduction.h"
+#include "backends/cuda/reduction/max.h"
 #include "backends/cuda/reduction/sum.h"
 
 namespace ormi::backends::cuda {
@@ -20,6 +21,9 @@ namespace ormi::backends::cuda {
         static_cast<void>(keepdims);
 
         switch (op) {
+            case core::ops::ReduceOp::max:
+                reduce_max(out, input, axes);
+                return;
             case core::ops::ReduceOp::sum:
                 reduce_sum(out, input, axes);
                 return;
