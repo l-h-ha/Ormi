@@ -28,10 +28,7 @@ namespace ormi::backends::cuda::elementwise {
 
     inline void require_supported_rank(std::size_t rank) {
         if (rank > max_rank) {
-            ORMI_THROW(
-                ShapeError,
-                "CUDA strided elementwise indexing supports at most 64 dimensions."
-            );
+            ORMI_THROW(ShapeError, "CUDA strided elementwise indexing supports at most 64 dimensions.");
         }
     }
 
@@ -50,38 +47,30 @@ namespace ormi::backends::cuda::elementwise {
         return index;
     }
 
-    inline BinaryIndex make_index(
-        const core::Tensor& out,
-        const core::Tensor& lhs,
-        const core::Tensor& rhs
-    ) {
+    inline BinaryIndex make_index(const core::Tensor& out, const core::Tensor& lhs, const core::Tensor& rhs) {
         require_supported_rank(out.rank());
 
         BinaryIndex index;
         index.rank = out.rank();
-        const auto lhs_offset = index.rank - lhs.rank();
-        const auto rhs_offset = index.rank - rhs.rank();
+        const auto lhs_rank_offset = index.rank - lhs.rank();
+        const auto rhs_rank_offset = index.rank - rhs.rank();
         const auto lhs_strides = lhs.strides();
         const auto rhs_strides = rhs.strides();
 
         for (std::size_t axis = 0; axis < index.rank; ++axis) {
             index.dims[axis] = static_cast<std::size_t>(out.shape()[axis]);
 
-            if (axis >= lhs_offset) {
-                const auto lhs_axis = axis - lhs_offset;
+            if (axis >= lhs_rank_offset) {
+                const auto lhs_axis = axis - lhs_rank_offset;
                 if (lhs.shape()[lhs_axis] != 1) {
-                    index.lhs_strides[axis] = static_cast<std::size_t>(
-                        lhs_strides[lhs_axis]
-                    );
+                    index.lhs_strides[axis] = static_cast<std::size_t>(lhs_strides[lhs_axis]);
                 }
             }
 
-            if (axis >= rhs_offset) {
-                const auto rhs_axis = axis - rhs_offset;
+            if (axis >= rhs_rank_offset) {
+                const auto rhs_axis = axis - rhs_rank_offset;
                 if (rhs.shape()[rhs_axis] != 1) {
-                    index.rhs_strides[axis] = static_cast<std::size_t>(
-                        rhs_strides[rhs_axis]
-                    );
+                    index.rhs_strides[axis] = static_cast<std::size_t>(rhs_strides[rhs_axis]);
                 }
             }
         }
@@ -94,10 +83,7 @@ namespace ormi::backends::cuda::elementwise {
         return static_cast<unsigned int>(std::min(required, max_blocks));
     }
 
-    __device__ inline std::size_t storage_offset(
-        std::size_t linear,
-        const Index& index
-    ) {
+    __device__ inline std::size_t storage_offset(std::size_t linear, const Index& index) {
         std::size_t offset = 0;
 
         for (std::size_t axis = index.rank; axis > 0; --axis) {

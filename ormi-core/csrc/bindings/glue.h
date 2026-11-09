@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -12,9 +13,38 @@
 #include <ormi/core/dtype.h>
 #include <ormi/core/plan.h>
 #include <ormi/core/tensor.h>
+#include <ormi/nn/modules/linear.h>
+#include <ormi/nn/modules/normalization.h>
+#include <ormi/nn/modules/batch_norm.h>
 
 namespace ormi::bindings {
     namespace py = pybind11;
+
+    std::shared_ptr<nn::Linear> linear_from_python(
+        std::int64_t in_features, std::int64_t out_features, bool bias,
+        core::DType dtype, py::object device, std::optional<std::uint64_t> seed
+    );
+
+    std::shared_ptr<nn::LayerNorm> layer_norm_from_python(
+        py::object normalized_shape,
+        double eps,
+        bool elementwise_affine,
+        bool bias,
+        core::DType dtype,
+        py::object device
+    );
+    std::shared_ptr<core::Tensor> layer_norm(
+        const std::shared_ptr<core::Tensor>& input,
+        py::object normalized_shape,
+        const std::shared_ptr<core::Tensor>& weight,
+        const std::shared_ptr<core::Tensor>& bias,
+        double eps
+    );
+    py::tuple layer_norm_shape(const nn::LayerNorm& layer);
+    std::shared_ptr<nn::BatchNorm> batch_norm_from_python(
+        std::int64_t num_features, double eps, double momentum, bool affine, bool track_running_stats,
+        std::int64_t axis, core::DType dtype, py::object device
+    );
 
     core::Device device_from_string(const std::string& value);
     std::string device_string(core::Device device);
@@ -34,6 +64,7 @@ namespace ormi::bindings {
         >> updates
     );
     py::array tensor_numpy(const std::shared_ptr<core::Tensor>& tensor);
+    void tensor_copy_from(core::Tensor& destination, py::object source);
     py::object tensor_item(const std::shared_ptr<core::Tensor>& tensor);
     std::shared_ptr<core::Tensor> tensor_realize(const std::shared_ptr<core::Tensor>& tensor);
     py::tuple tensor_shape(const core::Tensor& tensor);

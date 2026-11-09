@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -23,6 +24,7 @@
 #include <ormi/core/ops/view.h>
 #include <ormi/core/shape.h>
 #include <ormi/core/tensor.h>
+#include <ormi/nn/normalization.h>
 
 #include "core/runtime/dispatch/device.h"
 #include "bindings/glue.h"
@@ -74,6 +76,13 @@ namespace ormi::bindings {
                 return core::Device::from(value.cast<std::string>());
             }
             throw py::type_error("device must be an ORMI Device, string, or None");
+        }
+
+        core::Shape normalization_shape(py::handle value) {
+            if (py::isinstance<py::int_>(value)) {
+                return core::Shape{value.cast<std::int64_t>()};
+            }
+            return core::Shape(value.cast<std::vector<std::int64_t>>());
         }
 
         std::shared_ptr<core::Tensor> as_tensor(
@@ -157,6 +166,56 @@ namespace ormi::bindings {
         return core::Device::from(value);
     }
 
+    std::shared_ptr<nn::Linear> linear_from_python(
+        std::int64_t in_features, std::int64_t out_features, bool bias,
+        core::DType dtype, py::object device, std::optional<std::uint64_t> seed
+    ) {
+        return std::make_shared<nn::Linear>(
+            in_features, out_features, bias, dtype, as_device(device), seed
+        );
+    }
+
+    std::shared_ptr<nn::LayerNorm> layer_norm_from_python(
+        py::object normalized_shape,
+        double eps,
+        bool elementwise_affine,
+        bool bias,
+        core::DType dtype,
+        py::object device
+    ) {
+        return std::make_shared<nn::LayerNorm>(
+            normalization_shape(normalized_shape), eps, elementwise_affine, bias, dtype, as_device(device)
+        );
+    }
+
+    std::shared_ptr<core::Tensor> layer_norm(
+        const std::shared_ptr<core::Tensor>& input,
+        py::object normalized_shape,
+        const std::shared_ptr<core::Tensor>& weight,
+        const std::shared_ptr<core::Tensor>& bias,
+        double eps
+    ) {
+        return nn::layer_norm(input, normalization_shape(normalized_shape), weight, bias, eps);
+    }
+
+    py::tuple layer_norm_shape(const nn::LayerNorm& layer) {
+        const auto& shape = layer.normalized_shape();
+        py::tuple result(shape.rank());
+        for (std::size_t axis = 0; axis < shape.rank(); ++axis) {
+            result[axis] = shape[axis];
+        }
+        return result;
+    }
+
+    std::shared_ptr<nn::BatchNorm> batch_norm_from_python(
+        std::int64_t num_features, double eps, double momentum, bool affine, bool track_running_stats,
+        std::int64_t axis, core::DType dtype, py::object device
+    ) {
+        return std::make_shared<nn::BatchNorm>(
+            num_features, eps, momentum, affine, track_running_stats, axis, dtype, as_device(device)
+        );
+    }
+
     std::string device_string(core::Device device) {
         std::string value(device.name());
         if (device.indexed()) {
@@ -229,6 +288,39 @@ namespace ormi::bindings {
             std::move(outputs),
             std::move(converted)
         );
+    }
+
+    void tensor_copy_from(core::Tensor& destination, py::object source) {
+        if (py::isinstance<core::Tensor>(source)) {
+            const auto tensor = source.cast<std::shared_ptr<core::Tensor>>();
+            py::gil_scoped_release release;
+            destination.copy_from(*tensor);
+            return;
+        }
+        if (!py::isinstance<py::array>(source)) {
+            throw py::type_error("copy_from expects an ORMI Tensor or NumPy array");
+        }
+
+        auto array = source.cast<py::array>();
+        if (!array.dtype().equal(numpy_dtype(destination.dtype()))) {
+            ORMI_THROW(DTypeError, "Copy source and destination dtypes must match.");
+        }
+        std::vector<std::int64_t> dimensions;
+        dimensions.reserve(static_cast<std::size_t>(array.ndim()));
+        for (py::ssize_t axis = 0; axis < array.ndim(); ++axis) {
+            dimensions.push_back(static_cast<std::int64_t>(array.shape(axis)));
+        }
+        if (core::Shape(std::move(dimensions)) != destination.shape()) {
+            ORMI_THROW(ShapeError, "Copy source and destination shapes must match.");
+        }
+        if ((array.flags() & py::array::c_style) == 0) {
+            array = py::module_::import("numpy").attr("ascontiguousarray")(array).cast<py::array>();
+        }
+
+        const auto* data = static_cast<const std::byte*>(array.data());
+        const auto size = destination.bytes();
+        py::gil_scoped_release release;
+        destination.copy_from(std::span<const std::byte>(data, size));
     }
 
     py::array tensor_numpy(const std::shared_ptr<core::Tensor>& tensor) {

@@ -1,25 +1,23 @@
 #pragma once
-#include <optional>
-#include <span>
 #include <unordered_set>
 
 #include <ormi/core/tensor.h>
 
+#include "core/runtime/fusion/group.h"
 #include "core/runtime/step.h"
 
 namespace ormi::core::runtime {
-    Step lower(Tensor& tensor);
+    enum class Preparation {
+        direct,
+        deferred
+    };
+
+    Step lower(Tensor& tensor, Preparation preparation);
+    Step lower(Tensor& tensor, const fusion::Candidates& candidates, Preparation preparation);
     Step lower(
         Tensor& tensor,
-        const std::unordered_set<const Tensor*>& boundaries
-    );
-    std::optional<Step> lower_group(
-        Tensor& tensor,
-        std::span<Tensor* const> auxiliary_outputs
-    );
-    std::optional<Step> lower_group(
-        Tensor& tensor,
-        std::span<Tensor* const> auxiliary_outputs,
-        const std::unordered_set<const Tensor*>& boundaries
+        const fusion::Candidates& candidates,
+        const std::unordered_set<const Tensor*>& boundaries,
+        Preparation preparation
     );
 }

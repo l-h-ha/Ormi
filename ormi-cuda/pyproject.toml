@@ -1,17 +1,17 @@
 [project]
 name = "ormi-cuda"
-version = "0.1.0a6"
+version = "0.1.0a7"
 description = "CUDA 12.4 backend for ORMI Core."
 readme = "README.md"
 authors = [{ name = "Ha H. Le" }]
 license = { text = "MIT" }
 requires-python = ">=3.10,<3.14"
 dependencies = [
-    "ormi-core==0.1.0a6",
+    "ormi-core==0.1.0a7",
 ]
 
 [build-system]
-requires = ["scikit-build-core>=0.8.0", "pybind11>=2.11.0", "PyYAML>=6.0"]
+requires = ["scikit-build-core>=0.8.0", "pybind11>=3.0", "PyYAML>=6.0"]
 build-backend = "scikit_build_core.build"
 
 [tool.scikit-build]
@@ -19,7 +19,7 @@ wheel.packages = ["src/ormi_cuda"]
 install.components = ["cuda"]
 cmake.build-type = "Release"
 wheel.py-api = "py3"
-wheel.license-files = ["LICENSE"]
+wheel.license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 
 [tool.scikit-build.cmake.define]
 ORMI_BUILD_PYTHON = "ON"
@@ -43,10 +43,10 @@ before-all = [
     "dnf install -y -q dnf-plugins-core gcc-toolset-13-gcc gcc-toolset-13-gcc-c++",
     "dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/cuda-rhel8.repo",
     "dnf clean all",
-    "dnf install -y -q cuda-compiler-12-4 cuda-cudart-devel-12-4 libcublas-devel-12-4 cuda-nvrtc-devel-12-4 cuda-driver-devel-12-4",
-    "/opt/python/cp310-cp310/bin/python -m venv /opt/auditwheel && /opt/auditwheel/bin/pip install -q auditwheel==6.7.0"
+    "dnf install -y -q cuda-compiler-12-4 cuda-cudart-devel-12-4 libcublas-devel-12-4 cuda-nvrtc-devel-12-4 cuda-driver-devel-12-4 libcurand-devel-12-4",
+    "/opt/python/cp310-cp310/bin/python -m venv /opt/auditwheel && /opt/auditwheel/bin/pip install -q auditwheel==6.7.0 patchelf==0.17.2.4"
 ]
-environment = { PATH="/opt/rh/gcc-toolset-13/root/usr/bin:/usr/local/cuda-12.4/bin:$PATH", LD_LIBRARY_PATH="/usr/local/cuda-12.4/lib64:$LD_LIBRARY_PATH", CC="/opt/rh/gcc-toolset-13/root/usr/bin/gcc", CXX="/opt/rh/gcc-toolset-13/root/usr/bin/g++", CUDACXX="/usr/local/cuda-12.4/bin/nvcc", CUDAHOSTCXX="/opt/rh/gcc-toolset-13/root/usr/bin/g++" }
+environment = { PATH="/opt/auditwheel/bin:/opt/rh/gcc-toolset-13/root/usr/bin:/usr/local/cuda-12.4/bin:$PATH", LD_LIBRARY_PATH="/usr/local/cuda-12.4/lib64:$LD_LIBRARY_PATH", CC="/opt/rh/gcc-toolset-13/root/usr/bin/gcc", CXX="/opt/rh/gcc-toolset-13/root/usr/bin/g++", CUDACXX="/usr/local/cuda-12.4/bin/nvcc", CUDAHOSTCXX="/opt/rh/gcc-toolset-13/root/usr/bin/g++" }
 repair-wheel-command = "/opt/auditwheel/bin/auditwheel repair --exclude libcuda.so.1 --exclude libormi_core.so -w {dest_dir} {wheel}"
 
 [tool.cibuildwheel.windows]

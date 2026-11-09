@@ -13,6 +13,8 @@ namespace ormi::core::runtime {
 }
 
 namespace ormi::core {
+    // Construction resolves and caches the backend table and may load an optional plugin.
+    // The device index selects a device within that backend, for example CUDA device 0.
     class Device {
     public:
         Device();
@@ -28,6 +30,10 @@ namespace ormi::core {
 
         bool indexed() const;
         bool is_host() const;
+
+        bool operator==(const Device& other) const noexcept {
+            return backend_id_ == other.backend_id_ && index_ == other.index_;
+        }
 
     private:
         friend const runtime::Backend& runtime::backend(const Device& device);

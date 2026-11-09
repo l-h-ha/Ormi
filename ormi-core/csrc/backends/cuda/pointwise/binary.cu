@@ -26,6 +26,16 @@ namespace ormi::backends::cuda {
                     return __hsub(lhs, rhs);
                 } else if constexpr (Op == core::ops::BinaryOp::mul) {
                     return __hmul(lhs, rhs);
+                } else if constexpr (Op == core::ops::BinaryOp::minimum ||
+                                     Op == core::ops::BinaryOp::maximum) {
+                    const float left = __half2float(lhs), right = __half2float(rhs);
+                    const auto value = left != left
+                                           ? left
+                                           : (right != right ? right
+                                                             : (Op == core::ops::BinaryOp::minimum
+                                                                    ? (left < right ? left : right)
+                                                                    : (left > right ? left : right)));
+                    return __float2half_rn(value);
                 } else {
                     return __hdiv(lhs, rhs);
                 }
@@ -36,6 +46,10 @@ namespace ormi::backends::cuda {
                     return lhs - rhs;
                 } else if constexpr (Op == core::ops::BinaryOp::mul) {
                     return lhs * rhs;
+                } else if constexpr (Op == core::ops::BinaryOp::minimum) {
+                    return lhs != lhs ? lhs : (rhs != rhs ? rhs : (lhs < rhs ? lhs : rhs));
+                } else if constexpr (Op == core::ops::BinaryOp::maximum) {
+                    return lhs != lhs ? lhs : (rhs != rhs ? rhs : (lhs > rhs ? lhs : rhs));
                 } else {
                     return lhs / rhs;
                 }
@@ -43,14 +57,8 @@ namespace ormi::backends::cuda {
         }
 
         template <typename T, core::ops::BinaryOp Op>
-        __global__ void binary_contiguous_kernel(
-            T* out,
-            const T* lhs,
-            const T* rhs,
-            std::size_t elements
-        ) {
-            std::size_t linear =
-                static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+        __global__ void binary_contiguous_kernel(T* out, const T* lhs, const T* rhs, std::size_t elements) {
+            std::size_t linear = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
             const auto stride = static_cast<std::size_t>(blockDim.x) * gridDim.x;
 
             for (; linear < elements; linear += stride) {
@@ -66,8 +74,7 @@ namespace ormi::backends::cuda {
             std::size_t elements,
             elementwise::BinaryIndex index
         ) {
-            std::size_t linear =
-                static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+            std::size_t linear = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
             const auto stride = static_cast<std::size_t>(blockDim.x) * gridDim.x;
 
             for (; linear < elements; linear += stride) {
@@ -91,18 +98,10 @@ namespace ormi::backends::cuda {
             const auto* rhs_data = static_cast<const T*>(rhs.data());
             const auto grid = elementwise::blocks(elements);
 
-            if (
-                lhs.is_contiguous() &&
-                rhs.is_contiguous() &&
-                lhs.shape() == out.shape() &&
-                rhs.shape() == out.shape()
-            ) {
-                binary_contiguous_kernel<T, Op><<<grid, elementwise::threads, 0, stream>>>(
-                    out_data,
-                    lhs_data,
-                    rhs_data,
-                    elements
-                );
+            if (lhs.is_contiguous() && rhs.is_contiguous() && lhs.shape() == out.shape() &&
+                rhs.shape() == out.shape()) {
+                binary_contiguous_kernel<T, Op>
+                    <<<grid, elementwise::threads, 0, stream>>>(out_data, lhs_data, rhs_data, elements);
             } else {
                 const auto index = elementwise::make_index(out, lhs, rhs);
                 binary_strided_kernel<T, Op><<<grid, elementwise::threads, 0, stream>>>(
@@ -126,6 +125,12 @@ namespace ormi::backends::cuda {
             cudaStream_t stream
         ) {
             switch (op) {
+                case core::ops::BinaryOp::minimum:
+                    launch_binary<T, core::ops::BinaryOp::minimum>(out, lhs, rhs, stream);
+                    return;
+                case core::ops::BinaryOp::maximum:
+                    launch_binary<T, core::ops::BinaryOp::maximum>(out, lhs, rhs, stream);
+                    return;
                 case core::ops::BinaryOp::add:
                     launch_binary<T, core::ops::BinaryOp::add>(out, lhs, rhs, stream);
                     return;

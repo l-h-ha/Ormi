@@ -252,53 +252,108 @@ namespace ormi::backends::cuda::fusion::cache {
             }
         }
 
+        std::string publish(const Files& files, std::string_view source, const Build& build) {
+            const auto suffix =
+                "." + std::to_string(platform::process_id()) + ".tmp";
+            const auto staged_source =
+                files.source.parent_path() /
+                (files.source.stem().string() + suffix + ".cu");
+            const auto staged_ptx =
+                files.ptx.parent_path() /
+                (files.ptx.stem().string() + suffix + ".ptx");
+            cleanup_staged(files);
+
+            try {
+                auto ptx = build();
+                if (ptx.empty()) {
+                    ORMI_THROW(
+                        jitError,
+                        "CUDA JIT compiler produced empty PTX."
+                    );
+                }
+                write(staged_source, source, "source");
+                write(staged_ptx, ptx, "PTX");
+                replace(staged_ptx, files.ptx);
+                replace(staged_source, files.source);
+                cleanup_staged(files);
+                return ptx;
+            } catch (...) {
+                cleanup_staged(files);
+                throw;
+            }
+        }
+
         std::vector<Entry> scan(std::error_code& error) {
             std::vector<Entry> result;
             std::filesystem::directory_iterator iterator(directory(), error);
             const std::filesystem::directory_iterator end;
-            while (!error && iterator != end) {
+            for (; !error && iterator != end; iterator.increment(error)) {
                 const auto path = iterator->path();
                 const auto stem = path.stem().string();
-                if (path.extension() == ".cu" && is_key(stem)) {
-                    const auto files = files_for(stem);
-                    std::error_code current;
-                    if (
-                        std::filesystem::is_regular_file(
-                            files.source,
-                            current
-                        ) &&
-                        !current &&
-                        std::filesystem::is_regular_file(
-                            files.ptx,
-                            current
-                        ) &&
-                        !current
-                    ) {
-                        const auto source_bytes =
-                            std::filesystem::file_size(
-                                files.source,
-                                current
-                            );
-                        const auto ptx_bytes =
-                            std::filesystem::file_size(files.ptx, current);
-                        const auto used =
-                            std::filesystem::last_write_time(
-                                files.source,
-                                current
-                            );
-                        if (!current) {
-                            result.push_back(Entry{
-                                stem,
-                                files,
-                                source_bytes + ptx_bytes,
-                                used
-                            });
-                        }
-                    }
+                if (path.extension() != ".cu" || !is_key(stem)) {
+                    continue;
                 }
-                iterator.increment(error);
+
+                const auto files = files_for(stem);
+                std::error_code entry_error;
+                const auto source_regular =
+                    std::filesystem::is_regular_file(files.source, entry_error);
+                if (entry_error || !source_regular) {
+                    continue;
+                }
+                const auto ptx_regular =
+                    std::filesystem::is_regular_file(files.ptx, entry_error);
+                if (entry_error || !ptx_regular) {
+                    continue;
+                }
+
+                const auto source_bytes =
+                    std::filesystem::file_size(files.source, entry_error);
+                if (entry_error) {
+                    continue;
+                }
+                const auto ptx_bytes =
+                    std::filesystem::file_size(files.ptx, entry_error);
+                if (entry_error) {
+                    continue;
+                }
+                const auto used =
+                    std::filesystem::last_write_time(files.source, entry_error);
+                if (entry_error) {
+                    continue;
+                }
+
+                result.push_back(Entry{
+                    stem,
+                    files,
+                    source_bytes + ptx_bytes,
+                    used
+                });
             }
             return result;
+        }
+
+        std::uintmax_t erase(const Files& files) {
+            std::uintmax_t removed = 0;
+            std::error_code error;
+            const auto source_bytes = std::filesystem::file_size(files.source, error);
+            if (!error) {
+                const auto source_removed = std::filesystem::remove(files.source, error);
+                if (!error && source_removed) {
+                    removed += source_bytes;
+                }
+            }
+
+            error.clear();
+            const auto ptx_bytes = std::filesystem::file_size(files.ptx, error);
+            if (error) {
+                return removed;
+            }
+            const auto ptx_removed = std::filesystem::remove(files.ptx, error);
+            if (error || !ptx_removed) {
+                return removed;
+            }
+            return removed + ptx_bytes;
         }
 
         void prune(std::string_view protected_key, std::uintmax_t limit) {
@@ -346,32 +401,8 @@ namespace ormi::backends::cuda::fusion::cache {
                         continue;
                     }
 
-                    std::uintmax_t removed = 0;
-                    const auto source_bytes =
-                        std::filesystem::file_size(
-                            entry.files.source,
-                            error
-                        );
-                    if (
-                        !error &&
-                        std::filesystem::remove(
-                            entry.files.source,
-                            error
-                        )
-                    ) {
-                        removed += source_bytes;
-                    }
-                    error.clear();
-                    const auto ptx_bytes =
-                        std::filesystem::file_size(entry.files.ptx, error);
-                    if (
-                        !error &&
-                        std::filesystem::remove(entry.files.ptx, error)
-                    ) {
-                        removed += ptx_bytes;
-                    }
+                    const auto removed = erase(entry.files);
                     bytes = removed > bytes ? 0 : bytes - removed;
-                    error.clear();
                 }
             } catch (const jitError&) {
                 // Maintenance cannot invalidate a successfully built kernel.
@@ -462,33 +493,7 @@ namespace ormi::backends::cuda::fusion::cache {
             }
 
             limit = configured_limit();
-            const auto suffix =
-                "." + std::to_string(platform::process_id()) + ".tmp";
-            const auto staged_source =
-                files.source.parent_path() /
-                (files.source.stem().string() + suffix + ".cu");
-            const auto staged_ptx =
-                files.ptx.parent_path() /
-                (files.ptx.stem().string() + suffix + ".ptx");
-            cleanup_staged(files);
-
-            try {
-                ptx = build();
-                if (ptx.empty()) {
-                    ORMI_THROW(
-                        jitError,
-                        "CUDA JIT compiler produced empty PTX."
-                    );
-                }
-                write(staged_source, source, "source");
-                write(staged_ptx, ptx, "PTX");
-                replace(staged_ptx, files.ptx);
-                replace(staged_source, files.source);
-                cleanup_staged(files);
-            } catch (...) {
-                cleanup_staged(files);
-                throw;
-            }
+            ptx = publish(files, source, build);
         }
 
         prune(stem, limit);

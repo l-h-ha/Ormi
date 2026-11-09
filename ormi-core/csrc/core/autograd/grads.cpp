@@ -19,13 +19,7 @@ namespace ormi::core {
             ORMI_THROW(DTypeError, "Accumulated gradient dtype must match its tensor.");
         }
 
-        const auto tensor_device = tensor->device();
-        const auto gradient_device = gradient->device();
-
-        if (
-            tensor_device.backend_id() != gradient_device.backend_id() ||
-            tensor_device.index() != gradient_device.index()
-        ) {
+        if (tensor->device() != gradient->device()) {
             ORMI_THROW(DeviceError, "Accumulated gradient device must match its tensor.");
         }
 
@@ -33,9 +27,10 @@ namespace ormi::core {
 
         if (found == values_.end()) {
             values_.emplace(tensor.get(), std::move(gradient));
-        } else {
-            found->second = ops::add(found->second, gradient);
+            return;
         }
+
+        found->second = ops::add(found->second, gradient);
     }
 
     std::shared_ptr<Tensor> Grads::get(const std::shared_ptr<Tensor>& tensor) const {

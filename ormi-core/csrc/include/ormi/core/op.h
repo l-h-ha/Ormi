@@ -2,91 +2,14 @@
 #include <cstddef>
 #include <memory>
 #include <string_view>
-#include <utility>
 #include <variant>
 
 #include <ormi/core/ops/kind.h>
+#include <ormi/core/setup.h>
 
 namespace ormi::core {
     class Grads;
     class Tensor;
-
-    class Setup final {
-    public:
-        using Run = void (*)(void* state, Tensor& out);
-        using Drop = void (*)(void* state) noexcept;
-
-        Setup() noexcept = default;
-
-        Setup(
-            void* state,
-            Run run,
-            Drop drop,
-            std::size_t buffers = 0,
-            std::size_t bytes = 0
-        ) noexcept : state_(state),
-            run_(run),
-            drop_(drop),
-            buffers_(buffers),
-            bytes_(bytes) {}
-
-        ~Setup() {
-            reset();
-        }
-
-        Setup(const Setup&) = delete;
-        Setup& operator=(const Setup&) = delete;
-
-        Setup(Setup&& other) noexcept
-            : state_(std::exchange(other.state_, nullptr)),
-              run_(std::exchange(other.run_, nullptr)),
-              drop_(std::exchange(other.drop_, nullptr)),
-              buffers_(std::exchange(other.buffers_, 0)),
-              bytes_(std::exchange(other.bytes_, 0)) {}
-
-        Setup& operator=(Setup&& other) noexcept {
-            if (this == &other) {
-                return *this;
-            }
-
-            reset();
-            state_ = std::exchange(other.state_, nullptr);
-            run_ = std::exchange(other.run_, nullptr);
-            drop_ = std::exchange(other.drop_, nullptr);
-            buffers_ = std::exchange(other.buffers_, 0);
-            bytes_ = std::exchange(other.bytes_, 0);
-            return *this;
-        }
-
-        explicit operator bool() const noexcept {
-            return state_ != nullptr;
-        }
-
-        void run(Tensor& out) const {
-            run_(state_, out);
-        }
-
-        std::size_t buffers() const noexcept {
-            return buffers_;
-        }
-
-        std::size_t bytes() const noexcept {
-            return bytes_;
-        }
-
-    private:
-        void reset() noexcept {
-            if (state_) {
-                drop_(state_);
-            }
-        }
-
-        void* state_ = nullptr;
-        Run run_ = nullptr;
-        Drop drop_ = nullptr;
-        std::size_t buffers_ = 0;
-        std::size_t bytes_ = 0;
-    };
 
     enum class Output {
         allocate,
@@ -99,8 +22,12 @@ namespace ormi::core {
         float32
     };
 
+    // Parents are realized before compute runs. Allocating outputs already have storage.
+    // Alias callbacks run before the output borrows storage and must not call out.data().
     using Compute = void (*)(Tensor&);
+    // Return owned kernel/workspace state for repeated execution, or an empty Setup for compute.
     using Prepare = Setup (*)(Tensor&);
+    // Adjoint: build gradient expressions and add them to Grads without running kernels.
     using Adjoint = void (*)(
         const std::shared_ptr<Tensor>&,
         const std::shared_ptr<Tensor>&,
@@ -109,6 +36,8 @@ namespace ormi::core {
 
     using ScalarOp = std::variant<std::monostate, ops::UnaryOp, ops::BinaryOp>;
 
+    // Each operation has one static descriptor. Nodes point to it through OpRef.
+    // scalar identifies operations the fusion builder can put inside a kernel.
     struct Op {
         std::string_view name;
         Output output;

@@ -6,8 +6,8 @@
 #include <numeric>
 #include <vector>
 
-#include <ormi/core/autograd.h>
 #include <ormi/core/attrs.h>
+#include <ormi/core/autograd.h>
 #include <ormi/core/dtype.h>
 #include <ormi/core/error.h>
 #include <ormi/core/op.h>
@@ -20,45 +20,32 @@
 #include <ormi/core/shape.h>
 #include <ormi/core/tensor.h>
 
-#include "core/runtime/dispatch/reduction.h"
+#include "core/precision.h"
 #include "core/runtime/dispatch/finite.h"
 #include "core/runtime/dispatch/memory.h"
-#include "core/precision.h"
+#include "core/runtime/dispatch/reduction.h"
 
 namespace ormi::core::ops {
     namespace {
         void compute_all_finite(Tensor& out) {
             const std::array<const Tensor*, 1> inputs{out.parents()[0].get()};
             const bool finite = runtime::finite::all(inputs);
-            runtime::memory::fill_scalar(
-                out.device(),
-                out.data(),
-                &finite,
-                1,
-                DType::boolean
-            );
+            runtime::memory::fill_scalar(out.device(), out.data(), &finite, 1, DType::boolean);
         }
 
         void compute_sum(Tensor& out) {
             const auto& attrs = std::get<Reduce>(out.attrs());
-            runtime::reduction::reduce(
-                ReduceOp::sum,
-                out,
-                *out.parents()[0],
-                attrs.axes,
-                attrs.keepdims
-            );
+            runtime::reduction::reduce(ReduceOp::sum, out, *out.parents()[0], attrs.axes, attrs.keepdims);
         }
 
         void compute_mean(Tensor& out) {
             const auto& attrs = std::get<Reduce>(out.attrs());
-            runtime::reduction::reduce(
-                ReduceOp::mean,
-                out,
-                *out.parents()[0],
-                attrs.axes,
-                attrs.keepdims
-            );
+            runtime::reduction::reduce(ReduceOp::mean, out, *out.parents()[0], attrs.axes, attrs.keepdims);
+        }
+
+        void compute_max(Tensor& out) {
+            const auto& attrs = std::get<Reduce>(out.attrs());
+            runtime::reduction::reduce(ReduceOp::max, out, *out.parents()[0], attrs.axes, attrs.keepdims);
         }
 
         std::shared_ptr<Tensor> expanded_adjoint(
@@ -115,24 +102,45 @@ namespace ormi::core::ops {
             std::size_t count = 1;
 
             for (const auto axis : attrs.axes) {
-                count *= static_cast<std::size_t>(
-                    input->shape()[static_cast<std::size_t>(axis)]
-                );
+                count *= static_cast<std::size_t>(input->shape()[static_cast<std::size_t>(axis)]);
             }
 
-            const auto scaled = count == 1 ? upstream : mul(
-                upstream,
-                full(
-                    Shape{},
-                    reciprocal_scalar(count, upstream->dtype()),
-                    upstream->device()
-                )
-            );
-            gradients.add(
-                input,
-                expanded_adjoint(node, scaled)
-            );
+            if (count == 1) {
+                gradients.add(input, expanded_adjoint(node, upstream));
+                return;
+            }
+
+            const auto factor =
+                full(Shape{}, reciprocal_scalar(count, upstream->dtype()), upstream->device());
+            const auto scaled = mul(upstream, factor);
+            gradients.add(input, expanded_adjoint(node, scaled));
         }
+
+        void adjoint_max(
+            const std::shared_ptr<Tensor>& node,
+            const std::shared_ptr<Tensor>& upstream,
+            Grads& gradients
+        ) {
+            const auto& input = node->parents()[0];
+            const auto& attrs = std::get<Reduce>(node->attrs());
+            const auto difference = abs(sub(input, expanded_adjoint(node, node)));
+            auto mask = sub(ones_like(input), positive(difference));
+            if (mask->dtype() == DType::float16) {
+                mask = cast(mask, DType::float32);
+            }
+            const auto count = sum(mask, attrs.axes, true);
+            const auto gradient = mul(expanded_adjoint(node, upstream), div(mask, count));
+            gradients.add(input, cast(gradient, input->dtype()));
+        }
+
+        const Op max_op{
+            .name = "max",
+            .output = Output::allocate,
+            .parents = 1,
+            .compute = compute_max,
+            .adjoint = adjoint_max,
+            .scalar = std::monostate{}
+        };
 
         const Op all_finite_op{
             .name = "all_finite",
@@ -161,10 +169,7 @@ namespace ormi::core::ops {
             .precision = Precision::float32
         };
 
-        std::vector<std::int64_t> normalize_axes(
-            std::vector<std::int64_t> axes,
-            std::size_t rank
-        ) {
+        std::vector<std::int64_t> normalize_axes(std::vector<std::int64_t> axes, std::size_t rank) {
             if (axes.empty()) {
                 axes.resize(rank);
                 std::iota(axes.begin(), axes.end(), std::int64_t{0});
@@ -190,32 +195,51 @@ namespace ormi::core::ops {
             return axes;
         }
 
-        Shape reduced_shape(
-            const Shape& input,
-            const std::vector<std::int64_t>& axes,
-            bool keepdims
-        ) {
+        Shape reduced_shape(const Shape& input, const std::vector<std::int64_t>& axes, bool keepdims) {
             std::vector<std::int64_t> dims;
             dims.reserve(keepdims ? input.rank() : input.rank() - axes.size());
 
             for (std::size_t axis = 0; axis < input.rank(); ++axis) {
-                const bool reduced = std::binary_search(
-                    axes.begin(),
-                    axes.end(),
-                    static_cast<std::int64_t>(axis)
-                );
+                const bool reduced =
+                    std::binary_search(axes.begin(), axes.end(), static_cast<std::int64_t>(axis));
 
-                if (reduced) {
-                    if (keepdims) {
-                        dims.push_back(1);
-                    }
-                } else {
+                if (!reduced) {
                     dims.push_back(input[axis]);
+                    continue;
+                }
+
+                if (keepdims) {
+                    dims.push_back(1);
                 }
             }
 
             return Shape(std::move(dims));
         }
+    }
+
+    std::shared_ptr<Tensor> max(
+        const std::shared_ptr<Tensor>& input,
+        std::vector<std::int64_t> axes,
+        bool keepdims
+    ) {
+        if (!input)
+            ORMI_THROW(OperationError, "Max requires a tensor.");
+        if (!is_floating(input->dtype()))
+            ORMI_THROW(DTypeError, "Max requires a floating-point tensor.");
+        axes = normalize_axes(std::move(axes), input->rank());
+        for (const auto axis : axes) {
+            if (input->shape()[static_cast<std::size_t>(axis)] == 0)
+                ORMI_THROW(ShapeError, "Max cannot reduce an empty axis.");
+        }
+        auto shape = reduced_shape(input->shape(), axes, keepdims);
+        return std::make_shared<Tensor>(
+            op_ref<max_op>(),
+            Reduce{std::move(axes), keepdims},
+            std::vector<std::shared_ptr<Tensor>>{input},
+            input->device(),
+            std::move(shape),
+            input->dtype()
+        );
     }
 
     std::shared_ptr<Tensor> all_finite(const std::shared_ptr<Tensor>& input) {

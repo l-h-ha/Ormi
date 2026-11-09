@@ -46,6 +46,7 @@ namespace ormi::backends::cpu::jit::cache {
     );
 
     std::filesystem::path directory();
+    bool has_entries();
     std::string key(std::string_view generated);
     std::string key(std::string_view generated, std::string_view context);
     Artifact get(std::string_view generated, Build build);

@@ -120,6 +120,106 @@ namespace {
         );
     }
 
+    TEST(FusionExprTest, appendsSharedParentsBeforeTheirConsumers) {
+        const auto x = tensor({4});
+        const auto y = tensor({4});
+        const auto shared = ormi::core::ops::add(x, y);
+        const auto left = ormi::core::ops::neg(shared);
+        const auto right = ormi::core::ops::mul(shared, shared);
+        const auto output = ormi::core::ops::sub(left, right);
+        const auto expression = ormi::core::runtime::fusion::build(*output);
+
+        ASSERT_TRUE(expression);
+        EXPECT_EQ(expression->inputs, (std::vector<ormi::core::Tensor*>{x.get(), y.get()}));
+        EXPECT_EQ(expression->operations, 4u);
+        EXPECT_EQ(expression->output, 5u);
+        EXPECT_EQ(
+            expression->nodes,
+            (std::vector<ormi::core::runtime::fusion::Node>{
+                {ormi::core::DType::float32, ormi::core::runtime::fusion::Input{0, {}, true}},
+                {ormi::core::DType::float32, ormi::core::runtime::fusion::Input{1, {}, true}},
+                {ormi::core::DType::float32, ormi::core::runtime::fusion::Binary{
+                    ormi::core::ops::BinaryOp::add, 0, 1}},
+                {ormi::core::DType::float32, ormi::core::runtime::fusion::Unary{
+                    ormi::core::ops::UnaryOp::neg, 2}},
+                {ormi::core::DType::float32, ormi::core::runtime::fusion::Binary{
+                    ormi::core::ops::BinaryOp::mul, 2, 2}},
+                {ormi::core::DType::float32, ormi::core::runtime::fusion::Binary{
+                    ormi::core::ops::BinaryOp::sub, 3, 4}}
+            })
+        );
+    }
+
+    TEST(FusionExprTest, preservesAuxiliaryOutputOrderAcrossSharedParents) {
+        const auto x = tensor({4});
+        const auto y = tensor({4});
+        const auto shared = ormi::core::ops::add(x, y);
+        const auto first = ormi::core::ops::neg(shared);
+        const auto second = ormi::core::ops::mul(shared, shared);
+        const auto output = ormi::core::ops::sub(first, second);
+        const std::array<ormi::core::Tensor*, 3> auxiliaries{
+            second.get(), shared.get(), first.get()
+        };
+        const auto expression = ormi::core::runtime::fusion::build(*output, auxiliaries);
+
+        ASSERT_TRUE(expression);
+        EXPECT_EQ(expression->inputs, (std::vector<ormi::core::Tensor*>{x.get(), y.get()}));
+        EXPECT_EQ(expression->operations, 4u);
+        EXPECT_EQ(expression->nodes.size(), 6u);
+        EXPECT_EQ(expression->output, 5u);
+        EXPECT_EQ(
+            expression->auxiliary_outputs,
+            (std::vector<ormi::core::runtime::fusion::Index>{4, 2, 3})
+        );
+    }
+
+    TEST(FusionExprTest, stopsAtExplicitOperationBoundary) {
+        const auto x = tensor({4});
+        const auto y = tensor({4});
+        const auto shared = ormi::core::ops::add(x, y);
+        const auto output = ormi::core::ops::sub(
+            ormi::core::ops::neg(shared),
+            ormi::core::ops::mul(shared, shared)
+        );
+        const std::unordered_set<const ormi::core::Tensor*> boundaries{shared.get()};
+        const auto expression = ormi::core::runtime::fusion::build(*output, boundaries);
+
+        ASSERT_TRUE(expression);
+        EXPECT_FALSE(shared->realized());
+        EXPECT_EQ(expression->inputs, (std::vector<ormi::core::Tensor*>{shared.get()}));
+        EXPECT_EQ(expression->operations, 3u);
+        ASSERT_EQ(expression->nodes.size(), 4u);
+        EXPECT_EQ(expression->output, 3u);
+        EXPECT_EQ(
+            std::get<ormi::core::runtime::fusion::Input>(expression->nodes[0].instruction),
+            (ormi::core::runtime::fusion::Input{0, {}, true})
+        );
+        EXPECT_EQ(
+            std::get<ormi::core::runtime::fusion::Binary>(expression->nodes[2].instruction),
+            (ormi::core::runtime::fusion::Binary{ormi::core::ops::BinaryOp::mul, 0, 0})
+        );
+    }
+
+    TEST(FusionExprTest, recognizesConstantsBeforeExplicitBoundaries) {
+        const auto x = tensor({4});
+        const auto one = ormi::core::ops::ones_like(x);
+        const auto output = ormi::core::ops::sin(
+            ormi::core::ops::add(ormi::core::ops::mul(x, x), one)
+        );
+        const std::unordered_set<const ormi::core::Tensor*> boundaries{one.get()};
+        const auto expression = ormi::core::runtime::fusion::build(*output, boundaries);
+
+        ASSERT_TRUE(expression);
+        EXPECT_EQ(expression->inputs, (std::vector<ormi::core::Tensor*>{x.get()}));
+        EXPECT_EQ(expression->operations, 3u);
+        ASSERT_EQ(expression->nodes.size(), 5u);
+        EXPECT_EQ(expression->output, 4u);
+        EXPECT_EQ(
+            std::get<ormi::core::runtime::fusion::Constant>(expression->nodes[2].instruction),
+            ormi::core::runtime::fusion::Constant::one
+        );
+    }
+
     TEST(FusionExprTest, representsConstantsWithoutInputs) {
         const auto x = tensor({4});
         const auto zero = ormi::core::ops::zeros_like(x);
@@ -339,6 +439,32 @@ namespace {
         EXPECT_EQ(expression->reduction->reduced.size, 2u);
         EXPECT_EQ(expression->operations, 2u);
         EXPECT_EQ(expression->output, 2u);
+    }
+
+    TEST(FusionExprTest, keepdimsDoesNotChangeMappedReductionExpression) {
+        const auto x = tensor({2, 3, 4});
+        const auto mapped = ormi::core::ops::add(ormi::core::ops::mul(x, x), x);
+        const auto squeezed = ormi::core::ops::sum(mapped, {0, 2}, false);
+        const auto retained = ormi::core::ops::sum(mapped, {0, 2}, true);
+        const auto first = ormi::core::runtime::fusion::build(*squeezed);
+        const auto second = ormi::core::runtime::fusion::build(*retained);
+
+        ASSERT_TRUE(first);
+        ASSERT_TRUE(second);
+        EXPECT_EQ(squeezed->shape(), (ormi::core::Shape{3}));
+        EXPECT_EQ(retained->shape(), (ormi::core::Shape{1, 3, 1}));
+        EXPECT_EQ(first->dtype, second->dtype);
+        EXPECT_EQ(first->shape, second->shape);
+        EXPECT_EQ(first->nodes, second->nodes);
+        EXPECT_EQ(first->inputs, second->inputs);
+        EXPECT_EQ(first->output, second->output);
+        EXPECT_EQ(first->auxiliary_outputs, second->auxiliary_outputs);
+        EXPECT_EQ(first->operations, second->operations);
+        EXPECT_EQ(first->elements, second->elements);
+        ASSERT_TRUE(first->reduction);
+        EXPECT_EQ(first->reduction, second->reduction);
+        EXPECT_EQ(first->reduction->output.size, 3u);
+        EXPECT_EQ(first->reduction->reduced.size, 8u);
     }
 
     TEST(FusionExprTest, mapsPartialReductionCoordinatesToSource) {

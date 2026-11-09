@@ -236,48 +236,74 @@ namespace ormi::backends::cpu::jit::cache {
             }
         }
 
+        // The caller holds the entry's write lock while saving these files.
+        void publish(const Files& paths, std::string_view generated, Build build) {
+            const auto suffix =
+                "." + std::to_string(platform::process_id()) + ".tmp";
+            const auto staged_stem = paths.source.stem().string() + suffix;
+            const auto staged_source = paths.source.parent_path() /
+                (staged_stem + ".cpp");
+            const auto staged_library = paths.library.parent_path() /
+                (staged_stem + std::string(platform::shared_extension()));
+            cleanup_staged(staged_source);
+
+            try {
+                write(staged_source, generated);
+                build(staged_source, staged_library);
+                if (!std::filesystem::is_regular_file(staged_library)) {
+                    ORMI_THROW(
+                        jitError,
+                        "CPU JIT compiler did not produce a shared library."
+                    );
+                }
+                replace(staged_library, paths.library);
+                replace(staged_source, paths.source);
+                cleanup_staged(staged_source);
+            } catch (...) {
+                cleanup_staged(staged_source);
+                throw;
+            }
+        }
+
         std::vector<Entry> scan(std::error_code& error) {
             std::vector<Entry> result;
             std::filesystem::directory_iterator iterator(directory(), error);
             const std::filesystem::directory_iterator end;
 
-            while (!error && iterator != end) {
+            for (; !error && iterator != end; iterator.increment(error)) {
                 const auto path = iterator->path();
-                if (path.extension() == ".cpp") {
-                    const auto stem = path.stem().string();
-                    if (is_key(stem)) {
-                        const auto paths = files_for(stem);
-                        std::error_code entry_error;
-                        if (
-                            std::filesystem::is_regular_file(paths.source, entry_error) &&
-                            !entry_error &&
-                            std::filesystem::is_regular_file(paths.library, entry_error) &&
-                            !entry_error
-                        ) {
-                            const auto source_bytes = std::filesystem::file_size(
-                                paths.source,
-                                entry_error
-                            );
-                            const auto library_bytes = std::filesystem::file_size(
-                                paths.library,
-                                entry_error
-                            );
-                            const auto used = std::filesystem::last_write_time(
-                                paths.source,
-                                entry_error
-                            );
-                            if (!entry_error) {
-                                result.push_back(Entry{
-                                    stem,
-                                    paths,
-                                    source_bytes + library_bytes,
-                                    used
-                                });
-                            }
-                        }
-                    }
+                if (path.extension() != ".cpp") {
+                    continue;
                 }
-                iterator.increment(error);
+
+                const auto stem = path.stem().string();
+                if (!is_key(stem)) {
+                    continue;
+                }
+
+                const auto paths = files_for(stem);
+                std::error_code entry_error;
+                if (!std::filesystem::is_regular_file(paths.source, entry_error) || entry_error) {
+                    continue;
+                }
+                if (!std::filesystem::is_regular_file(paths.library, entry_error) || entry_error) {
+                    continue;
+                }
+
+                const auto source_bytes = std::filesystem::file_size(paths.source, entry_error);
+                if (entry_error) {
+                    continue;
+                }
+                const auto library_bytes = std::filesystem::file_size(paths.library, entry_error);
+                if (entry_error) {
+                    continue;
+                }
+                const auto used = std::filesystem::last_write_time(paths.source, entry_error);
+                if (entry_error) {
+                    continue;
+                }
+
+                result.push_back(Entry{stem, paths, source_bytes + library_bytes, used});
             }
             return result;
         }
@@ -313,16 +339,25 @@ namespace ormi::backends::cpu::jit::cache {
         std::uintmax_t erase(const Files& paths) {
             std::error_code error;
             const auto library_bytes = std::filesystem::file_size(paths.library, error);
-            if (error || !std::filesystem::remove(paths.library, error) || error) {
+            if (error) {
                 return 0;
             }
 
-            auto removed = library_bytes;
-            const auto source_bytes = std::filesystem::file_size(paths.source, error);
-            if (!error && std::filesystem::remove(paths.source, error) && !error) {
-                removed += source_bytes;
+            const auto library_removed = std::filesystem::remove(paths.library, error);
+            if (error || !library_removed) {
+                return 0;
             }
-            return removed;
+
+            const auto source_bytes = std::filesystem::file_size(paths.source, error);
+            if (error) {
+                return library_bytes;
+            }
+
+            const auto source_removed = std::filesystem::remove(paths.source, error);
+            if (error || !source_removed) {
+                return library_bytes;
+            }
+            return library_bytes + source_bytes;
         }
 
         void prune(std::string_view protected_key, std::uintmax_t limit) {
@@ -400,10 +435,16 @@ namespace ormi::backends::cpu::jit::cache {
             platform::FileLock lock(paths.lock);
 
             std::error_code error;
-            const bool library_removed =
-                !std::filesystem::exists(paths.library, error) ||
-                (std::filesystem::remove(paths.library, error) && !error);
-            if (library_removed) {
+            const auto library_exists = std::filesystem::exists(paths.library, error);
+            bool library_absent = false;
+            if (!error && !library_exists) {
+                library_absent = true;
+            }
+            if (!error && library_exists) {
+                const auto library_removed = std::filesystem::remove(paths.library, error);
+                library_absent = library_removed && !error;
+            }
+            if (library_absent) {
                 cleanup(paths.source);
             }
 
@@ -455,6 +496,33 @@ namespace ormi::backends::cpu::jit::cache {
         return platform::cache_directory() / "jit" / std::string(abi);
     }
 
+    bool has_entries() {
+        if (!directory_exists()) {
+            return false;
+        }
+
+        std::error_code error;
+        std::filesystem::directory_iterator iterator(directory(), error);
+        const std::filesystem::directory_iterator end;
+        while (!error && iterator != end) {
+            const auto& path = iterator->path();
+            auto extension = path.extension().string();
+            for (auto& character : extension) {
+                character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+            }
+            if (
+                (extension == platform::shared_extension() || extension == ".lock") &&
+                is_key(path.stem().string())
+            ) {
+                return true;
+            }
+            iterator.increment(error);
+        }
+
+        // A directory scan can fail even when a known library path is readable.
+        return static_cast<bool>(error);
+    }
+
     std::string key(std::string_view generated) {
         return key(generated, {});
     }
@@ -504,31 +572,7 @@ namespace ormi::backends::cpu::jit::cache {
                 }
 
                 limit = configured_limit();
-                const auto suffix =
-                    "." + std::to_string(platform::process_id()) + ".tmp";
-                const auto staged_stem = paths.source.stem().string() + suffix;
-                const auto staged_source = paths.source.parent_path() /
-                    (staged_stem + ".cpp");
-                const auto staged_library = paths.library.parent_path() /
-                    (staged_stem + std::string(platform::shared_extension()));
-                cleanup_staged(staged_source);
-
-                try {
-                    write(staged_source, generated);
-                    build(staged_source, staged_library);
-                    if (!std::filesystem::is_regular_file(staged_library)) {
-                        ORMI_THROW(
-                            jitError,
-                            "CPU JIT compiler did not produce a shared library."
-                        );
-                    }
-                    replace(staged_library, paths.library);
-                    replace(staged_source, paths.source);
-                    cleanup_staged(staged_source);
-                } catch (...) {
-                    cleanup_staged(staged_source);
-                    throw;
-                }
+                publish(paths, generated, build);
             }
 
             built = true;
@@ -547,8 +591,17 @@ namespace ormi::backends::cpu::jit::cache {
         const auto paths = files(generated, context);
         auto lease = std::make_unique<platform::FileLock>(
             paths.lock,
-            platform::Lock::shared
+            platform::Lock::shared,
+            platform::FileLock::Open::existing
         );
+        if (!lease->opened()) {
+            // Copied libraries may have no lock file. Missing libraries need no new lock.
+            std::error_code error;
+            if (!std::filesystem::is_regular_file(paths.library, error) || error) {
+                return std::nullopt;
+            }
+            lease = std::make_unique<platform::FileLock>(paths.lock, platform::Lock::shared);
+        }
         if (!valid(paths, generated)) {
             return std::nullopt;
         }

@@ -29,18 +29,25 @@ namespace ormi::platform {
         }
     }
 
-    FileLock::FileLock(const std::filesystem::path& path, Lock mode) {
+    FileLock::FileLock(const std::filesystem::path& path, Lock mode)
+        : FileLock(path, mode, Open::create) {}
+
+    FileLock::FileLock(const std::filesystem::path& path, Lock mode, Open policy) {
         const auto handle = CreateFileW(
             path.c_str(),
             GENERIC_READ | GENERIC_WRITE,
             FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
             nullptr,
-            OPEN_ALWAYS,
+            policy == Open::create ? OPEN_ALWAYS : OPEN_EXISTING,
             FILE_ATTRIBUTE_NORMAL,
             nullptr
         );
         if (handle == INVALID_HANDLE_VALUE) {
             const auto code = GetLastError();
+            if (policy == Open::existing &&
+                (code == ERROR_FILE_NOT_FOUND || code == ERROR_PATH_NOT_FOUND)) {
+                return;
+            }
             ORMI_THROW(
                 jitError,
                 "Cannot open cache lock: " + path.string() + "\n" +

@@ -3,19 +3,28 @@ target_sources(ormi_core PRIVATE
     backends/cpu/backend.cpp
     backends/cpu/blas/openblas.cpp
     backends/cpu/cast.cpp
+    backends/cpu/indexing.cpp
     backends/cpu/executor.cpp
+    backends/cpu/executor/pool.cpp
     backends/cpu/fractional.cpp
     backends/cpu/fractional/l1.cpp
     backends/cpu/fractional/l2.cpp
     backends/cpu/jit/artifact.cpp
     backends/cpu/jit/cache.cpp
     backends/cpu/jit/codegen.cpp
+    backends/cpu/jit/codegen/input.cpp
     backends/cpu/jit/codegen/map.cpp
     backends/cpu/jit/codegen/reduction.cpp
+    backends/cpu/jit/codegen/reduction/contiguous.cpp
+    backends/cpu/jit/codegen/reduction/strided.cpp
+    backends/cpu/jit/codegen/reduction/tiled.cpp
+    backends/cpu/jit/codegen/support.cpp
     backends/cpu/jit/codegen/value.cpp
     backends/cpu/jit/compile.cpp
     backends/cpu/jit/compatibility.cpp
     backends/cpu/jit/compiler.cpp
+    backends/cpu/jit/compiler/invoke.cpp
+    backends/cpu/jit/compiler/probe.cpp
     backends/cpu/jit/execute.cpp
     backends/cpu/jit/kernel.cpp
     backends/cpu/jit/loop.cpp
@@ -23,12 +32,14 @@ target_sources(ormi_core PRIVATE
     backends/cpu/jit/target.cpp
     backends/cpu/matmul.cpp
     backends/cpu/memory.cpp
+    backends/cpu/random.cpp
     backends/cpu/optimizer.cpp
     backends/cpu/pointwise/binary.cpp
     backends/cpu/pointwise/unary.cpp
     backends/cpu/reduction.cpp
     backends/cpu/reduction/finite.cpp
     backends/cpu/reduction/sum.cpp
+    backends/cpu/reduction/max.cpp
 )
 
 set(ORMI_CPU_HAS_AVX2_KERNELS OFF)
@@ -82,10 +93,17 @@ ormi_backend(
     HEADER backends/cpu/backend.h
 )
 
-option(ORMI_ENABLE_SLEEF "Use SLEEF for AVX2 CPU JIT transcendental operations." OFF)
+option(ORMI_ENABLE_SLEEF "Use SLEEF for AVX2 CPU JIT exp, log, sin, and cos." OFF)
 
 if(ORMI_ENABLE_SLEEF)
     find_package(sleef 3.9.0 EXACT CONFIG REQUIRED)
+
+    # The example target stages the DLL from outside csrc.
+    get_target_property(ORMI_SLEEF_IMPORTED sleef::sleef IMPORTED)
+    get_target_property(ORMI_SLEEF_SOURCE_DIR sleef::sleef SOURCE_DIR)
+    if(ORMI_SLEEF_IMPORTED AND ORMI_SLEEF_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+        set_property(TARGET sleef::sleef PROPERTY IMPORTED_GLOBAL TRUE)
+    endif()
 
     target_compile_definitions(ormi_core PRIVATE ORMI_ENABLE_SLEEF)
     target_link_libraries(ormi_core PRIVATE sleef::sleef)

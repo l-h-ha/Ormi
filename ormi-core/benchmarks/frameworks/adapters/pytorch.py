@@ -19,22 +19,24 @@ from ..model import (
 )
 from ..workloads import LEARNING_RATE
 
-
 _configured = False
 
+###
+###
+###
 
 def configure(threads: int) -> None:
     global _configured
+
     if _configured:
         return
+
     torch.set_num_threads(threads)
     torch.set_num_interop_threads(1)
     _configured = True
 
-
 def version() -> str:
     return torch.__version__
-
 
 def _dtype(name: str) -> torch.dtype:
     return {
@@ -43,21 +45,19 @@ def _dtype(name: str) -> torch.dtype:
         "float64": torch.float64,
     }[name]
 
-
 def _device(name: str) -> torch.device:
     device = torch.device(name)
+
     if device.type == "cuda" and not torch.cuda.is_available():
         raise Unsupported("PyTorch cannot access a CUDA device.")
-    return device
 
+    return device
 
 def _tensor(value: np.ndarray, dtype: torch.dtype, device: torch.device) -> torch.Tensor:
     return torch.from_numpy(value.copy()).to(device=device, dtype=dtype)
 
-
 def _numpy(value: torch.Tensor) -> np.ndarray:
     return value.detach().cpu().numpy()
-
 
 def _case(
     tier: Tier,
@@ -82,14 +82,12 @@ def _case(
         ),
     )
 
-
 def _compile(function: Callable[..., object], tier: Tier) -> Callable[..., object]:
     return (
         function
         if tier == "direct"
         else torch.compile(function, fullgraph=True)
     )
-
 
 def _pointwise(
     spec: Spec,
@@ -124,13 +122,13 @@ def _pointwise(
     def values() -> tuple[np.ndarray, ...]:
         if last is None:
             raise RuntimeError("PyTorch pointwise workload has not run.")
+
         return (_numpy(last),)
 
     def observe() -> Observation:
         return output_observation(values()[0])
 
     return _case(tier, start, run, values, observe, device)
-
 
 def _reduction(
     spec: Spec,
@@ -162,13 +160,13 @@ def _reduction(
     def values() -> tuple[np.ndarray, ...]:
         if last is None:
             raise RuntimeError("PyTorch reduction workload has not run.")
+
         return (_numpy(last),)
 
     def observe() -> Observation:
         return output_observation(values()[0])
 
     return _case(tier, start, run, values, observe, device)
-
 
 def _dense(
     spec: Spec,
@@ -214,6 +212,7 @@ def _dense(
     def values() -> tuple[np.ndarray, ...]:
         if last is None:
             raise RuntimeError("PyTorch dense workload has not run.")
+
         return tuple(_numpy(value) for value in last)
 
     def observe() -> Observation:
@@ -224,7 +223,6 @@ def _dense(
         )
 
     return _case(tier, start, run, values, observe, device)
-
 
 def _pinn(
     spec: Spec,
@@ -300,6 +298,7 @@ def _pinn(
     def values() -> tuple[np.ndarray, ...]:
         if last_loss is None:
             raise RuntimeError("PyTorch PINN workload has not run.")
+
         return (
             _numpy(last_loss),
             *(_numpy(parameter) for parameter in parameters),
@@ -314,15 +313,19 @@ def _pinn(
 
     return _case(tier, start, run, values, observe, device)
 
-
 def prepare(spec: Spec, data: Data, tier: Tier, device_name: str) -> Case:
     device = _device(device_name)
+
     if spec.name == "pointwise":
         return _pointwise(spec, data, tier, device)
+
     if spec.name == "reduction":
         return _reduction(spec, data, tier, device)
+
     if spec.name == "dense":
         return _dense(spec, data, tier, device)
+
     if spec.name == "pinn":
         return _pinn(spec, data, tier, device)
+
     raise ValueError(f"Unknown workload: {spec.name}")

@@ -9,6 +9,9 @@ import numpy as np
 
 from .model import Case, Observation, Result, Spec, Unavailable
 
+###
+###
+###
 
 def percentile(values: Sequence[float], fraction: float) -> float:
     ordered = sorted(values)
@@ -18,22 +21,23 @@ def percentile(values: Sequence[float], fraction: float) -> float:
     weight = position - lower
     return ordered[lower] * (1.0 - weight) + ordered[upper] * weight
 
-
 def time_calls(case: Case, calls: int) -> float:
     start = time.perf_counter_ns()
+
     for _ in range(calls):
         case.run()
+
     case.synchronize()
     return (time.perf_counter_ns() - start) / 1e6 / calls
-
 
 def tolerances(dtype: str) -> tuple[float, float]:
     if dtype == "float16":
         return 5e-2, 5e-3
+
     if dtype == "float32":
         return 5e-4, 5e-5
-    return 1e-8, 1e-10
 
+    return 1e-8, 1e-10
 
 def verify(
     spec: Spec,
@@ -52,11 +56,13 @@ def verify(
 
     for case in cases:
         actual = values[(case.framework, case.mode)]
+
         if len(actual) != len(expected):
             raise AssertionError(
                 f"{case.framework} {case.mode} returned {len(actual)} "
-                f"values instead of {len(expected)} for {spec.key}."
+                f"values instead of the {len(expected)} expected for {spec.key}."
             )
+
         for index, (actual_value, expected_value) in enumerate(
             zip(actual, expected, strict=True)
         ):
@@ -71,7 +77,6 @@ def verify(
                     f"{reference.mode} for {spec.key}"
                 ),
             )
-
 
 def measure(
     spec: Spec,
@@ -88,8 +93,10 @@ def measure(
     observations: dict[tuple[str, str], Observation] = {}
     unavailable = []
     active = []
+
     for case in cases:
         key = (case.framework, case.mode)
+
         try:
             first[key] = time_calls(case, 1)
             values[key] = case.values()
@@ -102,11 +109,14 @@ def measure(
                 tier=case.tier,
                 reason=f"First execution failed: {error}",
             ))
+
     if not active:
         return [], unavailable
+
     verify(spec, active, values)
 
     warmed = []
+
     for case in active:
         try:
             time_calls(case, warmup)
@@ -118,7 +128,9 @@ def measure(
                 tier=case.tier,
                 reason=f"Warmup failed: {error}",
             ))
+
     active = warmed
+
     if not active:
         return [], unavailable
 
@@ -127,14 +139,17 @@ def measure(
         for case in active
     }
     order = random.Random(spec.seed)
+
     for _ in range(rounds):
         order.shuffle(active)
+
         for case in active:
             samples[(case.framework, case.mode)].append(
                 time_calls(case, calls_per_round)
             )
 
     results = []
+
     for case in active:
         key = (case.framework, case.mode)
         durations = samples[key]
@@ -152,6 +167,7 @@ def measure(
             iterations_per_second=1000.0 / median,
             observation=case.observe(),
         ))
+
     return (
         sorted(results, key=lambda result: result.median_ms),
         unavailable,

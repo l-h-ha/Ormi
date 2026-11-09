@@ -25,8 +25,14 @@
 #include <ormi/core/optim/grad_scaler.h>
 #include <ormi/core/optim/sgd.h>
 #include <ormi/core/plan.h>
+#include <ormi/core/setup.h>
 #include <ormi/core/shape.h>
 #include <ormi/core/tensor.h>
+#include <ormi/nn/losses/mse.h>
+#include <ormi/nn/modules/activation.h>
+#include <ormi/nn/modules/linear.h>
+#include <ormi/nn/modules/module.h>
+#include <ormi/nn/modules/sequential.h>
 
 template <typename T>
 concept ExposesBackend = requires(const T& value) {

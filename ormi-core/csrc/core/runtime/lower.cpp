@@ -17,7 +17,8 @@ namespace ormi::core::runtime {
         std::optional<Step> lower_fusion(
             Tensor& output,
             std::span<Tensor* const> auxiliary_outputs,
-            const std::unordered_set<const Tensor*>* boundaries
+            const std::unordered_set<const Tensor*>* boundaries,
+            Preparation preparation
         ) {
             const auto& target = backend(output.device()).fusion;
             if (!target.execute) {
@@ -46,7 +47,7 @@ namespace ormi::core::runtime {
                 auxiliary_outputs.begin(),
                 auxiliary_outputs.end()
             };
-            if (boundaries && (target.prepare || target.prepare_many)) {
+            if (preparation == Preparation::deferred && (target.prepare || target.prepare_many)) {
                 return Step::deferred_fusion(
                     output,
                     target.prepare,
@@ -66,9 +67,19 @@ namespace ormi::core::runtime {
 
         Step lower(
             Tensor& tensor,
-            const std::unordered_set<const Tensor*>* boundaries
+            const fusion::Candidates* candidates,
+            const std::unordered_set<const Tensor*>* boundaries,
+            Preparation preparation
         ) {
-            if (auto step = lower_fusion(tensor, {}, boundaries)) {
+            if (candidates) {
+                const auto group = candidates->find(&tensor);
+                if (group != candidates->end() && !group->second.empty()) {
+                    if (auto step = lower_fusion(tensor, group->second, boundaries, preparation)) {
+                        return std::move(*step);
+                    }
+                }
+            }
+            if (auto step = lower_fusion(tensor, {}, boundaries, preparation)) {
                 return std::move(*step);
             }
             if (tensor.op()->output == Output::alias) {
@@ -84,35 +95,20 @@ namespace ormi::core::runtime {
         }
     }
 
-    Step lower(Tensor& tensor) {
-        return lower(tensor, nullptr);
+    Step lower(Tensor& tensor, Preparation preparation) {
+        return lower(tensor, nullptr, nullptr, preparation);
+    }
+
+    Step lower(Tensor& tensor, const fusion::Candidates& candidates, Preparation preparation) {
+        return lower(tensor, &candidates, nullptr, preparation);
     }
 
     Step lower(
         Tensor& tensor,
-        const std::unordered_set<const Tensor*>& boundaries
+        const fusion::Candidates& candidates,
+        const std::unordered_set<const Tensor*>& boundaries,
+        Preparation preparation
     ) {
-        return lower(tensor, &boundaries);
-    }
-
-    std::optional<Step> lower_group(
-        Tensor& tensor,
-        std::span<Tensor* const> auxiliary_outputs
-    ) {
-        if (auxiliary_outputs.empty()) {
-            return std::nullopt;
-        }
-        return lower_fusion(tensor, auxiliary_outputs, nullptr);
-    }
-
-    std::optional<Step> lower_group(
-        Tensor& tensor,
-        std::span<Tensor* const> auxiliary_outputs,
-        const std::unordered_set<const Tensor*>& boundaries
-    ) {
-        if (auxiliary_outputs.empty()) {
-            return std::nullopt;
-        }
-        return lower_fusion(tensor, auxiliary_outputs, &boundaries);
+        return lower(tensor, &candidates, &boundaries, preparation);
     }
 }

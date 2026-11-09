@@ -16,20 +16,20 @@ namespace ormi::backends::cpu {
         template <typename To, typename From>
         To convert(From value) {
             if constexpr (std::is_same_v<To, std::int32_t>) {
-                const auto number = [&] {
-                    if constexpr (std::is_same_v<From, core::Float16>) {
-                        return static_cast<double>(static_cast<float>(value));
-                    } else {
-                        return static_cast<double>(value);
-                    }
-                }();
+                double number;
+                if constexpr (std::is_same_v<From, core::Float16>) {
+                    number = static_cast<double>(static_cast<float>(value));
+                } else {
+                    number = static_cast<double>(value);
+                }
 
-                if (
-                    !std::isfinite(number) ||
+                if (!std::isfinite(number) ||
                     number < static_cast<double>(std::numeric_limits<std::int32_t>::min()) ||
-                    number > static_cast<double>(std::numeric_limits<std::int32_t>::max())
-                ) {
-                    ORMI_THROW(DTypeError, "CPU cast to Int32 requires a finite value within the Int32 range.");
+                    number > static_cast<double>(std::numeric_limits<std::int32_t>::max())) {
+                    ORMI_THROW(
+                        DTypeError,
+                        "CPU cast to Int32 requires a finite value within the Int32 range."
+                    );
                 }
 
                 return static_cast<std::int32_t>(number);

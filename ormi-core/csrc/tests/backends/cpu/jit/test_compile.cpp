@@ -1,9 +1,13 @@
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <barrier>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <memory>
+#include <span>
 #include <stdexcept>
 #include <thread>
 #include <unordered_set>
@@ -14,10 +18,12 @@
 
 #include <ormi/core/device.h>
 #include <ormi/core/dtype.h>
+#include <ormi/core/error.h>
 #include <ormi/core/ops/pointwise.h>
 #include <ormi/core/tensor.h>
 
 #include "backends/cpu/jit/compile.h"
+#include "backends/cpu/jit/execute.h"
 #include "backends/cpu/jit/loop.h"
 #include "core/runtime/fusion/expr.h"
 
@@ -43,8 +49,9 @@ namespace {
         ormi::core::runtime::fusion::Expr expression;
     };
 
-    Graph graph(std::size_t additions) {
+    Graph graph(std::size_t additions, float value = 0.25f) {
         const auto x = input();
+        std::fill_n(static_cast<float*>(x->data()), elements, value);
         auto root = ormi::core::ops::mul(x, x);
         for (std::size_t i = 0; i < additions; ++i) {
             root = ormi::core::ops::add(root, x);
@@ -181,5 +188,121 @@ namespace {
             compiled[1].get(),
             ormi::backends::cpu::jit::compile(second.expression).get()
         );
+    }
+
+    TEST(CPUJITCompileTest, acceptsEmptyBatch) {
+        const std::span<const ormi::core::runtime::fusion::Expr* const> expressions;
+
+        EXPECT_TRUE(ormi::backends::cpu::jit::compile(expressions).empty());
+    }
+
+    TEST(CPUJITCompileTest, rejectsNullBatchEntry) {
+        const std::array<const ormi::core::runtime::fusion::Expr*, 1> expressions{nullptr};
+
+        EXPECT_THROW(ormi::backends::cpu::jit::compile(expressions), ormi::OperationError);
+    }
+
+    TEST(CPUJITCompileTest, preservesRequestOrderAndDeduplicatesEquivalentGraphs) {
+        const auto first = graph(23, 0.25f);
+        const auto second = graph(29, 0.5f);
+        const auto equivalent = graph(23, 1.0f);
+        const std::array<const ormi::core::runtime::fusion::Expr*, 4> expressions{
+            &second.expression, &first.expression, &equivalent.expression, &second.expression
+        };
+
+        const auto compiled = ormi::backends::cpu::jit::compile(expressions);
+
+        ASSERT_EQ(compiled.size(), expressions.size());
+        EXPECT_EQ(compiled[0].get(), compiled[3].get());
+        EXPECT_EQ(compiled[1].get(), compiled[2].get());
+        EXPECT_NE(compiled[0].get(), compiled[1].get());
+        EXPECT_EQ(compiled[0]->library.get(), compiled[1]->library.get());
+        const std::array expected{
+            std::sin(0.5f * 0.5f + 29.0f * 0.5f),
+            std::sin(0.25f * 0.25f + 23.0f * 0.25f),
+            std::sin(1.0f + 23.0f),
+            std::sin(0.5f * 0.5f + 29.0f * 0.5f)
+        };
+        for (std::size_t i = 0; i < expressions.size(); ++i) {
+            ormi::core::Tensor output(
+                ormi::core::Device::cpu(), {static_cast<std::int64_t>(elements)},
+                ormi::core::DType::float32
+            );
+            ormi::backends::cpu::jit::execution::run(output, {}, *expressions[i], *compiled[i]);
+            const auto* values = static_cast<const float*>(output.data());
+            for (std::size_t element = 0; element < elements; ++element) {
+                ASSERT_NEAR(values[element], expected[i], 1e-5f);
+            }
+        }
+    }
+
+    TEST(CPUJITCompileTest, retainsMemoryHitsWhileCompilingNewBatchEntries) {
+        const auto warm = graph(31);
+        const auto first = graph(37);
+        const auto second = graph(41);
+        const auto expected = ormi::backends::cpu::jit::compile(warm.expression);
+        const std::array<const ormi::core::runtime::fusion::Expr*, 4> expressions{
+            &first.expression, &warm.expression, &second.expression, &first.expression
+        };
+
+        const auto compiled = ormi::backends::cpu::jit::compile(expressions);
+
+        ASSERT_EQ(compiled.size(), expressions.size());
+        EXPECT_EQ(compiled[1].get(), expected.get());
+        EXPECT_EQ(compiled[0].get(), compiled[3].get());
+        EXPECT_EQ(compiled[0]->library.get(), compiled[2]->library.get());
+        EXPECT_NE(compiled[0]->function, compiled[2]->function);
+        EXPECT_EQ(ormi::backends::cpu::jit::compile(warm.expression).get(), expected.get());
+    }
+
+    TEST(CPUJITCompileTest, cacheLookupDoesNotCompileMissingKernel) {
+        const auto missing = graph(53);
+
+        EXPECT_FALSE(ormi::backends::cpu::jit::cached(missing.expression));
+        EXPECT_FALSE(missing.root->realized());
+    }
+
+    TEST(CPUJITCompileTest, cacheLookupRetainsCompiledKernel) {
+        const auto value = graph(59);
+        const auto compiled = ormi::backends::cpu::jit::compile(value.expression);
+
+        EXPECT_TRUE(ormi::backends::cpu::jit::cached(value.expression));
+        EXPECT_EQ(ormi::backends::cpu::jit::compile(value.expression), compiled);
+        EXPECT_FALSE(value.root->realized());
+    }
+
+    TEST(CPUJITCompileTest, publishesOneResultForConcurrentBatchMisses) {
+        constexpr std::size_t workers = 4;
+        const auto first = graph(43);
+        const auto second = graph(47);
+        const std::array<const ormi::core::runtime::fusion::Expr*, 3> expressions{
+            &first.expression, &second.expression, &first.expression
+        };
+        std::array<std::vector<std::shared_ptr<ormi::backends::cpu::jit::Compiled>>, workers> results;
+        std::array<std::exception_ptr, workers> errors{};
+        std::barrier start(static_cast<std::ptrdiff_t>(workers));
+        std::vector<std::jthread> threads;
+        for (std::size_t worker = 0; worker < workers; ++worker) {
+            threads.emplace_back([&, worker] {
+                start.arrive_and_wait();
+                try {
+                    results[worker] = ormi::backends::cpu::jit::compile(expressions);
+                } catch (...) {
+                    errors[worker] = std::current_exception();
+                }
+            });
+        }
+        threads.clear();
+
+        for (const auto& error : errors) {
+            ASSERT_FALSE(error);
+        }
+        for (const auto& result : results) {
+            ASSERT_EQ(result.size(), expressions.size());
+            EXPECT_EQ(result[0].get(), results[0][0].get());
+            EXPECT_EQ(result[1].get(), results[0][1].get());
+            EXPECT_EQ(result[2].get(), result[0].get());
+            EXPECT_EQ(result[0]->library.get(), result[1]->library.get());
+        }
     }
 }

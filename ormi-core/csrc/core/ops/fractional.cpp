@@ -21,12 +21,6 @@ namespace ormi::core::ops {
             dims.erase(dims.begin() + static_cast<std::ptrdiff_t>(axis));
             return Shape(std::move(dims));
         }
-
-        bool same_device(const Tensor& lhs, const Tensor& rhs) {
-            return
-                lhs.device().backend_id() == rhs.device().backend_id() &&
-                lhs.device().index() == rhs.device().index();
-        }
     }
 
     std::shared_ptr<Tensor> caputo(
@@ -110,7 +104,7 @@ namespace ormi::core::ops {
                     "The initial derivative dtype must match the input dtype."
                 );
             }
-            if (!same_device(*initial_derivative, *input)) {
+            if (initial_derivative->device() != input->device()) {
                 ORMI_THROW(
                     DeviceError,
                     "The initial derivative device must match the input device."

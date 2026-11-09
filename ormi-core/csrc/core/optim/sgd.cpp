@@ -66,12 +66,7 @@ namespace ormi::core::optim {
                 ORMI_THROW(DTypeError, "SGD parameter and gradient dtypes must match.");
             }
 
-            const auto parameter_device = parameter->device();
-            const auto gradient_device = gradient->device();
-            if (
-                parameter_device.backend_id() != gradient_device.backend_id() ||
-                parameter_device.index() != gradient_device.index()
-            ) {
+            if (parameter->device() != gradient->device()) {
                 ORMI_THROW(DeviceError, "SGD parameter and gradient devices must match.");
             }
 

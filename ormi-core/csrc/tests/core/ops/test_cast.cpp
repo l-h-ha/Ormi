@@ -1,3 +1,4 @@
+#include <array>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -127,6 +128,40 @@ namespace {
         EXPECT_FLOAT_EQ(*static_cast<const float*>(second->data()), 2.0f);
     }
 
+    TEST(CPUCastTest, preservesFloat64PrecisionWhenCastingToInt32) {
+        const std::array values{
+            static_cast<double>(std::numeric_limits<std::int32_t>::min()),
+            static_cast<double>(std::numeric_limits<std::int32_t>::max()),
+            static_cast<double>(std::numeric_limits<std::int32_t>::min()) + 0.25,
+            static_cast<double>(std::numeric_limits<std::int32_t>::max()) - 0.25,
+            -2.75,
+            3.9
+        };
+        const std::array expected{
+            std::numeric_limits<std::int32_t>::min(),
+            std::numeric_limits<std::int32_t>::max(),
+            std::numeric_limits<std::int32_t>::min() + 1,
+            std::numeric_limits<std::int32_t>::max() - 1,
+            std::int32_t{-2},
+            std::int32_t{3}
+        };
+        const auto input = std::make_shared<ormi::core::Tensor>(
+            ormi::core::Device::cpu(),
+            ormi::core::Shape{6},
+            ormi::core::DType::float64
+        );
+        auto* input_data = static_cast<double*>(input->data());
+        for (std::size_t i = 0; i < values.size(); ++i) {
+            input_data[i] = values[i];
+        }
+
+        const auto output = ormi::core::ops::cast(input, ormi::core::DType::int32);
+        const auto* output_data = static_cast<const std::int32_t*>(output->data());
+        for (std::size_t i = 0; i < expected.size(); ++i) {
+            EXPECT_EQ(output_data[i], expected[i]);
+        }
+    }
+
     TEST(CPUCastTest, rejectsNonFiniteOrOutOfRangeInt32Conversion) {
         const auto input = std::make_shared<ormi::core::Tensor>(
             ormi::core::Device::cpu(),
@@ -136,16 +171,10 @@ namespace {
         auto* value = static_cast<double*>(input->data());
 
         *value = std::numeric_limits<double>::infinity();
-        EXPECT_THROW(
-            ormi::core::ops::cast(input, ormi::core::DType::int32)->realize(),
-            ormi::DTypeError
-        );
+        EXPECT_THROW(ormi::core::ops::cast(input, ormi::core::DType::int32)->realize(), ormi::DTypeError);
 
         *value = static_cast<double>(std::numeric_limits<std::int32_t>::max()) + 1.0;
-        EXPECT_THROW(
-            ormi::core::ops::cast(input, ormi::core::DType::int32)->realize(),
-            ormi::DTypeError
-        );
+        EXPECT_THROW(ormi::core::ops::cast(input, ormi::core::DType::int32)->realize(), ormi::DTypeError);
     }
 
     TEST(CPUCastTest, rejectsGradientThroughIntegerCast) {
@@ -161,9 +190,6 @@ namespace {
     }
 
     TEST(CastTest, rejectsNullTensor) {
-        EXPECT_THROW(
-            (void)ormi::core::ops::cast(nullptr, ormi::core::DType::float32),
-            ormi::OperationError
-        );
+        EXPECT_THROW((void)ormi::core::ops::cast(nullptr, ormi::core::DType::float32), ormi::OperationError);
     }
 }

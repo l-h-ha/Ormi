@@ -149,6 +149,10 @@ classes:
       - name: numpy
         binding: ormi::bindings::tensor_numpy
         returns: Any
+      - name: copy_from
+        binding: ormi::bindings::tensor_copy_from
+        args: [{name: source, py_type: Any}]
+        returns: None
       - name: item
         binding: ormi::bindings::tensor_item
         returns: Any
@@ -160,6 +164,9 @@ classes:
         args:
           - name: dtype
             py_type: DType
+        returns: Tensor
+      - name: rsqrt
+        binding: ormi::core::ops::rsqrt
         returns: Tensor
       - name: reshape
         binding: ormi::bindings::tensor_reshape
@@ -226,6 +233,16 @@ classes:
             py_type: int
             default: -1
           - name: initial_derivative
+            py_type: Tensor | None
+            default: null
+        returns: Tensor
+      - name: grad
+        expr: >-
+          static_cast<std::shared_ptr<ormi::core::Tensor> (*)(const std::shared_ptr<ormi::core::Tensor>&, const std::shared_ptr<ormi::core::Tensor>&, std::shared_ptr<ormi::core::Tensor>)>(&ormi::core::grad)
+        args:
+          - name: input
+            py_type: Tensor
+          - name: seed
             py_type: Tensor | None
             default: null
         returns: Tensor
@@ -379,6 +396,18 @@ functions:
     returns: str
   - python: grad
     expr: >-
+      static_cast<std::shared_ptr<ormi::core::Tensor> (*)(const std::shared_ptr<ormi::core::Tensor>&, const std::shared_ptr<ormi::core::Tensor>&, std::shared_ptr<ormi::core::Tensor>)>(&ormi::core::grad)
+    args:
+      - name: output
+        py_type: Tensor
+      - name: input
+        py_type: Tensor
+      - name: seed
+        py_type: Tensor | None
+        default: null
+    returns: Tensor
+  - python: grad
+    expr: >-
       static_cast<std::vector<std::shared_ptr<ormi::core::Tensor>> (*)(const std::shared_ptr<ormi::core::Tensor>&, const std::vector<std::shared_ptr<ormi::core::Tensor>>&, std::shared_ptr<ormi::core::Tensor>)>(&ormi::core::grad)
     args:
       - name: output
@@ -389,6 +418,23 @@ functions:
         py_type: Tensor | None
         default: null
     returns: list[Tensor]
+  - python: partial
+    binding: ormi::core::partial
+    args:
+      - name: output
+        py_type: Tensor
+      - name: input
+        py_type: Tensor
+      - name: coordinate
+        py_type: int | None
+        default: null
+      - name: component
+        py_type: int | None
+        default: null
+      - name: order
+        py_type: int
+        default: 1
+    returns: Tensor
   - python: diff
     binding: ormi::core::diff
     args:

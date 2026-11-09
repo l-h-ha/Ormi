@@ -1,3 +1,4 @@
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <memory>
@@ -22,6 +23,7 @@ namespace {
     constexpr std::size_t depth = 16384;
 
     int shared_dependency_runs = 0;
+    int retry_runs = 0;
 
     Tensor scalar(float value) {
         auto tensor = std::make_shared<ormi::core::Tensor>(
@@ -67,6 +69,14 @@ namespace {
             *static_cast<const float*>(output.parents()[0]->data());
     }
 
+    void retry_once(ormi::core::Tensor& output) {
+        if (++retry_runs == 1) {
+            ORMI_THROW(ormi::OperationError, "First realization failed.");
+        }
+        *static_cast<float*>(output.data()) =
+            *static_cast<const float*>(output.parents()[0]->data());
+    }
+
     void add_parents(ormi::core::Tensor& output) {
         *static_cast<float*>(output.data()) =
             *static_cast<const float*>(output.parents()[0]->data()) +
@@ -99,6 +109,78 @@ namespace {
         .adjoint = nullptr,
         .scalar = std::monostate{}
     };
+
+    const ormi::core::Op retry_op{
+        .name = "retry",
+        .output = ormi::core::Output::allocate,
+        .parents = 1,
+        .compute = retry_once,
+        .adjoint = nullptr,
+        .scalar = std::monostate{}
+    };
+
+    TEST(ScheduleTest, cachedRealizationDoesNotReexecuteOrReplaceStorage) {
+        shared_dependency_runs = 0;
+        const auto input = scalar(2.0f);
+        const auto output = std::make_shared<ormi::core::Tensor>(
+            ormi::core::op_ref<shared_dependency_op>(),
+            std::vector<Tensor>{input},
+            input->device(),
+            input->shape(),
+            input->dtype()
+        );
+
+        output->realize();
+        const auto buffer = output->buffer();
+        *static_cast<float*>(input->data()) = 9.0f;
+
+        output->realize();
+
+        EXPECT_EQ(output->buffer(), buffer);
+        const ormi::core::Tensor& cached = *output;
+        EXPECT_FLOAT_EQ(*static_cast<const float*>(cached.data()), 2.0f);
+        EXPECT_EQ(shared_dependency_runs, 1);
+    }
+
+    TEST(ScheduleTest, retriesFailedRealizationWithoutRepeatingReadyDependencies) {
+        for (const bool ready : std::array{false, true}) {
+            SCOPED_TRACE(ready ? "Ready dependency" : "Lazy dependency");
+            shared_dependency_runs = 0;
+            retry_runs = 0;
+            const auto leaf = scalar(3.0f);
+            const auto input = std::make_shared<ormi::core::Tensor>(
+                ormi::core::op_ref<shared_dependency_op>(),
+                std::vector<Tensor>{leaf},
+                leaf->device(),
+                leaf->shape(),
+                leaf->dtype()
+            );
+            if (ready) {
+                input->realize();
+            }
+            const auto output = std::make_shared<ormi::core::Tensor>(
+                ormi::core::op_ref<retry_op>(),
+                std::vector<Tensor>{input},
+                input->device(),
+                input->shape(),
+                input->dtype()
+            );
+
+            ASSERT_THROW(output->realize(), ormi::OperationError);
+            EXPECT_FALSE(output->realized());
+            EXPECT_TRUE(input->realized());
+            EXPECT_EQ(shared_dependency_runs, 1);
+            EXPECT_EQ(retry_runs, 1);
+
+            output->realize();
+
+            EXPECT_TRUE(output->realized());
+            EXPECT_FLOAT_EQ(*static_cast<const float*>(output->data()), 3.0f);
+            output->realize();
+            EXPECT_EQ(shared_dependency_runs, 1);
+            EXPECT_EQ(retry_runs, 2);
+        }
+    }
 
     TEST(ScheduleTest, realizesDeepAliasChain) {
         auto tensors = alias_chain();

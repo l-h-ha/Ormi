@@ -5,6 +5,7 @@ from collections.abc import Callable
 
 import numpy as np
 import ormi_core as oc
+from ormi_core import nn
 
 from ..model import (
     Case,
@@ -18,14 +19,15 @@ from ..model import (
 )
 from ..workloads import LEARNING_RATE
 
+###
+###
+###
 
 def configure(threads: int) -> None:
     del threads
 
-
 def version() -> str:
     return oc.__version__
-
 
 def _dtype(name: str) -> oc.DType:
     return {
@@ -33,7 +35,6 @@ def _dtype(name: str) -> oc.DType:
         "float32": oc.float32,
         "float64": oc.float64,
     }[name]
-
 
 def _case(
     tier: Tier,
@@ -55,7 +56,6 @@ def _case(
         synchronize=lambda: oc.synchronize(device),
     )
 
-
 def _pointwise(spec: Spec, data: Data, tier: Tier, device: oc.Device) -> Case:
     start = time.perf_counter_ns()
     dtype = _dtype(spec.dtype)
@@ -68,6 +68,7 @@ def _pointwise(spec: Spec, data: Data, tier: Tier, device: oc.Device) -> Case:
         return transformed * (input_ - bias) + input_ * 0.125
 
     last: oc.Tensor | None = None
+
     if tier == "direct":
         def run() -> None:
             nonlocal last
@@ -87,13 +88,13 @@ def _pointwise(spec: Spec, data: Data, tier: Tier, device: oc.Device) -> Case:
     def values() -> tuple[np.ndarray, ...]:
         if last is None:
             raise RuntimeError("ORMI pointwise workload has not run.")
+
         return (np.asarray(last.numpy()),)
 
     def observe() -> Observation:
         return output_observation(values()[0])
 
     return _case(tier, mode, start, run, values, observe, device)
-
 
 def _reduction(spec: Spec, data: Data, tier: Tier, device: oc.Device) -> Case:
     start = time.perf_counter_ns()
@@ -107,6 +108,7 @@ def _reduction(spec: Spec, data: Data, tier: Tier, device: oc.Device) -> Case:
         return (transformed * transformed).mean((0, 2))
 
     last: oc.Tensor | None = None
+
     if tier == "direct":
         def run() -> None:
             nonlocal last
@@ -126,13 +128,13 @@ def _reduction(spec: Spec, data: Data, tier: Tier, device: oc.Device) -> Case:
     def values() -> tuple[np.ndarray, ...]:
         if last is None:
             raise RuntimeError("ORMI reduction workload has not run.")
+
         return (np.asarray(last.numpy()),)
 
     def observe() -> Observation:
         return output_observation(values()[0])
 
     return _case(tier, mode, start, run, values, observe, device)
-
 
 def _dense(spec: Spec, data: Data, tier: Tier, device: oc.Device) -> Case:
     start = time.perf_counter_ns()
@@ -150,6 +152,7 @@ def _dense(spec: Spec, data: Data, tier: Tier, device: oc.Device) -> Case:
 
     last_loss: oc.Tensor | None = None
     last_gradients: list[oc.Tensor] = []
+
     if tier == "direct":
         def run() -> None:
             nonlocal last_loss, last_gradients
@@ -169,6 +172,7 @@ def _dense(spec: Spec, data: Data, tier: Tier, device: oc.Device) -> Case:
     def values() -> tuple[np.ndarray, ...]:
         if last_loss is None:
             raise RuntimeError("ORMI dense workload has not run.")
+
         return (
             np.asarray(last_loss.numpy()),
             *(np.asarray(gradient.numpy()) for gradient in last_gradients),
@@ -183,22 +187,25 @@ def _dense(spec: Spec, data: Data, tier: Tier, device: oc.Device) -> Case:
 
     return _case(tier, mode, start, run, values, observe, device)
 
-
 def _pinn(spec: Spec, data: Data, tier: Tier, device: oc.Device) -> Case:
     start = time.perf_counter_ns()
     dtype = _dtype(spec.dtype)
     input_ = oc.tensor(data.values["input"], dtype, device)
-    parameters = [
-        oc.tensor(data.values["first_weight"], dtype, device),
-        oc.tensor(data.values["first_bias"], dtype, device),
-        oc.tensor(data.values["second_weight"], dtype, device),
-        oc.tensor(data.values["second_bias"], dtype, device),
-    ]
+    model = nn.Sequential([
+        nn.Linear(
+            oc.tensor(data.values["first_weight"], dtype, device),
+            oc.tensor(data.values["first_bias"], dtype, device),
+        ),
+        nn.Sin(),
+        nn.Linear(
+            oc.tensor(data.values["second_weight"], dtype, device),
+            oc.tensor(data.values["second_bias"], dtype, device),
+        ),
+    ])
+    parameters = model.parameters()
 
     def graph() -> tuple[oc.Tensor, list[oc.Tensor]]:
-        first_weight, first_bias, second_weight, second_bias = parameters
-        hidden = (input_ @ first_weight + first_bias).sin()
-        prediction = hidden @ second_weight + second_bias
+        prediction = model(input_)
         first = oc.grad(
             prediction,
             [input_],
@@ -219,6 +226,7 @@ def _pinn(spec: Spec, data: Data, tier: Tier, device: oc.Device) -> Case:
         return loss, updates
 
     last_loss: oc.Tensor | None = None
+
     if tier == "direct":
         def run() -> None:
             nonlocal last_loss
@@ -244,6 +252,7 @@ def _pinn(spec: Spec, data: Data, tier: Tier, device: oc.Device) -> Case:
     def values() -> tuple[np.ndarray, ...]:
         if last_loss is None:
             raise RuntimeError("ORMI PINN workload has not run.")
+
         return (
             np.asarray(last_loss.numpy()),
             *(np.asarray(parameter.numpy()) for parameter in parameters),
@@ -258,15 +267,19 @@ def _pinn(spec: Spec, data: Data, tier: Tier, device: oc.Device) -> Case:
 
     return _case(tier, mode, start, run, values, observe, device)
 
-
 def prepare(spec: Spec, data: Data, tier: Tier, device_name: str) -> Case:
     device = oc.Device(device_name)
+
     if spec.name == "pointwise":
         return _pointwise(spec, data, tier, device)
+
     if spec.name == "reduction":
         return _reduction(spec, data, tier, device)
+
     if spec.name == "dense":
         return _dense(spec, data, tier, device)
+
     if spec.name == "pinn":
         return _pinn(spec, data, tier, device)
+
     raise ValueError(f"Unknown workload: {spec.name}")

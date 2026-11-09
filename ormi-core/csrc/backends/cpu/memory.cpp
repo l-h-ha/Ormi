@@ -19,12 +19,7 @@ namespace ormi::backends::cpu {
         std::memcpy(dst, src, bytes);
     }
 
-    void copy_async(
-        [[maybe_unused]] core::Device device,
-        void* dst,
-        const void* src,
-        std::size_t bytes
-    ) {
+    void copy_async([[maybe_unused]] core::Device device, void* dst, const void* src, std::size_t bytes) {
         std::memcpy(dst, src, bytes);
     }
 

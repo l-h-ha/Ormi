@@ -1,0 +1,31 @@
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 110
+NamespaceIndentation: All
+AccessModifierOffset: -4
+IndentCaseLabels: true
+PointerAlignment: Left
+AlignAfterOpenBracket: BlockIndent
+BinPackArguments: false
+BinPackParameters: false
+BreakTemplateDeclarations: Yes
+PackConstructorInitializers: Never
+PenaltyReturnTypeOnItsOwnLine: 1000000
+AllowAllArgumentsOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+FixNamespaceComments: false
+SeparateDefinitionBlocks: Always
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^<[^/.]+>$'
+    Priority: -3
+  - Regex: '^<ormi/'
+    Priority: -1
+  - Regex: '^<'
+    Priority: -2
+  - Regex: '^"'
+    Priority: 0

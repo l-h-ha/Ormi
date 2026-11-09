@@ -6,6 +6,7 @@ set(ORMI_CORE_SRCS
     core/autocast.cpp
     core/autograd/grad.cpp
     core/autograd/grads.cpp
+    core/autograd/partial.cpp
     core/autograd/unbroadcast.cpp
     core/device.cpp
     core/dtype.cpp
@@ -19,8 +20,11 @@ set(ORMI_CORE_SRCS
     core/ops/fractional/nodes.cpp
     core/ops/fractional/weights.cpp
     core/ops/pointwise/binary.cpp
+    core/ops/pointwise/activation.cpp
     core/ops/pointwise/unary.cpp
     core/ops/linalg.cpp
+    core/ops/index.cpp
+    core/ops/select.cpp
     core/ops/creation.cpp
     core/ops/reduction.cpp
     core/ops/view.cpp
@@ -33,7 +37,9 @@ set(ORMI_CORE_SRCS
     core/runtime/fusion/key.cpp
     core/runtime/lower.cpp
     core/runtime/plan.cpp
-    core/runtime/realize.cpp
+    core/runtime/plan/build.cpp
+    core/runtime/plan/record.cpp
+    core/runtime/plan/run.cpp
     core/runtime/schedule.cpp
     core/runtime/step.cpp
     core/runtime/dispatch/device.cpp
@@ -45,6 +51,20 @@ set(ORMI_CORE_SRCS
     core/runtime/dispatch/optimizer.cpp
     core/runtime/dispatch/pointwise.cpp
     core/runtime/dispatch/reduction.cpp
+    nn/modules/module.cpp
+    nn/state.cpp
+    nn/dropout.cpp
+    nn/modules/batch_norm.cpp
+    nn/activation.cpp
+    nn/normalization.cpp
+    nn/modules/linear.cpp
+    nn/modules/activation.cpp
+    nn/modules/sequential.cpp
+    nn/modules/normalization.cpp
+    nn/losses/mse.cpp
+    nn/losses/regression.cpp
+    nn/losses/classification.cpp
+    nn/losses/divergence.cpp
 )
 
 include(cmake/platform.cmake)
@@ -91,7 +111,7 @@ ormi_write_catalog(
 
 if(ORMI_BUILD_PYTHON)
     find_package(Python REQUIRED COMPONENTS Interpreter Development.Module)
-    find_package(pybind11 CONFIG REQUIRED)
+    find_package(pybind11 3.0 CONFIG REQUIRED)
 
     file(GLOB ORMI_BINDING_DEFS CONFIGURE_DEPENDS
         ${CMAKE_CURRENT_SOURCE_DIR}/bindings/defs/*.yaml
@@ -105,6 +125,8 @@ if(ORMI_BUILD_PYTHON)
         ${ORMI_BINDING_STUB_DIR}/__init__.pyi
         ${ORMI_BINDING_STUB_DIR}/jit.pyi
         ${ORMI_BINDING_STUB_DIR}/jit.py
+        ${ORMI_BINDING_STUB_DIR}/nn.pyi
+        ${ORMI_BINDING_STUB_DIR}/nn.py
         ${ORMI_BINDING_STUB_DIR}/ops.pyi
         ${ORMI_BINDING_STUB_DIR}/ops.py
         ${ORMI_BINDING_STUB_DIR}/optim.pyi

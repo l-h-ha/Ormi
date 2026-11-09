@@ -14,7 +14,7 @@ option(ORMI_BUILD_TESTS "Build tests for the C++ runtime." ON)
 option(ORMI_BUILD_BENCHMARKS "Build benchmarks for the C++ runtime." ON)
 option(ORMI_BUILD_PYTHON "Build the generated Python extension." OFF)
 option(ORMI_BUILD_EXAMPLES "Build C++ examples." OFF)
-option(ORMI_ENABLE_SANITIZERS "Instrument CPU builds with compiler sanitizers." OFF)
+option(ORMI_ENABLE_SANITIZERS "Enable CPU memory checks and Linux undefined-behavior checks." OFF)
 
 if(ORMI_ENABLE_SANITIZERS)
     if(WIN32)

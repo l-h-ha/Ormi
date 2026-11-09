@@ -16,6 +16,7 @@
 #endif
 
 namespace ormi::backends::cuda {
+    // Owns one GPU's stream, cuBLAS handle bound to that stream, and optional allocation pool.
     class State final {
     public:
         explicit State(int index);
@@ -50,6 +51,7 @@ namespace ormi::backends::cuda {
     #endif
     };
 
+    // Initialize on first use, then return the same State for that device index.
     State& state(core::Device device);
     ORMI_CUDA_INTERNAL cudaStream_t stream(core::Device device);
 }

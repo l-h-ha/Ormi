@@ -6,6 +6,9 @@ import numpy as np
 
 import ormi_core as oc
 
+###
+###
+###
 
 def test_caputo_method_and_function_are_lazy_and_analytic():
     spacing = 0.125
@@ -24,7 +27,6 @@ def test_caputo_method_and_function_are_lazy_and_analytic():
     np.testing.assert_allclose(method.numpy(), expected, rtol=1e-12, atol=1e-12)
     np.testing.assert_array_equal(function.numpy(), method.numpy())
 
-
 def test_caputo_gradient_remains_lazy_and_satisfies_adjoint_identity():
     spacing = 0.04
     positions = np.arange(31, dtype=np.float64)
@@ -41,7 +43,6 @@ def test_caputo_gradient_remains_lazy_and_satisfies_adjoint_identity():
     lhs = np.dot(output.numpy(), seeds)
     rhs = np.dot(values, transpose.numpy())
     np.testing.assert_allclose(lhs, rhs, rtol=1e-12, atol=1e-12)
-
 
 def test_higher_order_caputo_uses_and_differentiates_initial_derivative():
     alpha = 1.5

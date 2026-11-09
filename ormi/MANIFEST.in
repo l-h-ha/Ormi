@@ -1,0 +1,6 @@
+include examples/pinn.py
+include examples/minibatch.py
+include pyrightconfig.json
+recursive-include docs *.md
+recursive-include tests *.py
+recursive-include release-tests *.py

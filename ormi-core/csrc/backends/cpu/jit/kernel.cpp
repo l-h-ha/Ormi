@@ -4,25 +4,26 @@
 #include <vector>
 
 #include <ormi/backend/api.h>
-#include <ormi/core/op.h>
+#include <ormi/core/setup.h>
 #include <ormi/core/tensor.h>
 
 #include "backends/cpu/jit/compile.h"
+#include "backends/cpu/jit/compiler.h"
 #include "backends/cpu/jit/execute.h"
 #include "backends/cpu/jit/kernel.h"
 
 namespace ormi::backends::cpu::jit {
     bool supports(const core::runtime::fusion::Expr& expression) {
-        if (!expression.auxiliary_outputs.empty()) {
-            return !expression.reduction;
+        if (!expression.auxiliary_outputs.empty() && expression.reduction) {
+            return false;
         }
-        if (!expression.reduction) {
-            return true;
+        if (expression.reduction &&
+            expression.reduction->op != core::ops::ReduceOp::sum &&
+            expression.reduction->op != core::ops::ReduceOp::mean) {
+            return false;
         }
 
-        return
-            expression.reduction->op == core::ops::ReduceOp::sum ||
-            expression.reduction->op == core::ops::ReduceOp::mean;
+        return compiler_available() || cached(expression);
     }
 
     core::Setup prepare(

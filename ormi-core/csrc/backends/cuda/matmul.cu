@@ -42,12 +42,16 @@ namespace ormi::backends::cuda {
                 const auto coordinate = batch % dim;
                 batch /= dim;
 
-                if (output_axis >= rank_offset) {
-                    const auto tensor_axis = output_axis - rank_offset;
-                    if (tensor.shape()[tensor_axis] != 1) {
-                        offset += coordinate * static_cast<std::size_t>(strides[tensor_axis]);
-                    }
+                if (output_axis < rank_offset) {
+                    continue;
                 }
+
+                const auto tensor_axis = output_axis - rank_offset;
+                if (tensor.shape()[tensor_axis] == 1) {
+                    continue;
+                }
+
+                offset += coordinate * static_cast<std::size_t>(strides[tensor_axis]);
             }
 
             return offset;
@@ -87,10 +91,7 @@ namespace ormi::backends::cuda {
                     }
 
                     const auto candidate = stride / trailing;
-                    if (
-                        candidate >
-                        static_cast<std::size_t>(std::numeric_limits<long long>::max())
-                    ) {
+                    if (candidate > static_cast<std::size_t>(std::numeric_limits<long long>::max())) {
                         return std::nullopt;
                     }
                     const auto candidate_stride = static_cast<long long>(candidate);
@@ -145,25 +146,19 @@ namespace ormi::backends::cuda {
             std::int64_t rhs_row_stride,
             std::int64_t rhs_column_stride
         ) {
-            for (
-                std::size_t row = static_cast<std::size_t>(blockIdx.y) * blockDim.y + threadIdx.y;
-                row < rows;
-                row += static_cast<std::size_t>(blockDim.y) * gridDim.y
-            ) {
-                for (
-                    std::size_t column = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-                    column < columns;
-                    column += static_cast<std::size_t>(blockDim.x) * gridDim.x
-                ) {
+            for (std::size_t row = static_cast<std::size_t>(blockIdx.y) * blockDim.y + threadIdx.y;
+                 row < rows;
+                 row += static_cast<std::size_t>(blockDim.y) * gridDim.y) {
+                for (std::size_t column = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+                     column < columns;
+                     column += static_cast<std::size_t>(blockDim.x) * gridDim.x) {
                     typename Compute<T>::Type sum{};
 
                     for (std::size_t k = 0; k < inner; ++k) {
-                        const auto lhs_value = Compute<T>::load(
-                            lhs[row * lhs_row_stride + k * lhs_column_stride]
-                        );
-                        const auto rhs_value = Compute<T>::load(
-                            rhs[k * rhs_row_stride + column * rhs_column_stride]
-                        );
+                        const auto lhs_value =
+                            Compute<T>::load(lhs[row * lhs_row_stride + k * lhs_column_stride]);
+                        const auto rhs_value =
+                            Compute<T>::load(rhs[k * rhs_row_stride + column * rhs_column_stride]);
                         sum += lhs_value * rhs_value;
                     }
 
@@ -186,19 +181,10 @@ namespace ormi::backends::cuda {
                 return;
             }
 
-            const auto x_blocks = std::min(
-                (shape.columns + tile - 1) / tile,
-                max_grid
-            );
-            const auto y_blocks = std::min(
-                (shape.rows + tile - 1) / tile,
-                max_grid
-            );
+            const auto x_blocks = std::min((shape.columns + tile - 1) / tile, max_grid);
+            const auto y_blocks = std::min((shape.rows + tile - 1) / tile, max_grid);
             const dim3 threads(tile, tile);
-            const dim3 blocks(
-                static_cast<unsigned int>(x_blocks),
-                static_cast<unsigned int>(y_blocks)
-            );
+            const dim3 blocks(static_cast<unsigned int>(x_blocks), static_cast<unsigned int>(y_blocks));
 
             matmul_kernel<<<blocks, threads, 0, stream>>>(
                 out,
@@ -238,34 +224,26 @@ namespace ormi::backends::cuda {
             const auto lhs_rank = shape.lhs_vector ? 1u : 2u;
             const auto rhs_rank = shape.rhs_vector ? 1u : 2u;
             const blas::Matrix lhs_matrix{
-                shape.rows,
-                shape.inner,
-                shape.lhs_vector
-                    ? static_cast<std::int64_t>(shape.inner) * lhs_strides.back()
-                    : lhs_strides[lhs.rank() - 2],
-                lhs_strides.back()
+                .rows = shape.rows,
+                .columns = shape.inner,
+                .row_stride = shape.lhs_vector ? static_cast<std::int64_t>(shape.inner) * lhs_strides.back()
+                                               : lhs_strides[lhs.rank() - 2],
+                .column_stride = lhs_strides.back()
             };
             const blas::Matrix rhs_matrix{
-                shape.inner,
-                shape.columns,
-                shape.rhs_vector ? rhs_strides.back() : rhs_strides[rhs.rank() - 2],
-                rhs_strides.back()
+                .rows = shape.inner,
+                .columns = shape.columns,
+                .row_stride = shape.rhs_vector ? rhs_strides.back() : rhs_strides[rhs.rank() - 2],
+                .column_stride = rhs_strides.back()
             };
             const auto matrix_elements = shape.rows * shape.columns;
             const auto batches = shape.batch.numel();
 
-            if constexpr (
-                std::is_same_v<T, float> ||
-                std::is_same_v<T, double> ||
-                std::is_same_v<T, __half>
-            ) {
+            if constexpr (std::is_same_v<T, float> || std::is_same_v<T, double> ||
+                          std::is_same_v<T, __half>) {
                 const auto lhs_batch_stride = regular_batch_stride(shape.batch, lhs, lhs_rank);
                 const auto rhs_batch_stride = regular_batch_stride(shape.batch, rhs, rhs_rank);
-                if (
-                    batches > 0 &&
-                    fits_int(batches) &&
-                    lhs_batch_stride &&
-                    rhs_batch_stride &&
+                if (batches > 0 && fits_int(batches) && lhs_batch_stride && rhs_batch_stride &&
                     blas::gemm(
                         out.dtype(),
                         cuda_state.cublas(),
@@ -277,8 +255,7 @@ namespace ormi::backends::cuda {
                         static_cast<int>(batches),
                         *lhs_batch_stride,
                         *rhs_batch_stride
-                    )
-                ) {
+                    )) {
                     return;
                 }
             }
@@ -291,57 +268,33 @@ namespace ormi::backends::cuda {
                 const auto* lhs_batch = lhs_data + lhs_offset;
                 const auto* rhs_batch = rhs_data + rhs_offset;
 
-                if constexpr (
-                    std::is_same_v<T, float> ||
-                    std::is_same_v<T, double> ||
-                    std::is_same_v<T, __half>
-                ) {
+                if constexpr (std::is_same_v<T, float> || std::is_same_v<T, double> ||
+                              std::is_same_v<T, __half>) {
                     std::size_t run = 1;
                     long long lhs_stride = 0;
                     long long rhs_stride = 0;
 
                     if (batch + 1 < batches) {
-                        const auto next_lhs = batch_offset(
-                            batch + 1,
-                            shape.batch,
-                            lhs,
-                            lhs_rank
-                        );
-                        const auto next_rhs = batch_offset(
-                            batch + 1,
-                            shape.batch,
-                            rhs,
-                            rhs_rank
-                        );
+                        const auto next_lhs = batch_offset(batch + 1, shape.batch, lhs, lhs_rank);
+                        const auto next_rhs = batch_offset(batch + 1, shape.batch, rhs, rhs_rank);
 
                         if (next_lhs >= lhs_offset && next_rhs >= rhs_offset) {
                             const auto lhs_delta = next_lhs - lhs_offset;
                             const auto rhs_delta = next_rhs - rhs_offset;
-                            const auto stride_limit = static_cast<std::size_t>(
-                                std::numeric_limits<long long>::max()
-                            );
+                            const auto stride_limit =
+                                static_cast<std::size_t>(std::numeric_limits<long long>::max());
 
                             if (lhs_delta <= stride_limit && rhs_delta <= stride_limit) {
                                 lhs_stride = static_cast<long long>(lhs_delta);
                                 rhs_stride = static_cast<long long>(rhs_delta);
                                 run = 2;
 
-                                while (
-                                    batch + run < batches &&
-                                    run < static_cast<std::size_t>(std::numeric_limits<int>::max())
-                                ) {
-                                    const auto run_lhs = batch_offset(
-                                        batch + run,
-                                        shape.batch,
-                                        lhs,
-                                        lhs_rank
-                                    );
-                                    const auto run_rhs = batch_offset(
-                                        batch + run,
-                                        shape.batch,
-                                        rhs,
-                                        rhs_rank
-                                    );
+                                while (batch + run < batches &&
+                                       run < static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+                                    const auto run_lhs =
+                                        batch_offset(batch + run, shape.batch, lhs, lhs_rank);
+                                    const auto run_rhs =
+                                        batch_offset(batch + run, shape.batch, rhs, rhs_rank);
                                     const auto expected_lhs =
                                         lhs_offset + run * static_cast<std::size_t>(lhs_stride);
                                     const auto expected_rhs =
@@ -358,17 +311,17 @@ namespace ormi::backends::cuda {
                     }
 
                     if (blas::gemm(
-                        out.dtype(),
-                        cuda_state.cublas(),
-                        out_batch,
-                        lhs_batch,
-                        lhs_matrix,
-                        rhs_batch,
-                        rhs_matrix,
-                        static_cast<int>(run),
-                        lhs_stride,
-                        rhs_stride
-                    )) {
+                            out.dtype(),
+                            cuda_state.cublas(),
+                            out_batch,
+                            lhs_batch,
+                            lhs_matrix,
+                            rhs_batch,
+                            rhs_matrix,
+                            static_cast<int>(run),
+                            lhs_stride,
+                            rhs_stride
+                        )) {
                         batch += run;
                         continue;
                     }

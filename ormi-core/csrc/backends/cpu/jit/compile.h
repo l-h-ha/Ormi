@@ -30,6 +30,9 @@ namespace ormi::backends::cpu::jit {
         bool partial;
     };
 
+    // Load an existing kernel without invoking a compiler.
+    bool cached(const core::runtime::fusion::Expr& expression);
+
     std::shared_ptr<Compiled> compile(
         const core::runtime::fusion::Expr& expression
     );

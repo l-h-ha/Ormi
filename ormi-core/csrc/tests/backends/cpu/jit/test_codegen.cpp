@@ -197,10 +197,14 @@ namespace {
             source.find("base = begin; base < end; base += 4"),
             std::string::npos
         );
-        EXPECT_NE(source.find("const auto input1_base = 0;"), std::string::npos);
+        EXPECT_NE(source.find("const auto* input0_span = input0 + base;"), std::string::npos);
+        EXPECT_NE(source.find("const auto* input1_span = input1 + 0;"), std::string::npos);
+        EXPECT_NE(source.find("auto* ORMI_RESTRICT output_span = output + base;"), std::string::npos);
         EXPECT_NE(source.find("j < 4; ++j"), std::string::npos);
-        EXPECT_NE(source.find("const auto i = base + j;"), std::string::npos);
-        EXPECT_NE(source.find("input1[input1_base + j]"), std::string::npos);
+        EXPECT_EQ(source.find("const auto i = base + j;"), std::string::npos);
+        EXPECT_NE(source.find("input0_span[j]"), std::string::npos);
+        EXPECT_NE(source.find("input1_span[j]"), std::string::npos);
+        EXPECT_NE(source.find("output_span[j]"), std::string::npos);
         EXPECT_NE(source.find("        ORMI_VECTORIZE_LOOP\n"), std::string::npos);
     }
 
@@ -242,10 +246,10 @@ namespace {
             std::string::npos
         );
         EXPECT_NE(
-            source.find("const auto input1_base = ((base / 4) % 3) * 4;"),
+            source.find("const auto* input1_span = input1 + ((base / 4) % 3) * 4;"),
             std::string::npos
         );
-        EXPECT_NE(source.find("input1[input1_base + j]"), std::string::npos);
+        EXPECT_NE(source.find("input1_span[j]"), std::string::npos);
     }
 
     TEST(CPUJITCodegenTest, emitsBroadcastInputOffsets) {
@@ -407,9 +411,9 @@ namespace {
             source.find("base = begin; base < end; base += 17"),
             std::string::npos
         );
-        EXPECT_NE(source.find("const auto input1_base = 0;"), std::string::npos);
+        EXPECT_NE(source.find("const auto* input1_span = input1 + 0;"), std::string::npos);
         EXPECT_NE(
-            source.find("ormi_half_load8(input1 + input1_base + j)"),
+            source.find("ormi_half_load8(input1_span + j)"),
             std::string::npos
         );
         EXPECT_NE(source.find("j + 8 <= 17"), std::string::npos);
@@ -1112,6 +1116,97 @@ namespace {
             source.find("struct ormi_math_table", buffered_math_table + 1),
             std::string::npos
         );
+    }
+
+    TEST(CPUJITCodegenTest, preservesStridedOutputSlabsAcrossScalarAndVectorPaths) {
+        for (const auto dtype : {
+            ormi::core::DType::float16,
+            ormi::core::DType::float32,
+            ormi::core::DType::float64
+        }) {
+            SCOPED_TRACE(static_cast<int>(dtype));
+            const auto x = tensor(dtype, {2, 3, 4, 65});
+            const auto mapped = ormi::core::ops::add(ormi::core::ops::mul(x, x), x);
+            const auto output = ormi::core::ops::mean(
+                mapped, {1, 3}, true
+            );
+            const auto expression = ormi::core::runtime::fusion::build(*output);
+            ASSERT_TRUE(expression.has_value());
+            auto loop = ormi::backends::cpu::jit::plan(*expression);
+            ASSERT_TRUE(loop.strided);
+            ASSERT_TRUE(loop.ranged);
+            ASSERT_EQ(loop.unit, 4u);
+            ASSERT_EQ(loop.tile, 0u);
+            ASSERT_EQ(loop.vectorized, dtype != ormi::core::DType::float16);
+
+            for (const auto vectorized : {true, false}) {
+                if (vectorized && dtype == ormi::core::DType::float16) {
+                    continue;
+                }
+                SCOPED_TRACE(vectorized);
+                loop.vectorized = vectorized;
+                const auto source = ormi::backends::cpu::jit::emit(*expression, loop);
+                EXPECT_NE(source.find("output_index = begin"), std::string::npos);
+                EXPECT_NE(source.find("index0 = begin / 4"), std::string::npos);
+                EXPECT_NE(source.find("index0 < end / 4"), std::string::npos);
+                EXPECT_NE(source.find("index2 = 0"), std::string::npos);
+                EXPECT_NE(source.find("index2 < 4"), std::string::npos);
+                EXPECT_NE(source.find("195ull"), std::string::npos);
+                EXPECT_NE(source.find("++output_index;"), std::string::npos);
+            }
+        }
+    }
+
+    TEST(CPUJITCodegenTest, leavesGlobalMeanPartialsUnnormalized) {
+        for (const auto dtype : {
+            ormi::core::DType::float16,
+            ormi::core::DType::float32,
+            ormi::core::DType::float64
+        }) {
+            SCOPED_TRACE(static_cast<int>(dtype));
+            const auto x = ormi::core::ops::transpose(tensor(dtype, {70, 65}), {1, 0});
+            const auto mapped = ormi::core::ops::add(ormi::core::ops::mul(x, x), x);
+            const auto output = ormi::core::ops::mean(mapped);
+            const auto expression = ormi::core::runtime::fusion::build(*output);
+            ASSERT_TRUE(expression.has_value());
+            auto loop = ormi::backends::cpu::jit::plan(*expression);
+            ASSERT_TRUE(loop.strided);
+            ASSERT_TRUE(loop.partial);
+            ASSERT_EQ(loop.vectorized, dtype != ormi::core::DType::float16);
+            ASSERT_EQ(loop.tile, 0u);
+
+            for (const auto vectorized : {true, false}) {
+                if (vectorized && dtype == ormi::core::DType::float16) {
+                    continue;
+                }
+                SCOPED_TRACE(vectorized);
+                loop.vectorized = vectorized;
+                const auto source = ormi::backends::cpu::jit::emit(*expression, loop);
+                EXPECT_NE(source.find(vectorized
+                    ? "output[0] = total;"
+                    : "output[output_index] = total;"), std::string::npos);
+                EXPECT_EQ(source.find("total / static_cast"), std::string::npos);
+            }
+        }
+    }
+
+    TEST(CPUJITCodegenTest, emitsUnpartitionedFullOutputTileWithoutWorkerDivision) {
+        const auto x = tensor(ormi::core::DType::float32, {70, 32});
+        const auto mapped = ormi::core::ops::add(ormi::core::ops::mul(x, x), x);
+        const auto output = ormi::core::ops::mean(mapped, {0});
+        const auto expression = ormi::core::runtime::fusion::build(*output);
+        ASSERT_TRUE(expression.has_value());
+        const auto loop = ormi::backends::cpu::jit::plan(*expression);
+        ASSERT_TRUE(loop.strided);
+        ASSERT_EQ(loop.tile, 32u);
+        ASSERT_FALSE(loop.ranged);
+        ASSERT_EQ(loop.unit, 0u);
+
+        const auto source = ormi::backends::cpu::jit::emit(*expression, loop);
+        EXPECT_NE(source.find("tile = 0; tile < 32; tile += 32"), std::string::npos);
+        EXPECT_NE(source.find("totals[lane] / static_cast<float>(70ull)"), std::string::npos);
+        EXPECT_EQ(source.find("begin /"), std::string::npos);
+        EXPECT_EQ(source.find("end /"), std::string::npos);
     }
 
     TEST(CPUJITCodegenTest, rejectsMalformedExpression) {

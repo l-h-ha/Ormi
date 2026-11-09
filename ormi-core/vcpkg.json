@@ -1,6 +1,6 @@
 {
   "name": "ormi-core-build-dependencies",
-  "version-string": "0.1.0a6",
+  "version-string": "0.1.0a7",
   "builtin-baseline": "cea592f4772491abdb7c483387a59ea89889f4be",
   "dependencies": [
     "openblas",

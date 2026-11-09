@@ -87,6 +87,7 @@ namespace {
         EXPECT_NE(cpu.ops.all_finite, nullptr);
         EXPECT_NE(cpu.ops.binary, nullptr);
         EXPECT_NE(cpu.ops.unary, nullptr);
+        EXPECT_EQ(cpu.ops.scatter_scalar, nullptr);
         EXPECT_NE(cpu.fusion.prepare_many, nullptr);
     }
 
@@ -127,6 +128,7 @@ namespace {
         EXPECT_NE(backend.ops.reduce, nullptr);
         EXPECT_NE(backend.ops.all_finite, nullptr);
         EXPECT_NE(backend.ops.sgd, nullptr);
+        EXPECT_EQ(backend.ops.scatter_scalar, nullptr);
         EXPECT_NE(backend.fractional.execute, nullptr);
         EXPECT_EQ(backend.fractional.prepare, nullptr);
         EXPECT_EQ(backend.fusion.execute, nullptr);

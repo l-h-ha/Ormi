@@ -1,85 +1,85 @@
 # ORMI
 
-ORMI is an alpha-stage lazy tensor and automatic-differentiation library for
-Python and C++. It currently supports x86-64 Windows and Linux.
+ORMI is an alpha tensor library for Python and C++. It builds operations as a
+graph, runs them when needed, and computes derivatives automatically.
+It supports x86-64 Windows and Linux.
 
-The Python package is `ormi_core`.
+`ormi` provides the Python API and uses `ormi_core` objects directly.
+`ormi-core` contains the C++ runtime and Python bindings. `ormi-cuda` adds
+the optional CUDA backend.
 
 ## Users
 
-Install a supported [CPython 3.10-3.13](https://www.python.org/downloads/),
-then install ORMI.
+Install [CPython 3.10-3.13](https://www.python.org/downloads/) on x86-64
+Windows or Linux.
 
-Install CPU support:
+### Install
 
-```bash
-python -m pip install "ormi-core==0.1.0a6" --extra-index-url https://l-h-ha.github.io/Ormi/whl/
-```
-
-Install CPU and CUDA 12.4 support:
+CPU:
 
 ```bash
-python -m pip install "ormi-core[cuda]==0.1.0a6" --extra-index-url https://l-h-ha.github.io/Ormi/whl/
+python -m pip install "ormi==0.1.0a7" --extra-index-url https://l-h-ha.github.io/Ormi/whl/
 ```
 
-The wheels include OpenBLAS, SLEEF vector math, and, for the CUDA extra, ORMI's
-CUDA runtime libraries. Users do not install OpenBLAS, SLEEF, or the CUDA
-Toolkit. CUDA users only install a compatible
+CPU and CUDA 12.4:
+
+```bash
+python -m pip install "ormi[cuda]==0.1.0a7" --extra-index-url https://l-h-ha.github.io/Ormi/whl/
+```
+
+### Requirements
+
+CPU wheels bundle OpenBLAS and SLEEF. A C++ compiler is optional: ORMI uses
+precompiled CPU kernels when no compatible compiler is available. Installing
+a supported C++20 compiler enables CPU fusion. See the
+[exact requirements](ormi-core/README.md#requirements).
+
+The CUDA extra bundles CUDA
+Runtime, cuBLAS, and NVRTC. CUDA execution needs a supported NVIDIA GPU and an installed
 [NVIDIA driver](https://www.nvidia.com/Download/index.aspx/).
-CPU fusion needs a C++20 compiler when an uncached fused kernel is first used.
-CUDA fusion stores generated PTX in the user's cache, so NVRTC compilation is
-normally paid once per kernel and GPU target.
 
-Read [ormi-core/README.md](ormi-core/README.md) for the exact Python, compiler,
-platform, GPU, and NVIDIA driver requirements.
+## Example
+
+```python
+import ormi as om
+
+x = om.tensor([1.0, 2.0, 3.0])
+y = (x * x).sum()
+dx = om.grad(y, x)
+om.Plan([y, dx]).run()
+print(y.item(), dx.numpy())
+```
+
+Operations and derivatives stay lazy until their graph runs. The
+[Python guide](ormi/README.md) covers training, batching, model checkpoints,
+and higher-order derivatives.
 
 ## Builders
 
-Install [CMake 3.18 or newer](https://cmake.org/download/),
-[Ninja](https://ninja-build.org/), and a C++20 toolchain:
+### From Source
 
-- Windows: [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
-  (Visual Studio 2022 is tested),
-  [LLVM/Clang](https://releases.llvm.org/), or
-  [MSYS2 UCRT64 GCC](https://www.msys2.org/).
-- Linux: [GCC](https://gcc.gnu.org/install/) or
-  [LLVM/Clang](https://releases.llvm.org/).
-
-Then run:
-
-```bash
-cd ormi-core
-cmake --preset cpu-debug
-cmake --build --preset cpu-debug
-ctest --preset cpu-debug
-```
-
-CUDA additionally requires the
-[CUDA 12.4 Toolkit](https://developer.nvidia.com/cuda-toolkit-archive). It is
-enabled only by the CUDA preset:
-
-```bash
-cmake --preset cuda-debug
-cmake --build --preset cuda-debug
-ctest --preset cuda-debug
-```
-
-For Python workspace development, [install `uv`](https://docs.astral.sh/uv/getting-started/installation/)
-and run from the repository root:
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and a
+supported [C++20 compiler](ormi-core/README.md#cpu-fusion-compiler).
+From the repository root, run:
 
 ```bash
 uv sync
-uv run pytest
+uv run python ormi/examples/pinn.py
 ```
 
-`uv sync` builds `ormi-core` with CUDA and OpenBLAS disabled. Detailed build
-requirements and optional build commands are in
-[ormi-core/README.md](ormi-core/README.md).
+This builds the CPU core with CUDA, OpenBLAS, and SLEEF disabled.
+See the [build requirements](ormi-core/README.md#builders) for CMake, Ninja,
+and optional dependencies.
 
-## Layout
+For C++ builds, compiler-specific presets, sanitizers, and optional OpenBLAS,
+SLEEF, or CUDA support, follow the [core build instructions](ormi-core/README.md#builders).
+For Python workspace tests, follow [Python development](ormi/README.md#development).
 
-- `ormi-core`: tensor, autograd, CPU runtime, Python bindings, and CUDA source.
-- `ormi-cuda`: separately installable CUDA plugin package.
+## Packages
+
+- [ormi](ormi/README.md): Python usage, training, and examples.
+- [ormi-core](ormi-core/README.md): core usage, prerequisites, C++ builds, and runtime settings.
+- [ormi-cuda](ormi-cuda/README.md): CUDA plugin installation and builds.
 
 ## License
 

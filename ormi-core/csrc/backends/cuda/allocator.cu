@@ -18,7 +18,8 @@ namespace ormi::backends::cuda {
     namespace {
         class cudaAllocator final : public core::memory::Allocator {
         public:
-            explicit cudaAllocator(State& state) : state_(state) {}
+            explicit cudaAllocator(State& state)
+                : state_(state) {}
 
             void* allocate(std::size_t bytes) override {
                 if (bytes == 0) {
@@ -29,40 +30,27 @@ namespace ormi::backends::cuda {
 
                 void* ptr = nullptr;
 
-            #if defined(CUDART_VERSION) && CUDART_VERSION >= 11020
+#if defined(CUDART_VERSION) && CUDART_VERSION >= 11020
                 if (state_.has_pool()) {
-                    cudaError_t status = cudaMallocFromPoolAsync(
-                        &ptr,
-                        bytes,
-                        state_.pool(),
-                        state_.stream()
-                    );
+                    cudaError_t status = cudaMallocFromPoolAsync(&ptr, bytes, state_.pool(), state_.stream());
 
                     if (status == cudaErrorMemoryAllocation) {
-                        check(
-                            cudaStreamSynchronize(state_.stream()),
-                            "cudaStreamSynchronize"
-                        );
+                        check(cudaStreamSynchronize(state_.stream()), "cudaStreamSynchronize");
                         check(cudaMemPoolTrimTo(state_.pool(), 0), "cudaMemPoolTrimTo");
 
-                        status = cudaMallocFromPoolAsync(
-                            &ptr,
-                            bytes,
-                            state_.pool(),
-                            state_.stream()
-                        );
+                        status = cudaMallocFromPoolAsync(&ptr, bytes, state_.pool(), state_.stream());
                     }
 
                     check(status, "cudaMallocFromPoolAsync");
                     return ptr;
                 }
-            #endif
+#endif
 
                 check(cudaMalloc(&ptr, bytes), "cudaMalloc");
                 return ptr;
             }
 
-            void deallocate(void* ptr, std::size_t) noexcept override {
+            void deallocate(void* ptr, [[maybe_unused]] std::size_t bytes) noexcept override {
                 if (!ptr) {
                     return;
                 }
@@ -71,27 +59,26 @@ namespace ormi::backends::cuda {
                     return;
                 }
 
-            #if defined(CUDART_VERSION) && CUDART_VERSION >= 11020
+#if defined(CUDART_VERSION) && CUDART_VERSION >= 11020
                 if (state_.has_pool()) {
                     (void)cudaFreeAsync(ptr, state_.stream());
                     return;
                 }
-            #endif
+#endif
 
                 (void)cudaFree(ptr);
             }
 
             void empty_cache() override {
-            #if defined(CUDART_VERSION) && CUDART_VERSION >= 11020
-                if (state_.has_pool()) {
-                    check(cudaSetDevice(state_.index()), "cudaSetDevice");
-                    check(
-                        cudaStreamSynchronize(state_.stream()),
-                        "cudaStreamSynchronize"
-                    );
-                    check(cudaMemPoolTrimTo(state_.pool(), 0), "cudaMemPoolTrimTo");
+#if defined(CUDART_VERSION) && CUDART_VERSION >= 11020
+                if (!state_.has_pool()) {
+                    return;
                 }
-            #endif
+
+                check(cudaSetDevice(state_.index()), "cudaSetDevice");
+                check(cudaStreamSynchronize(state_.stream()), "cudaStreamSynchronize");
+                check(cudaMemPoolTrimTo(state_.pool(), 0), "cudaMemPoolTrimTo");
+#endif
             }
 
             bool host_visible() const override {
@@ -104,11 +91,9 @@ namespace ormi::backends::cuda {
     }
 
     core::memory::Allocator* allocator(core::Device device) {
-        static const int device_cnt = available_devices();
+        static const int device_count = available_devices();
         static std::mutex mutex;
-        static std::vector<std::unique_ptr<cudaAllocator>> allocators(
-            static_cast<std::size_t>(device_cnt)
-        );
+        static std::vector<std::unique_ptr<cudaAllocator>> allocators(static_cast<std::size_t>(device_count));
 
         const int index = device.index();
         check_device_id(index);

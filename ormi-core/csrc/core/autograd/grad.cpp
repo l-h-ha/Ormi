@@ -19,12 +19,6 @@ namespace ormi::core {
             std::size_t next_parent;
         };
 
-        bool same_device(const Tensor& lhs, const Tensor& rhs) {
-            return
-                lhs.device().backend_id() == rhs.device().backend_id() &&
-                lhs.device().index() == rhs.device().index();
-        }
-
         std::vector<std::shared_ptr<Tensor>> topology(const std::shared_ptr<Tensor>& root) {
             std::vector<std::shared_ptr<Tensor>> result;
             std::vector<Frame> stack{{&root, 0}};
@@ -91,7 +85,7 @@ namespace ormi::core {
                 ORMI_THROW(DTypeError, "Gradient seed dtype must match the output dtype.");
             }
 
-            if (!same_device(*seed, *output)) {
+            if (seed->device() != output->device()) {
                 ORMI_THROW(DeviceError, "Gradient seed device must match the output device.");
             }
 
@@ -99,18 +93,26 @@ namespace ormi::core {
             gradients.add(output, std::move(seed));
             auto nodes = topology(output);
 
-            for (auto node = nodes.rbegin(); node != nodes.rend(); ++node) {
-                const auto upstream = gradients.get(*node);
+            // Visit children before their parents so shared parents collect every contribution
+            // before their gradient rule builds more expressions. This pass reads no tensor values.
+            for (auto position = nodes.rbegin(); position != nodes.rend(); ++position) {
+                const auto& node = *position;
+                const auto upstream = gradients.get(node);
 
-                if (!upstream || !(*node)->op()) {
+                if (!upstream) {
                     continue;
                 }
 
-                if (!(*node)->op()->adjoint) {
-                    ORMI_THROW(OperationError, "Operation has no adjoint: " + std::string((*node)->op()->name));
+                const auto* op = node->op();
+                if (!op) {
+                    continue;
                 }
 
-                (*node)->op()->adjoint(*node, upstream, gradients);
+                if (!op->adjoint) {
+                    ORMI_THROW(OperationError, "Operation has no gradient rule: " + std::string(op->name));
+                }
+
+                op->adjoint(node, upstream, gradients);
             }
 
             std::vector<std::shared_ptr<Tensor>> result;

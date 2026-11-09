@@ -1,4 +1,3 @@
-#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <memory_resource>
@@ -18,6 +17,7 @@
 #include <ormi/core/tensor.h>
 
 #include "core/runtime/fusion/expr.h"
+#include "core/runtime/fusion/layout.h"
 
 namespace ormi::core::runtime::fusion {
     namespace {
@@ -40,17 +40,6 @@ namespace ormi::core::runtime::fusion {
             return ops::is_sum(tensor) || ops::is_mean(tensor);
         }
 
-        std::vector<std::size_t> dimensions(const Tensor& tensor) {
-            std::vector<std::size_t> result;
-            result.reserve(tensor.rank());
-            for (std::size_t dimension = 0; dimension < tensor.rank(); ++dimension) {
-                result.push_back(
-                    static_cast<std::size_t>(tensor.shape()[dimension])
-                );
-            }
-            return result;
-        }
-
         Tensor* pointwise_root(Tensor& output) {
             return is_reduction(output) ? output.parents()[0].get() : &output;
         }
@@ -64,51 +53,6 @@ namespace ormi::core::runtime::fusion {
                 operation(*root);
         }
 
-        Iteration iteration(
-            const Tensor& input,
-            const std::vector<std::int64_t>& reduced_axes,
-            bool reduced
-        ) {
-            std::vector<std::size_t> selected;
-            selected.reserve(input.rank());
-
-            for (std::size_t axis = 0; axis < input.rank(); ++axis) {
-                const auto is_reduced = std::binary_search(
-                    reduced_axes.begin(),
-                    reduced_axes.end(),
-                    static_cast<std::int64_t>(axis)
-                );
-                if (is_reduced == reduced) {
-                    selected.push_back(axis);
-                }
-            }
-
-            std::size_t size = 1;
-            for (const auto axis : selected) {
-                size *= static_cast<std::size_t>(input.shape()[axis]);
-            }
-
-            if (size == 0) {
-                return Iteration{0, {}};
-            }
-
-            const auto source_strides = contiguous_strides(input.shape());
-            std::vector<Axis> axes(selected.size());
-            std::size_t divisor = 1;
-
-            for (std::size_t i = selected.size(); i > 0; --i) {
-                const auto axis = selected[i - 1];
-                const auto extent = static_cast<std::size_t>(input.shape()[axis]);
-                axes[i - 1] = Axis{
-                    divisor,
-                    extent,
-                    static_cast<std::size_t>(source_strides[axis])
-                };
-                divisor *= extent;
-            }
-            return Iteration{size, std::move(axes)};
-        }
-
         std::optional<Reduction> reduction(const Tensor& output) {
             if (!is_reduction(output)) {
                 return std::nullopt;
@@ -116,11 +60,11 @@ namespace ormi::core::runtime::fusion {
 
             const auto& attrs = std::get<Reduce>(output.attrs());
             const auto& input = *output.parents()[0];
-            return Reduction{
-                ops::is_mean(output) ? ops::ReduceOp::mean : ops::ReduceOp::sum,
-                iteration(input, attrs.axes, false),
-                iteration(input, attrs.axes, true)
-            };
+            return layout::reduction(
+                input.shape(),
+                attrs.axes,
+                ops::is_mean(output) ? ops::ReduceOp::mean : ops::ReduceOp::sum
+            );
         }
 
         class Builder {
@@ -135,7 +79,7 @@ namespace ormi::core::runtime::fusion {
                   boundaries_(boundaries),
                   expr_{
                       root_->dtype(),
-                      dimensions(*root_),
+                      layout::dimensions(root_->shape()),
                       {},
                       {},
                       0,
@@ -151,18 +95,19 @@ namespace ormi::core::runtime::fusion {
             }
 
             std::optional<Expr> run() {
-                std::pmr::vector<std::pair<Tensor*, bool>> stack{&scratch_};
+                std::pmr::vector<Frame> stack{&scratch_};
                 stack.reserve(initial_capacity);
                 for (auto output = auxiliary_outputs_.rbegin();
                      output != auxiliary_outputs_.rend();
                      ++output) {
-                    stack.emplace_back(*output, false);
+                    stack.emplace_back(*output, Phase::visit);
                 }
-                stack.emplace_back(root_, false);
+                stack.emplace_back(root_, Phase::visit);
 
                 while (!stack.empty()) {
-                    auto [tensor, expanded] = std::move(stack.back());
+                    const auto frame = stack.back();
                     stack.pop_back();
+                    auto* tensor = frame.tensor;
 
                     if (indices_.contains(tensor)) {
                         continue;
@@ -183,18 +128,18 @@ namespace ormi::core::runtime::fusion {
                         continue;
                     }
 
-                    if (expanded) {
-                        append_operation(*tensor);
+                    if (frame.phase == Phase::visit) {
+                        stack.emplace_back(tensor, Phase::append);
+
+                        for (auto parent = tensor->parents().rbegin(); parent != tensor->parents().rend(); ++parent) {
+                            if (!indices_.contains(parent->get())) {
+                                stack.emplace_back(parent->get(), Phase::visit);
+                            }
+                        }
                         continue;
                     }
 
-                    stack.emplace_back(tensor, true);
-
-                    for (auto parent = tensor->parents().rbegin(); parent != tensor->parents().rend(); ++parent) {
-                        if (!indices_.contains(parent->get())) {
-                            stack.emplace_back(parent->get(), false);
-                        }
-                    }
+                    append_operation(*tensor);
                 }
 
                 if (expr_.operations < 2) {
@@ -210,6 +155,18 @@ namespace ormi::core::runtime::fusion {
             }
 
         private:
+            enum class Phase : std::uint8_t {
+                visit,
+                append
+            };
+
+            struct Frame {
+                Tensor* tensor;
+                Phase phase;
+
+                Frame(Tensor* tensor, Phase phase) : tensor(tensor), phase(phase) {}
+            };
+
             static constexpr std::size_t initial_capacity = 8;
             static constexpr std::size_t initial_scratch_bytes = 1024;
 
@@ -238,38 +195,23 @@ namespace ormi::core::runtime::fusion {
                     return false;
                 }
 
-                const auto input = expr_.inputs.size();
+                const auto index = expr_.inputs.size();
                 const auto linear =
                     tensor->shape() == root_->shape() && tensor->is_contiguous();
                 std::vector<Axis> axes;
-
-                if (!linear && !root_->shape().empty()) {
-                    const auto output_strides = contiguous_strides(root_->shape());
-                    const auto input_strides = tensor->strides();
-                    const auto rank_offset = root_->rank() - tensor->rank();
-                    axes.reserve(tensor->rank());
-
-                    for (std::size_t axis = rank_offset; axis < root_->rank(); ++axis) {
-                        const auto input_axis = axis - rank_offset;
-                        const auto input_extent = tensor->shape()[input_axis];
-                        const auto output_extent = root_->shape()[axis];
-
-                        if (input_extent != 1 && input_extent != output_extent) {
-                            return false;
-                        }
-
-                        if (input_extent != 1 && input_strides[input_axis] != 0) {
-                            axes.push_back(Axis{
-                                static_cast<std::size_t>(output_strides[axis]),
-                                static_cast<std::size_t>(output_extent),
-                                static_cast<std::size_t>(input_strides[input_axis])
-                            });
-                        }
-                    }
+                if (
+                    !linear && !layout::input_axes(
+                        tensor->shape(),
+                        tensor->strides(),
+                        root_->shape(),
+                        axes
+                    )
+                ) {
+                    return false;
                 }
 
                 expr_.inputs.push_back(tensor);
-                append(tensor, Input{input, std::move(axes), linear});
+                append(tensor, Input{index, std::move(axes), linear});
                 return true;
             }
 
@@ -347,8 +289,7 @@ namespace ormi::core::runtime::fusion {
                     !eligible(*output) ||
                     output->shape() != root.shape() ||
                     output->dtype() != root.dtype() ||
-                    output->device().backend_id() != root.device().backend_id() ||
-                    output->device().index() != root.device().index()
+                    output->device() != root.device()
                 ) {
                     return std::nullopt;
                 }

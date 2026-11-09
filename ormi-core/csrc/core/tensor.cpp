@@ -1,13 +1,30 @@
+#include <cstdint>
 #include <limits>
 #include <utility>
 
 #include <ormi/core/error.h>
+#include <ormi/core/memory/ops.h>
 #include <ormi/core/tensor.h>
 
-#include "core/runtime/realize.h"
+#include "core/runtime/schedule.h"
 
 namespace ormi::core {
     namespace {
+        void require_copy_destination(const Tensor& tensor) {
+            if (tensor.op() || !tensor.realized()) {
+                ORMI_THROW(OperationError, "Copy destination must be a realized leaf tensor.");
+            }
+            if (!tensor.is_contiguous()) {
+                ORMI_THROW(OperationError, "Copy destination must be contiguous.");
+            }
+        }
+
+        bool overlaps(const void* lhs, const void* rhs, std::size_t bytes) {
+            const auto left = reinterpret_cast<std::uintptr_t>(lhs);
+            const auto right = reinterpret_cast<std::uintptr_t>(rhs);
+            return left < right ? right - left < bytes : left - right < bytes;
+        }
+
         std::size_t checked_nbytes(const Shape& shape, DType dtype) {
             const auto elements = shape.numel();
             const auto item_size = dtype_size(dtype);
@@ -35,7 +52,7 @@ namespace ormi::core {
             return parent;
         }
 
-        void strides_not_neg(const Shape& shape, std::span<const std::int64_t> strides) {
+        void validate_strides(const Shape& shape, std::span<const std::int64_t> strides) {
             if (shape.rank() != strides.size()) {
                 ORMI_THROW(ShapeError, "Tensor stride rank must match shape rank.");
             }
@@ -124,9 +141,8 @@ namespace ormi::core {
           shape_(std::move(shape)),
           dtype_(dtype),
           strides_(strides.empty() ? contiguous_strides(shape_) : std::move(strides)),
-          offset_bytes_(offset_bytes)
-    {
-        strides_not_neg(shape_, strides_);
+          offset_bytes_(offset_bytes) {
+        validate_strides(shape_, strides_);
         validate_storage_bounds(*buffer_, shape_, dtype_, strides_, offset_bytes_);
     }
 
@@ -137,14 +153,7 @@ namespace ormi::core {
         Shape shape,
         DType dtype
     )
-        : Tensor(
-              op,
-              std::monostate{},
-              std::move(parents),
-              device,
-              std::move(shape),
-              dtype
-          ) {}
+        : Tensor(op, std::monostate{}, std::move(parents), device, std::move(shape), dtype) {}
 
     Tensor::Tensor(
         OpRef op,
@@ -162,8 +171,7 @@ namespace ormi::core {
           shape_(std::move(shape)),
           dtype_(dtype),
           strides_(contiguous_strides(shape_)),
-          offset_bytes_(0)
-    {
+          offset_bytes_(0) {
         if (parents_.size() != op_->parents) {
             ORMI_THROW(OperationError, "Lazy tensor parent count does not match its operation.");
         }
@@ -181,13 +189,9 @@ namespace ormi::core {
                 ORMI_THROW(OperationError, "A lazy tensor cannot have a null parent.");
             }
 
-            if (
-                parent->device().backend_id() != device_.backend_id() ||
-                parent->device().index() != device_.index()
-            ) {
+            if (parent->device() != device_) {
                 ORMI_THROW(DeviceError, "A lazy tensor and its parents must use the same device.");
             }
-
         }
     }
 
@@ -207,21 +211,98 @@ namespace ormi::core {
           shape_(std::move(shape)),
           dtype_(parents_[0]->dtype()),
           strides_(std::move(strides)),
-          offset_bytes_(offset_bytes)
-    {
+          offset_bytes_(offset_bytes) {
         if (op_->output != Output::alias || op_->parents != 1 || op_->compute) {
             ORMI_THROW(OperationError, "An alias tensor requires a unary alias operation without compute.");
         }
 
-        strides_not_neg(shape_, strides_);
+        validate_strides(shape_, strides_);
+    }
+
+    Tensor::Tensor(OpRef op, std::vector<std::shared_ptr<Tensor>> parents)
+        : op_(op.get()),
+          attrs_(std::monostate{}),
+          parents_(std::move(parents)),
+          buffer_(nullptr),
+          device_(require_parent(parents_.empty() ? nullptr : parents_[0])->device()),
+          shape_(parents_[0]->shape_),
+          dtype_(parents_[0]->dtype_),
+          strides_(parents_[0]->strides_),
+          offset_bytes_(parents_[0]->offset_bytes_) {
+        if (op_->output != Output::alias || op_->prepare || parents_.empty() ||
+            parents_.size() != op_->parents) {
+            ORMI_THROW(OperationError, "An alias requires an alias operation and its declared parents.");
+        }
+        for (const auto& parent : parents_) {
+            if (!parent) {
+                ORMI_THROW(OperationError, "An alias cannot have a null parent.");
+            }
+            if (parent->device() != parents_[0]->device()) {
+                ORMI_THROW(DeviceError, "An alias and its dependencies must use the same device.");
+            }
+        }
     }
 
     void Tensor::realize() {
-        runtime::realize(*this);
+        runtime::schedule::run(*this);
     }
 
     bool Tensor::realized() const {
         return static_cast<bool>(buffer_);
+    }
+
+    void Tensor::copy_from(const Tensor& source) {
+        require_copy_destination(*this);
+        if (shape_ != source.shape_) {
+            ORMI_THROW(ShapeError, "Copy source and destination shapes must match.");
+        }
+        if (dtype_ != source.dtype_) {
+            ORMI_THROW(DTypeError, "Copy source and destination dtypes must match.");
+        }
+        if (!source.realized()) {
+            ORMI_THROW(OperationError, "Copy source must be realized before copying.");
+        }
+        if (!source.is_contiguous()) {
+            ORMI_THROW(OperationError, "Copy source must be contiguous.");
+        }
+
+        const auto size = bytes();
+        if (size == 0) {
+            return;
+        }
+        auto* destination = data();
+        const auto* value = source.data();
+        if (device_ == source.device_ && destination == value) {
+            return;
+        }
+        if (buffer_ == source.buffer_ && overlaps(destination, value, size)) {
+            ORMI_THROW(OperationError, "Copy source and destination must not overlap.");
+        }
+        memory::copy(destination, device_, value, source.device_, size);
+    }
+
+    void Tensor::copy_from(std::span<const std::byte> source) {
+        require_copy_destination(*this);
+        if (source.size() != bytes()) {
+            ORMI_THROW(ShapeError, "Host copy byte count must match the destination tensor.");
+        }
+        if (source.empty()) {
+            return;
+        }
+        if (!source.data()) {
+            ORMI_THROW(MemoryError, "Host copy source cannot be null.");
+        }
+
+        auto* destination = data();
+        if (device_.is_host()) {
+            if (destination == source.data()) {
+                return;
+            }
+            if (overlaps(destination, source.data(), source.size())) {
+                ORMI_THROW(OperationError, "Copy source and destination must not overlap.");
+            }
+        }
+        memory::copy(destination, device_, source.data(), Device::cpu(), source.size());
     }
 
     void* Tensor::data() {
