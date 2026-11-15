@@ -55,6 +55,7 @@ namespace ormi::backends::cuda {
         ) {
             const auto execution = *counter;
             const auto step = static_cast<std::size_t>(blockDim.x) * gridDim.x;
+
             for (auto i = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x; i < count;
                  i += step) {
                 curandStatePhilox4_32_10_t generator;
@@ -74,10 +75,12 @@ namespace ormi::backends::cuda {
         auto& device = state(out.device());
         check(cudaSetDevice(device.index()), "cudaSetDevice");
         auto* counter = static_cast<std::uint64_t*>(attrs.counter->data());
+
         if (out.numel() != 0) {
             constexpr unsigned threads = 256;
             const auto blocks =
                 static_cast<unsigned>(std::min<std::size_t>((out.numel() + threads - 1) / threads, 65535));
+
             if (out.dtype() == core::DType::float32) {
                 mask_kernel<<<blocks, threads, 0, device.stream()>>>(
                     static_cast<float*>(out.data()),
@@ -97,8 +100,10 @@ namespace ormi::backends::cuda {
             } else {
                 ORMI_THROW(DTypeError, "Bernoulli masks require Float32 or Float64 storage.");
             }
+
             check(cudaGetLastError(), "Dropout mask kernel");
         }
+
         // Separate kernels keep every thread on the same counter value, including graph replay.
         advance_counter<<<1, 1, 0, device.stream()>>>(counter);
         check(cudaGetLastError(), "Dropout counter kernel");

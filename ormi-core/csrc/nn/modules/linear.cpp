@@ -92,7 +92,8 @@ namespace ormi::nn {
 
     Linear::Linear(std::shared_ptr<core::Tensor> weight, std::shared_ptr<core::Tensor> bias)
         : weight_(std::move(weight)),
-          bias_(std::move(bias)) {
+          bias_(std::move(bias))
+    {
         if (!weight_ || weight_->rank() != 2 || weight_->shape()[0] <= 0 || weight_->shape()[1] <= 0) {
             ORMI_THROW(
                 ShapeError,

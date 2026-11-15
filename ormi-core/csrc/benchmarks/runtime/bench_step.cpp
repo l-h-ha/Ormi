@@ -22,6 +22,7 @@ namespace {
 
     void write_outputs(core::Tensor& output, std::span<core::Tensor* const> auxiliary) {
         *static_cast<float*>(output.data()) = 1.0f;
+
         for (std::size_t index = 0; index < auxiliary.size(); ++index) {
             *static_cast<float*>(auxiliary[index]->data()) = static_cast<float>(index + 2);
         }
@@ -46,9 +47,11 @@ namespace {
     std::vector<Tensor> outputs(const Tensor& input, std::size_t count) {
         std::vector<Tensor> result;
         result.reserve(count);
+
         for (std::size_t index = 0; index < count; ++index) {
             result.push_back(core::ops::neg(input));
         }
+
         return result;
     }
 
@@ -58,15 +61,18 @@ namespace {
         expression.elements = 1;
         std::vector<core::Tensor*> auxiliary;
         auxiliary.reserve(outputs.size() - 1);
+
         for (std::size_t index = 1; index < outputs.size(); ++index) {
             auxiliary.push_back(outputs[index].get());
         }
+
         if (prepared) {
             return Step::deferred_fusion(
                 *outputs.front(), prepare, nullptr, execute,
                 std::move(expression), std::move(auxiliary)
             );
         }
+
         return Step::fusion(
             *outputs.front(), execute, std::move(expression), std::move(auxiliary)
         );
@@ -77,10 +83,12 @@ namespace {
             if (!outputs[index]->realized()) {
                 return false;
             }
+
             if (*static_cast<const float*>(outputs[index]->data()) != static_cast<float>(index + 1)) {
                 return false;
             }
         }
+
         return true;
     }
 
@@ -96,6 +104,7 @@ namespace {
             current.run();
             benchmark::ClobberMemory();
         }
+
         if (!valid(values)) {
             state.SkipWithError("Step returned incorrect outputs.");
         }
@@ -105,11 +114,13 @@ namespace {
         const auto input = std::make_shared<core::Tensor>(
             core::Device::cpu(), core::Shape{}, core::DType::float32
         );
+
         for (auto _ : state) {
             bool correct = false;
             state.PauseTiming();
             {
                 const auto values = outputs(input, static_cast<std::size_t>(state.range(0)));
+
                 if (partial) {
                     for (std::size_t index = 0; index < values.size(); index += 2) {
                         auto initialize = Step::compute(*values[index], [](core::Tensor& output) {
@@ -118,6 +129,7 @@ namespace {
                         initialize.run();
                     }
                 }
+
                 auto current = step(values, state.range(1) != 0);
                 current.prepare();
                 state.ResumeTiming();
@@ -129,6 +141,7 @@ namespace {
                 correct = valid(values);
             }
             state.ResumeTiming();
+
             if (!correct) {
                 state.SkipWithError("Step returned incorrect outputs.");
                 break;

@@ -37,9 +37,11 @@ namespace ormi::platform {
             if (handle_) {
                 dlclose(handle_);
             }
+
             handle_ = other.handle_;
             other.handle_ = nullptr;
         }
+
         return *this;
     }
 
@@ -48,9 +50,11 @@ namespace ormi::platform {
         dlerror();
         auto* result = dlsym(handle_, owned.c_str());
         const char* error = dlerror();
+
         if (error) {
             ORMI_THROW(jitError, "Shared library does not export symbol: " + owned + "\n" + error);
         }
+
         return result;
     }
 
@@ -60,6 +64,7 @@ namespace ormi::platform {
 
     std::filesystem::path library_path(const void* anchor, std::string_view stem) {
         Dl_info module{};
+
         if (dladdr(anchor, &module) == 0 || !module.dli_fname) {
             ORMI_THROW(jitError, "Cannot locate the ORMI core module.");
         }

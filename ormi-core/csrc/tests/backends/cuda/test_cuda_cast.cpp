@@ -154,6 +154,7 @@ namespace {
         for (const auto& input : inputs) {
             for (const auto output_dtype : dtypes) {
                 auto output = ormi::core::ops::cast(input, output_dtype);
+
                 EXPECT_DOUBLE_EQ(host_scalar(*output), 1.0);
             }
         }
@@ -214,6 +215,7 @@ namespace {
             tensor<float>({1}, {7.5f}),
             ormi::core::DType::int32
         );
+
         EXPECT_EQ(host_values<std::int32_t>(*valid)[0], 7);
     }
 

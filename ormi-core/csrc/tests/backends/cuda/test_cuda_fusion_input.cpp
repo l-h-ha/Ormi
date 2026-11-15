@@ -33,6 +33,7 @@ namespace {
     void expect_load(const std::string& source, core::DType dtype, const std::string& access) {
         const auto expected = dtype == core::DType::float16
             ? "ormi_half_value(" + access + ")" : access;
+
         EXPECT_NE(source.find("= " + expected + ";"), std::string::npos);
     }
 
@@ -43,6 +44,7 @@ namespace {
             const auto scalar = input({}, dtype);
             const auto output = ops::add(ops::mul(values, values), scalar);
             const auto expression = fusion::build(*output);
+
             ASSERT_TRUE(expression);
             ASSERT_EQ(expression->inputs.size(), 2u);
             ASSERT_EQ(expression->inputs[0], values.get());
@@ -60,6 +62,7 @@ namespace {
             const auto values = ops::transpose(input({2, 3, 5, 7}, dtype), {2, 0, 3, 1});
             const auto output = ops::add(ops::mul(values, values), values);
             const auto expression = fusion::build(*output);
+
             ASSERT_TRUE(expression);
             ASSERT_EQ(expression->inputs.size(), 1u);
 
@@ -80,6 +83,7 @@ namespace {
             const auto scalar = input({}, dtype);
             const auto output = ops::sum(ops::add(ops::add(values, row), scalar), {0});
             const auto expression = fusion::build(*output);
+
             ASSERT_TRUE(expression);
             ASSERT_EQ(expression->inputs.size(), 3u);
             ASSERT_TRUE(ormi::backends::cuda::fusion::tile(*expression));
@@ -88,6 +92,7 @@ namespace {
             expect_load(source, dtype, "input0[index0 * 257 + index1]");
             expect_load(source, dtype, "input1[index1]");
             expect_load(source, dtype, "input2[0]");
+
             EXPECT_EQ(source.find("input0[i]"), std::string::npos);
         }
     }
@@ -96,10 +101,13 @@ namespace {
         const auto values = input({3, 257}, core::DType::float32);
         const auto mapped = ops::add(ops::mul(values, values), values);
         const std::array outputs{mapped, ops::sum(mapped), ops::sum(mapped, {0})};
+
         for (const auto& output : outputs) {
             auto expression = fusion::build(*output);
+
             ASSERT_TRUE(expression);
             auto* node = std::get_if<fusion::Input>(&expression->nodes.front().instruction);
+
             ASSERT_NE(node, nullptr);
             node->index = expression->inputs.size();
 

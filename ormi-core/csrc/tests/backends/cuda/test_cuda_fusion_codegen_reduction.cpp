@@ -33,15 +33,18 @@ namespace {
                 core::Device::cpu(), core::Shape{2, 3, 257}, dtype
             );
             const auto mapped = core::ops::sin(core::ops::add(core::ops::mul(input, input), input));
+
             for (const bool mean : {false, true}) {
                 SCOPED_TRACE(mean);
                 const auto root = mean ? core::ops::mean(mapped, {0, 1}) : core::ops::sum(mapped, {0, 1});
                 const auto expression = core::runtime::fusion::build(*root);
+
                 ASSERT_TRUE(expression);
                 ASSERT_TRUE(fusion::tile(*expression));
                 const auto source = fusion::emit(*expression);
                 const std::string scalar = dtype == core::DType::float64 ? "double" : "float";
                 const std::string storage = dtype == core::DType::float16 ? "unsigned short" : scalar;
+
                 EXPECT_NE(source.find(storage + "* output"), std::string::npos);
                 EXPECT_NE(source.find("reduced_index < 6ull"), std::string::npos);
                 EXPECT_EQ(source.find("ormi_finish"), std::string::npos);
@@ -49,19 +52,24 @@ namespace {
                 const auto* unary = std::get_if<core::runtime::fusion::Unary>(
                     &expression->nodes[expression->output].instruction
                 );
+
                 ASSERT_NE(unary, nullptr);
                 auto operation = std::string(dtype == core::DType::float64 ? "sin(" : "sinf(") +
                     "v" + std::to_string(unary->input) + ")";
+
                 if (dtype == core::DType::float16) {
                     operation = "ormi_half_round(" + operation + ")";
                 }
+
                 EXPECT_NE(source.find("const " + scalar + " v" +
                     std::to_string(expression->output) + " = " + operation + ";"), std::string::npos);
 
                 auto result = mean ? "total / static_cast<" + scalar + ">(6ull)" : std::string("total");
+
                 if (dtype == core::DType::float16) {
                     result = "ormi_half_bits(" + result + ")";
                 }
+
                 EXPECT_NE(source.find(" = " + result + ";\n"), std::string::npos);
             }
         }
@@ -74,11 +82,14 @@ namespace {
         const auto mapped = core::ops::add(core::ops::mul(input, input), input);
         const auto root = core::ops::sum(mapped, {1});
         const auto expression = core::runtime::fusion::build(*root);
+
         ASSERT_TRUE(expression);
         const auto tiled = fusion::tile(*expression);
+
         ASSERT_TRUE(tiled);
         ASSERT_EQ(tiled->axis, 3u);
         const auto source = fusion::emit(*expression);
+
         EXPECT_NE(source.find("const unsigned long long index0 = outer_index / 5ull;"), std::string::npos);
         EXPECT_NE(source.find("const unsigned long long index2 = outer_index % 5ull;"), std::string::npos);
         EXPECT_NE(source.find("const unsigned long long index1 = reduced_index;"), std::string::npos);
@@ -93,6 +104,7 @@ namespace {
         const auto mapped = core::ops::add(core::ops::mul(input, input), input);
         const auto root = core::ops::sum(mapped, {0});
         auto built = core::runtime::fusion::build(*root);
+
         ASSERT_TRUE(built);
         auto expression = *built;
         expression.dtype = core::DType::boolean;
@@ -105,6 +117,7 @@ namespace {
         expression.auxiliary_outputs.clear();
         reject_operation(expression, "CUDA fusion received an unsupported reduction.");
         expression.reduction->op = core::ops::ReduceOp::sum;
+
         EXPECT_THROW((void)fusion::emit(expression), ormi::DTypeError);
     }
 }

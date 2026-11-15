@@ -23,9 +23,11 @@ namespace ormi::backends::cuda {
                 if (cudaSetDevice(device_) != cudaSuccess) {
                     return;
                 }
+
                 if (executable_) {
                     (void)cudaGraphExecDestroy(executable_);
                 }
+
                 if (graph_) {
                     (void)cudaGraphDestroy(graph_);
                 }
@@ -64,6 +66,7 @@ namespace ormi::backends::cuda {
         void discard(cudaStream_t stream) noexcept {
             cudaGraph_t graph = nullptr;
             (void)cudaStreamEndCapture(stream, &graph);
+
             if (graph) {
                 (void)cudaGraphDestroy(graph);
             }
@@ -102,12 +105,15 @@ namespace ormi::backends::cuda {
 
         cudaGraph_t graph = nullptr;
         const auto status = cudaStreamEndCapture(stream, &graph);
+
         if (status != cudaSuccess) {
             if (graph) {
                 (void)cudaGraphDestroy(graph);
             }
+
             check(status, "cudaStreamEndCapture");
         }
+
         if (!graph) {
             ORMI_THROW(BackendError, "CUDA recording produced no graph.");
         }
@@ -120,6 +126,7 @@ namespace ormi::backends::cuda {
         if (!recording) {
             ORMI_THROW(BackendError, "Cannot replay an empty recording.");
         }
+
         static_cast<Recording*>(recording)->run();
     }
 

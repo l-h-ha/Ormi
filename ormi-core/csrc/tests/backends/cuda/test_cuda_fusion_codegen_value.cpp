@@ -53,26 +53,33 @@ namespace {
             std::pair{core::ops::BinaryOp::mul, "*"},
             std::pair{core::ops::BinaryOp::div, "/"}
         };
+
         for (const auto dtype : {core::DType::float16, core::DType::float32, core::DType::float64}) {
             SCOPED_TRACE(static_cast<int>(dtype));
             const std::string type = dtype == core::DType::float64 ? "double" : "float";
             const std::string suffix = dtype == core::DType::float64 ? "" : "f";
+
             for (const auto& [op, name] : unaries) {
                 auto value = expression(fusion::Unary{op, 0}, dtype);
                 const auto text = op == core::ops::UnaryOp::neg
                     ? std::string("-v0") : name + suffix + "(v0)";
+
                 EXPECT_NE(cuda::emit(value).find("const " + type + " v1 = " + text + ";"),
                     std::string::npos);
             }
+
             for (const auto& [op, token] : binaries) {
                 auto value = expression(fusion::Binary{op, 0, 0}, dtype);
+
                 EXPECT_NE(cuda::emit(value).find("const " + type + " v1 = v0 " + token + " v0;"),
                     std::string::npos);
             }
+
             for (const auto constant : {fusion::Constant::zero, fusion::Constant::one}) {
                 auto value = expression(fusion::Unary{core::ops::UnaryOp::neg, 0}, dtype);
                 value.nodes.front().instruction = constant;
                 const auto literal = std::string(constant == fusion::Constant::zero ? "0.0" : "1.0");
+
                 EXPECT_NE(cuda::emit(value).find("const " + type + " v0 = " + literal + suffix + ";"),
                     std::string::npos);
             }
@@ -86,6 +93,7 @@ namespace {
         value.auxiliary_outputs = {1};
         value.operations = 2;
         const auto source = cuda::emit(value);
+
         EXPECT_NE(source.find("const float v1 = ormi_half_round(v0 * v0);"), std::string::npos);
         EXPECT_NE(source.find("const float v2 = sinf(v1);"), std::string::npos);
         EXPECT_NE(source.find("output[i] = ormi_half_bits(v2);"), std::string::npos);
@@ -95,6 +103,7 @@ namespace {
     TEST(CUDAFusionCodegenValueTest, rejectsSelfAndForwardReferencesBeforeFormatting) {
         const auto unknown_unary = static_cast<core::ops::UnaryOp>(255);
         const auto unknown_binary = static_cast<core::ops::BinaryOp>(255);
+
         for (const fusion::Index reference : {1u, 2u, std::numeric_limits<fusion::Index>::max()}) {
             SCOPED_TRACE(reference);
             const std::array<fusion::Instruction, 4> instructions{
@@ -102,6 +111,7 @@ namespace {
                 fusion::Binary{unknown_binary, reference, 0},
                 fusion::Binary{unknown_binary, 0, reference}
             };
+
             for (const auto& instruction : instructions) {
                 auto value = expression(instruction);
                 value.nodes.back().dtype = core::DType::int32;
@@ -122,6 +132,7 @@ namespace {
             SCOPED_TRACE(static_cast<int>(dtype));
             auto value = expression(fusion::Cast{0});
             value.nodes.back().dtype = dtype;
+
             try {
                 (void)cuda::emit(value);
                 FAIL() << "Code generation accepted an unsupported cast dtype.";

@@ -20,6 +20,7 @@ namespace {
     void BM_NNLinearGraph(benchmark::State& state) {
         const ormi::nn::Linear layer(16, 32, true, ormi::core::DType::float32, ormi::core::Device::cpu(), 7);
         const auto input = ormi::core::ops::full({state.range(0), 16}, 0.25f, ormi::core::Device::cpu());
+
         for (auto _ : state) {
             auto output = layer(input);
             benchmark::DoNotOptimize(output);
@@ -31,6 +32,7 @@ namespace {
         const auto input = ormi::core::ops::full({state.range(0), 16}, 0.25f, ormi::core::Device::cpu());
         const auto weight = layer.weight();
         const auto bias = layer.bias();
+
         for (auto _ : state) {
             auto output = manual(input, weight, bias);
             benchmark::DoNotOptimize(output);
@@ -44,10 +46,12 @@ namespace {
         const auto output = use_layer ? layer(input) : manual(input, layer.weight(), layer.bias());
         ormi::core::Plan plan({output});
         plan.run();
+
         for (auto _ : state) {
             plan.run();
             benchmark::ClobberMemory();
         }
+
         state.counters["steps"] = static_cast<double>(plan.steps());
         state.counters["storage_bytes"] = static_cast<double>(plan.storage_bytes());
     }

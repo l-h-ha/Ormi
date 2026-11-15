@@ -15,6 +15,7 @@ def test_missing_compiler_uses_precompiled_kernels(tmp_path, automatic, existing
     environment["ORMI_CPU_JIT_CXX"] = "" if automatic else "ormi-compiler-does-not-exist"
     environment["ORMI_CPU_JIT_CXX_ID"] = "gcc"
     environment["ORMI_CPU_JIT_CACHE_DIR"] = str(tmp_path / "jit")
+
     if existing_cache:
         (tmp_path / "jit").mkdir()
 

@@ -18,6 +18,7 @@ namespace ormi::core::ops {
             const auto index = std::get<Select>(out.attrs()).index;
             const auto& scalar = *out.parents()[0];
             const auto& backend = runtime::backend(out.device());
+
             if (backend.ops.scatter_scalar) {
                 backend.ops.scatter_scalar(out, scalar, index);
                 return;
@@ -79,6 +80,7 @@ namespace ormi::core::ops {
         if (!input) {
             ORMI_THROW(OperationError, "Scalar selection requires a tensor.");
         }
+
         if (index >= input->numel()) {
             ORMI_THROW(ShapeError, "Scalar selection index is out of range.");
         }
@@ -87,17 +89,21 @@ namespace ormi::core::ops {
         auto offset = input->offset_bytes();
         auto remaining = index;
         const auto strides = input->strides();
+
         for (std::size_t axis = input->rank(); axis > 0; --axis) {
             const auto size = static_cast<std::size_t>(input->shape()[axis - 1]);
             const auto coordinate = remaining % size;
             remaining /= size;
             const auto stride = static_cast<std::size_t>(strides[axis - 1]);
             const auto limit = (std::numeric_limits<std::size_t>::max() - offset) / item_size;
+
             if (stride != 0 && coordinate > limit / stride) {
                 ORMI_THROW(ShapeError, "Scalar selection byte offset overflow.");
             }
+
             offset += coordinate * stride * item_size;
         }
+
         if (offset > std::numeric_limits<std::size_t>::max() - item_size) {
             ORMI_THROW(ShapeError, "Scalar selection byte offset overflow.");
         }

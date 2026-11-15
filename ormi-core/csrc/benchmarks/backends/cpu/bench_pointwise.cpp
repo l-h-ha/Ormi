@@ -32,6 +32,7 @@ namespace {
         Shape shape{rows, columns};
         std::vector<std::int64_t> strides{columns, 1};
         std::int64_t stored = rows * columns;
+
         switch (layout) {
             case UnaryLayout::dense:
                 break;
@@ -56,8 +57,10 @@ namespace {
                 stored *= 2;
                 break;
         }
+
         Tensor storage(Device::cpu(), {stored}, dtype);
         auto* data = static_cast<T*>(storage.data());
+
         for (std::size_t i = 0; i < storage.numel(); ++i) {
             if constexpr (std::is_same_v<T, std::int32_t>) {
                 data[i] = static_cast<T>(i % 13 + 1);
@@ -65,19 +68,24 @@ namespace {
                 data[i] = static_cast<T>(0.125f + static_cast<float>(i % 13) / 32.0f);
             }
         }
+
         Tensor input(storage.buffer(), shape, dtype, strides);
         Tensor output(Device::cpu(), shape, dtype);
         ormi::backends::cpu::pointwise_unary(op, output, input);
         const auto* actual = static_cast<const T*>(output.data());
+
         for (std::size_t i = 0; i < input.numel(); ++i) {
             std::size_t offset = 0, linear = i;
+
             for (std::size_t axis = shape.rank(); axis > 0; --axis) {
                 const auto extent = static_cast<std::size_t>(shape[axis - 1]);
                 offset += (linear % extent) * static_cast<std::size_t>(strides[axis - 1]);
                 linear /= extent;
             }
+
             const auto value = static_cast<Value>(data[offset]);
             Value reference{};
+
             switch (op) {
                 case ops::UnaryOp::neg: reference = -value; break;
                 case ops::UnaryOp::exp: reference = static_cast<Value>(std::exp(value)); break;
@@ -90,17 +98,21 @@ namespace {
                     state.SkipWithError("Unary reference does not cover this operation.");
                     return;
             }
+
             const auto expected = static_cast<T>(reference);
+
             if (std::abs(static_cast<double>(static_cast<Value>(actual[i])) -
                 static_cast<double>(static_cast<Value>(expected))) > 1e-6) {
                 state.SkipWithError("Unary output differs from reference.");
                 return;
             }
         }
+
         for (auto _ : state) {
             ormi::backends::cpu::pointwise_unary(op, output, input);
             benchmark::ClobberMemory();
         }
+
         state.SetItemsProcessed(state.iterations() * static_cast<std::int64_t>(input.numel()));
     }
 
@@ -118,43 +130,55 @@ namespace {
             std::vector<std::int64_t>{columns * stride, stride}
         );
         Shape rhs_shape;
+
         if (layout == Broadcast::row || layout == Broadcast::strided) {
             rhs_shape = {columns};
         } else if (layout == Broadcast::column) {
             rhs_shape = {rows, 1};
         }
+
         auto rhs = std::make_shared<Tensor>(Device::cpu(), rhs_shape, DType::float32);
         Tensor output(Device::cpu(), shape, DType::float32);
         auto* left = static_cast<float*>(storage->data());
         auto* right = static_cast<float*>(rhs->data());
+
         for (std::size_t i = 0; i < storage->numel(); ++i) {
             left[i] = static_cast<float>(i % 13) * 0.125f;
         }
+
         for (std::size_t i = 0; i < rhs->numel(); ++i) {
             right[i] = static_cast<float>(i % 7) * 0.25f;
         }
+
         if (swap) {
             std::swap(lhs, rhs);
         }
+
         ormi::backends::cpu::pointwise_binary(ops::BinaryOp::sub, output, *lhs, *rhs);
         const auto* actual = static_cast<const float*>(output.data());
+
         for (std::size_t i = 0; i < output.numel(); ++i) {
             std::size_t index = 0;
+
             if (layout == Broadcast::row || layout == Broadcast::strided) {
                 index = i % static_cast<std::size_t>(columns);
             } else if (layout == Broadcast::column) {
                 index = i / static_cast<std::size_t>(columns);
             }
+
             const auto expected = swap ? right[index] - left[i * stride] : left[i * stride] - right[index];
+
             if (actual[i] != expected) {
                 state.SkipWithError("Broadcast subtraction differs from reference.");
                 return;
             }
         }
+
         for (auto _ : state) {
             ormi::backends::cpu::pointwise_binary(ops::BinaryOp::sub, output, *lhs, *rhs);
             benchmark::ClobberMemory();
         }
+
         state.SetItemsProcessed(state.iterations() * static_cast<std::int64_t>(output.numel()));
     }
 
@@ -179,6 +203,7 @@ namespace {
         );
 
         ormi::backends::cpu::pointwise_binary(op, output, lhs, rhs);
+
         for (auto _ : state) {
             ormi::backends::cpu::pointwise_binary(op, output, lhs, rhs);
             benchmark::ClobberMemory();

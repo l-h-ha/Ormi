@@ -36,6 +36,7 @@ namespace {
         ormi::nn::Sequential model({first, second, first});
 
         const auto parameters = model.parameters();
+
         ASSERT_EQ(parameters.size(), 2u);
         EXPECT_EQ(parameters[0], shared);
         EXPECT_EQ(parameters[1], other);
@@ -52,11 +53,14 @@ namespace {
             child->register_parameter(parameter);
             child.reset();
             parameter.reset();
+
             EXPECT_FALSE(child_lifetime.expired());
             EXPECT_FALSE(parameter_lifetime.expired());
             EXPECT_EQ(parent.parameters().size(), 1u);
         }
+
         EXPECT_TRUE(child_lifetime.expired());
+
         EXPECT_TRUE(parameter_lifetime.expired());
     }
 
@@ -83,19 +87,23 @@ namespace {
 
         const std::vector<std::shared_ptr<ormi::core::Tensor>>
             expected{parent_parameter, first_parameter, nested_parameter, second_parameter};
+
         EXPECT_EQ(parent->parameters(), expected);
     }
 
     TEST(NNModuleTest, rejectsInvalidParameters) {
         Identity module;
+
         EXPECT_THROW(module.register_parameter(nullptr), ormi::OperationError);
         const auto input = nn_test::leaf({2});
+
         EXPECT_THROW(module.register_parameter(ormi::core::ops::sin(input)), ormi::OperationError);
         const auto integer = std::make_shared<ormi::core::Tensor>(
             ormi::core::Device::cpu(),
             ormi::core::Shape{2},
             ormi::core::DType::int32
         );
+
         EXPECT_THROW(module.register_parameter(integer), ormi::DTypeError);
         EXPECT_TRUE(module.parameters().empty());
     }
@@ -104,6 +112,7 @@ namespace {
         auto first = std::make_shared<ormi::nn::Sequential>();
         auto second = std::make_shared<ormi::nn::Sequential>();
         first->append(second);
+
         EXPECT_THROW(second->append(first), ormi::OperationError);
         EXPECT_THROW(first->append(first), ormi::OperationError);
         EXPECT_THROW(first->append(nullptr), ormi::OperationError);
@@ -115,9 +124,11 @@ namespace {
         const auto input = nn_test::leaf({2});
         auto nested = std::make_shared<ormi::nn::Sequential>();
         ormi::nn::Sequential model({nested});
+
         EXPECT_EQ(model(input), input);
         EXPECT_TRUE(model.parameters().empty());
         nested->append(std::make_shared<Identity>());
+
         EXPECT_EQ(model(input), input);
         EXPECT_THROW(model(nullptr), ormi::OperationError);
     }
@@ -134,8 +145,10 @@ namespace {
                     for (std::size_t index = 0; index < 32; ++index) {
                         sequence_.append(std::make_shared<ormi::nn::Sin>());
                     }
+
                     appended_ = true;
                 }
+
                 return input;
             }
 
@@ -147,15 +160,19 @@ namespace {
         ormi::nn::Sequential sequence;
         sequence.append(std::make_shared<AppendOnce>(sequence));
         const auto input = nn_test::leaf({1}, 0.5);
+
         EXPECT_EQ(sequence(input), input);
         EXPECT_EQ(sequence.children().size(), 33u);
 
         const auto output = sequence(input);
+
         EXPECT_FALSE(output->realized());
         auto expected = 0.5;
+
         for (std::size_t index = 0; index < 32; ++index) {
             expected = std::sin(expected);
         }
+
         EXPECT_NEAR(*static_cast<const double*>(output->data()), expected, 1e-12);
     }
 }

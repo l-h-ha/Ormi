@@ -37,6 +37,7 @@ namespace ormi::backends::cpu::caputo {
 
                 double value = 0.0;
                 auto weight = job.attrs.coefficients->adjoint[0];
+
                 for (std::size_t n = 1; n < job.attrs.count; ++n) {
                     value -= weight * static_cast<double>(
                         input[base + n * input_axis_stride]
@@ -46,6 +47,7 @@ namespace ormi::backends::cpu::caputo {
                         weight += job.attrs.coefficients->adjoint[n];
                     }
                 }
+
                 return value;
             }
 
@@ -53,6 +55,7 @@ namespace ormi::backends::cpu::caputo {
                 static_cast<double>(
                     input[base + coordinate * input_axis_stride]
                 );
+
             for (
                 std::size_t n = coordinate + 1;
                 n < job.attrs.count;
@@ -63,6 +66,7 @@ namespace ormi::backends::cpu::caputo {
                         input[base + n * input_axis_stride]
                     );
             }
+
             return value;
         }
 
@@ -107,6 +111,7 @@ namespace ormi::backends::cpu::caputo {
                         input_axis_stride
                     );
                 }
+
                 out[linear] = static_cast<T>(value);
             }
         }
@@ -118,6 +123,7 @@ namespace ormi::backends::cpu::caputo {
             ) {
                 return std::numeric_limits<std::size_t>::max();
             }
+
             return elements * count;
         }
 

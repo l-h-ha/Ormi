@@ -81,9 +81,11 @@ namespace {
         {
             input->realize();
             target->realize();
+
             for (const auto& parameter : parameters) {
                 parameter->realize();
             }
+
             synchronize();
         }
 
@@ -112,6 +114,7 @@ namespace {
         std::vector<Tensor> updates(const std::vector<Tensor>& gradients) const {
             std::vector<Tensor> result;
             result.reserve(parameters.size());
+
             for (std::size_t i = 0; i < parameters.size(); ++i) {
                 result.push_back(ormi::core::optim::sgd(
                     parameters[i],
@@ -119,6 +122,7 @@ namespace {
                     learning_rate
                 ));
             }
+
             return result;
         }
 
@@ -177,14 +181,17 @@ namespace {
 #if defined(ORMI_ENABLE_CUDA)
         int devices = 0;
         const auto status = cudaGetDeviceCount(&devices);
+
         if (status != cudaSuccess) {
             state.SkipWithError(cudaGetErrorString(status));
             return false;
         }
+
         if (devices == 0) {
             state.SkipWithError("No CUDA device is available.");
             return false;
         }
+
         return true;
 #else
         state.SkipWithError("CUDA is not enabled.");
@@ -233,6 +240,7 @@ namespace {
 
         std::vector<ormi::core::Plan::Update> result;
         result.reserve(training.parameters.size());
+
         for (
             std::size_t i = 0;
             i < training.parameters.size();
@@ -243,6 +251,7 @@ namespace {
                 updates[i]
             });
         }
+
         return result;
     }
 
@@ -264,20 +273,25 @@ namespace {
 
         std::unordered_set<const ormi::core::Tensor*> planned;
         ormi::core::runtime::fusion::Candidates candidates;
+
         if (group_outputs) {
             std::vector<ormi::core::Tensor*> roots{result.loss.get()};
             roots.reserve(1 + result.updates.size());
+
             for (const auto& update : result.updates) {
                 roots.push_back(update.get());
             }
+
             candidates = ormi::core::runtime::fusion::find_candidates(roots);
         }
+
         ormi::core::runtime::schedule::append(
             *result.loss,
             planned,
             result.steps,
             candidates
         );
+
         for (const auto& update : result.updates) {
             ormi::core::runtime::schedule::append(
                 *update,
@@ -286,6 +300,7 @@ namespace {
                 candidates
             );
         }
+
         return result;
     }
 
@@ -511,9 +526,11 @@ namespace {
         complete_step(training);
 
         auto scheduled = schedule(training, group_outputs);
+
         for (auto& step : scheduled.steps) {
             step.run();
         }
+
         training.apply(scheduled.updates);
         training.synchronize();
 
@@ -521,6 +538,7 @@ namespace {
             for (auto& step : scheduled.steps) {
                 step.run();
             }
+
             training.apply(scheduled.updates);
             training.synchronize();
             benchmark::DoNotOptimize(scheduled.loss.get());
@@ -575,6 +593,7 @@ namespace {
         complete_step(training);
 
         auto scheduled = schedule(training, group_outputs);
+
         if (scheduled.steps.size() != training_plan_steps) {
             state.SkipWithError("The training plan step count changed.");
             return;
@@ -612,6 +631,7 @@ namespace {
         );
         const auto loss = training.loss();
         const auto gradients = training.gradients(loss);
+
         if (parameter >= gradients.size()) {
             state.SkipWithError("Training gradient index is out of range.");
             return;
@@ -676,12 +696,14 @@ namespace {
 
         const auto capture_start = std::chrono::steady_clock::now();
         std::optional<ormi::core::Plan::Replay> replay;
+
         try {
             replay.emplace(plan.record());
         } catch (const std::exception& error) {
             state.SkipWithError(error.what());
             return;
         }
+
         const auto capture_end = std::chrono::steady_clock::now();
 
         replay->run();
@@ -690,6 +712,7 @@ namespace {
         replay->run();
         training.synchronize();
         const float second_loss = read_scalar(loss);
+
         if (
             !std::isfinite(first_loss) ||
             !std::isfinite(second_loss) ||
@@ -708,6 +731,7 @@ namespace {
         for (auto _ : state) {
             try {
                 replay->run();
+
                 if (complete) {
                     training.synchronize();
                 }
@@ -715,6 +739,7 @@ namespace {
                 state.SkipWithError(error.what());
                 break;
             }
+
             benchmark::DoNotOptimize(loss.get());
             benchmark::DoNotOptimize(updates.data());
         }

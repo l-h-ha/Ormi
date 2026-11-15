@@ -47,12 +47,14 @@ namespace {
             ops::log1p,
             ops::expm1
         };
+
         for (std::size_t operation = 0; operation < operations.size(); ++operation) {
             Tensor direct(Device::cpu(), {7}, DType::float64);
             ormi::backends::cpu::pointwise_unary(operations[operation], direct, *input);
             const auto fused = functions[operation](input);
             const auto* actual = static_cast<const double*>(fused->data());
             const auto* expected = static_cast<const double*>(direct.data());
+
             for (std::size_t i = 0; i < values.size(); ++i) {
                 if (std::isnan(expected[i])) {
                     EXPECT_TRUE(std::isnan(actual[i]));
@@ -72,6 +74,7 @@ namespace {
         const auto output = ops::max(input, {0});
         const auto gradient = grad(output, input);
         const auto* values = static_cast<const Float16*>(gradient->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             EXPECT_FLOAT_EQ(static_cast<float>(values[i]), 1.f / 65536.f);
         }
@@ -82,9 +85,11 @@ namespace {
         const auto probability = ormi::nn::Softmax{}(input);
         const auto gradient = ormi::core::grad(ormi::core::ops::sum(probability), input);
         const auto second = ormi::core::grad(ormi::core::ops::sum(gradient), input);
+
         EXPECT_FALSE(probability->realized());
         ormi::core::Plan plan({probability, gradient, second});
         plan.run();
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             EXPECT_NEAR(static_cast<const double*>(probability->data())[i], 1.0 / 3.0, 1e-12);
             EXPECT_NEAR(static_cast<const double*>(gradient->data())[i], 0.0, 1e-12);

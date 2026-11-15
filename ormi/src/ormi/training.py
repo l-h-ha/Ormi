@@ -1,4 +1,4 @@
-"""Train lazy graphs with reusable batch inputs and Plans."""
+"""Train models with reusable Plans."""
 
 from __future__ import annotations
 
@@ -32,75 +32,71 @@ def fit(
     report_every: int = 1,
     verbose: Literal[0, 1, 2] = 1,
 ) -> dict[int, float]:
-    """Train a model using batches and reusable Plans.
+    """Train a model with reusable batch Plans.
 
     Parameters
     ----------
     model : ormi.nn.Module
-        Model with at least one registered parameter. All parameters and
-        buffers must use the same device. Batches are copied to that device.
+        Model with at least one registered parameter. Parameters and buffers
+        must share a device. Batches are copied there.
     *arrays : numpy.ndarray
-        NumPy arrays with the same length along axis 0. Supported dtypes are
+        Arrays with matching lengths along axis 0. Supported dtypes are
         float16, float32, float64, int32, and bool in the machine's byte order.
         Dtypes stay unchanged.
     loss : callable
-        Called as ``loss(*inputs)`` with one Tensor per array. Build the
-        loss using ``model`` and return one floating-point value as a Tensor.
-        This callback runs only when building the graph for a new batch shape.
+        Called as ``loss(*inputs)`` with one Tensor per array. Build the loss
+        using ``model`` and return a Tensor with one floating-point value.
     update : callable
-        Called as ``update(parameter, gradient)`` for each registered parameter.
-        Return the next value as a Tensor expression. Leave the parameter unchanged.
+        Called as ``update(parameter, gradient)`` per registered parameter.
+        Return its next value as a Tensor expression without modifying it.
     epochs : int, default=1
-        Number of passes over the data. Must be positive.
+        Positive number of passes over the data.
     batch_size : int, default=32
-        Maximum samples per batch. Must be positive.
+        Positive maximum samples per batch.
     shuffle : bool, default=True
         Shuffle all arrays together at the start of each epoch.
     seed : int or None, default=None
         Nonnegative seed for reproducible shuffling across the whole call.
-        Each epoch advances the generator. Requires ``shuffle=True`` and cannot
-        be used with ``rng``.
+        Each epoch advances the generator. Requires ``shuffle=True`` and ``rng=None``.
     rng : numpy.random.Generator or None, default=None
-        External generator to advance for shuffling. Requires ``shuffle=True``.
+        Generator advanced for shuffling. Requires ``shuffle=True``.
     drop_last : bool, default=False
         Discard an incomplete final batch. Otherwise, train on it without padding.
     report_every : int, default=1
         Report epochs divisible by this positive interval, plus the first and
         final epochs.
     verbose : {0, 1, 2}, default=1
-        Use 0 for no output, 1 for a terminal or notebook progress bar with
-        plain logs when redirected, or 2 for plain epoch logs.
+        0: silent. 1: terminal/notebook progress bar, plain logs when redirected.
+        2: plain epoch logs.
 
     Returns
     -------
     history : dict[int, float]
-        Reported losses keyed by epoch, starting at 1. Each value is
-        ``sum(batch_size * batch_loss) / sum(batch_size)``, using the loss
-        computed before each batch's updates.
+        Reported losses keyed by epoch, starting at 1. Values use
+        ``sum(batch_size * batch_loss) / sum(batch_size)``, using each batch's
+        loss before its updates.
 
     Raises
     ------
     TypeError
-        If inputs or options have invalid types, a dtype is unsupported, or a
-        callback does not return a Tensor.
+        If an input or option type is invalid, a dtype is unsupported, or a
+        callback returns a non-Tensor.
     ValueError
-        If no training batch or registered parameter exists, model devices
-        differ, options are incompatible or out of range, or the loss
-        is not one floating-point value.
+        If no batch or parameter exists, model devices differ, options are
+        incompatible or out of range, or loss is not one floating-point value.
 
     Notes
     -----
-    The callbacks run once per batch shape. Later batches of that shape
-    reuse the input tensors and Plan. Gradients remain lazy and
-    can include higher-order derivatives.
+    Callbacks run once per batch shape. Batches of that shape reuse input
+    tensors and the Plan. Gradients stay lazy and support higher-order derivatives.
 
-    Only reported epochs read losses with ``Tensor.item()``. The progress bar
-    adds no other tensor reads. The same weights apply when the loss sums
-    values or ignores targets.
+    Only reported epochs read losses with ``Tensor.item()``. Progress adds no
+    tensor reads. Losses are weighted by batch size even when they sum values
+    or ignore targets.
 
-    The model is switched to training mode and left there. Do not add or replace
-    its parameters, buffers, or layers during training. Keep its mode and input
-    shapes and dtypes fixed. If a batch fails, earlier updates are not undone.
+    The model enters training mode and stays there. Do not add or replace its
+    parameters, buffers, or layers during training. Keep its mode and input
+    shapes and dtypes fixed. Failed batches do not undo earlier updates.
     """
 
     if not isinstance(model, nn.Module):

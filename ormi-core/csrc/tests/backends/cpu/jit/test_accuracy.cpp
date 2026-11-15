@@ -92,6 +92,7 @@ namespace {
         const auto input = constant({static_cast<std::int64_t>(elements)});
         auto* values = static_cast<float*>(input->data());
         double expected = 0.0;
+
         for (std::size_t i = 0; i < elements; ++i) {
             const auto value =
                 static_cast<float>(static_cast<int>(i % 257) - 128) /
@@ -101,6 +102,7 @@ namespace {
             const float added = square + value;
             expected += static_cast<double>(std::sin(added));
         }
+
         const auto output = mapped_sum(input);
 
         const auto actual = *static_cast<const float*>(output->data());
@@ -130,11 +132,13 @@ namespace {
         const auto input = constant({static_cast<std::int64_t>(elements)});
         const auto scale = constant({static_cast<std::int64_t>(elements)});
         auto* values = static_cast<float*>(input->data());
+
         for (std::size_t i = 0; i < elements; ++i) {
             values[i] =
                 static_cast<float>(static_cast<int>(i % 20001) - 10000) /
                 10.0f;
         }
+
         values[0] = 0.0f;
         values[1] = -0.0f;
         values[2] = 1.0e10f;
@@ -153,15 +157,18 @@ namespace {
 
         const auto* actual_sine = static_cast<const float*>(sine->data());
         const auto* actual_cosine = static_cast<const float*>(cosine->data());
+
         for (std::size_t i = 0; i < elements; ++i) {
             const auto expected_sine = std::sin(values[i]) * 0.5f;
             const auto expected_cosine = std::cos(values[i]) * 0.5f;
+
             if (std::isnan(expected_sine)) {
                 EXPECT_TRUE(std::isnan(actual_sine[i])) << "sine index " << i;
             } else {
                 EXPECT_NEAR(actual_sine[i], expected_sine, 2.0e-6f)
                     << "sine index " << i;
             }
+
             if (std::isnan(expected_cosine)) {
                 EXPECT_TRUE(std::isnan(actual_cosine[i]))
                     << "cosine index " << i;
@@ -177,11 +184,13 @@ namespace {
         constexpr std::size_t elements = 32 * 1024 + 3;
         const auto input = constant({static_cast<std::int64_t>(elements)});
         auto* values = static_cast<float*>(input->data());
+
         for (std::size_t i = 0; i < elements; ++i) {
             values[i] =
                 static_cast<float>(static_cast<int>(i % 1801) - 900) /
                 1000.0f;
         }
+
         const auto output = ormi::core::ops::cos(
             ormi::core::ops::sin(
                 ormi::core::ops::log(
@@ -191,11 +200,13 @@ namespace {
         );
 
         const auto* actual = static_cast<const float*>(output->data());
+
         for (std::size_t i = 0; i < elements; ++i) {
             const auto exponential = std::exp(values[i]);
             const auto logarithm = std::log(exponential);
             const auto sine = std::sin(logarithm);
             const auto expected = std::cos(sine);
+
             EXPECT_NEAR(actual[i], expected, 3.0e-6f) << "index " << i;
         }
     }

@@ -15,6 +15,7 @@ namespace {
 
         static_assert(noexcept(device == default_device));
         static_assert(noexcept(device != default_device));
+
         EXPECT_EQ(device, device);
         EXPECT_EQ(device, default_device);
         EXPECT_EQ(default_device, device);
@@ -89,6 +90,7 @@ namespace {
 #ifdef ORMI_ENABLE_CUDA
     TEST(DeviceTest, parsesCudaDeviceStringWhenEnabled) {
         const auto default_device = ormi::core::Device::from("cuda");
+
         EXPECT_EQ(
             default_device.backend_id(),
             ormi::core::Device::from("cuda").backend_id()

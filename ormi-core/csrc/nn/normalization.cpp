@@ -25,9 +25,11 @@ namespace ormi::nn {
 
         detail::check_normalization(normalized_shape, eps);
         const auto value = detail::floating(input);
+
         if (normalized_shape.rank() > value->rank()) {
             ORMI_THROW(ShapeError, "LayerNorm normalized shape has more axes than the input.");
         }
+
         if (value->dtype() == core::DType::float32 &&
             (eps > std::numeric_limits<float>::max() || static_cast<float>(eps) <= 0)) {
             ORMI_THROW(OperationError, "LayerNorm eps must be representable as a positive Float32 value.");
@@ -36,10 +38,12 @@ namespace ormi::nn {
         const auto first_axis = value->rank() - normalized_shape.rank();
         std::vector<std::int64_t> axes;
         axes.reserve(normalized_shape.rank());
+
         for (std::size_t axis = 0; axis < normalized_shape.rank(); ++axis) {
             if (value->shape()[first_axis + axis] != normalized_shape[axis]) {
                 ORMI_THROW(ShapeError, "LayerNorm normalized shape must match the input's trailing axes.");
             }
+
             axes.push_back(static_cast<std::int64_t>(first_axis + axis));
         }
 
@@ -47,15 +51,19 @@ namespace ormi::nn {
             if (!parameter) {
                 continue;
             }
+
             if (parameter->shape() != normalized_shape) {
                 ORMI_THROW(ShapeError, "LayerNorm affine parameter shape must equal normalized_shape.");
             }
+
             if (parameter->device() != input->device()) {
                 ORMI_THROW(DeviceError, "LayerNorm affine parameters must use the input device.");
             }
+
             const bool same_dtype = parameter->dtype() == input->dtype();
             const bool mixed_half =
                 input->dtype() == core::DType::float16 && parameter->dtype() == core::DType::float32;
+
             if (!same_dtype && !mixed_half) {
                 ORMI_THROW(
                     DTypeError,
@@ -75,6 +83,7 @@ namespace ormi::nn {
         if (weight) {
             output = mul(output, cast(weight, value->dtype()));
         }
+
         if (bias) {
             output = add(output, cast(bias, value->dtype()));
         }

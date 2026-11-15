@@ -38,12 +38,15 @@ namespace ormi::backends::cpu::jit {
                     "/std:c++20",
                     "/O2"
                 };
+
                 if (vector_math) {
                     arguments.emplace_back("/DORMI_USE_VECMATH=1");
                 }
+
                 if (direct_math) {
                     arguments.emplace_back("/DORMI_USE_DIRECT_VECMATH=1");
                 }
+
                 const auto flags = target_flags(compiler.id, target);
                 arguments.insert(arguments.end(), flags.begin(), flags.end());
                 const std::vector<std::string> remainder{
@@ -66,12 +69,15 @@ namespace ormi::backends::cpu::jit {
                 "-O3",
                 "-DNDEBUG"
             };
+
             if (vector_math) {
                 arguments.emplace_back("-DORMI_USE_VECMATH=1");
             }
+
             if (direct_math) {
                 arguments.emplace_back("-DORMI_USE_DIRECT_VECMATH=1");
             }
+
             const auto flags = target_flags(compiler.id, target);
             arguments.insert(arguments.end(), flags.begin(), flags.end());
             const auto shared = platform::shared_flags();
@@ -94,6 +100,7 @@ namespace ormi::backends::cpu::jit {
                 text.data() + text.size(),
                 value
             );
+
             if (
                 parsed.ec != std::errc{} ||
                 parsed.ptr != text.data() + text.size()
@@ -109,10 +116,13 @@ namespace ormi::backends::cpu::jit {
         if (value == 0) {
             return (std::chrono::milliseconds::max)();
         }
+
         using Rep = std::chrono::milliseconds::rep;
+
         if (value > static_cast<std::uintmax_t>(std::numeric_limits<Rep>::max())) {
             ORMI_THROW(jitError, "ORMI_CPU_JIT_TIMEOUT_MS is too large.");
         }
+
         return std::chrono::milliseconds(static_cast<Rep>(value));
     }
 
@@ -127,6 +137,7 @@ namespace ormi::backends::cpu::jit {
             compiler.environment,
             timeout
         );
+
         if (result.state == platform::Process::State::timed_out) {
             ORMI_THROW(
                 jitError,
@@ -135,6 +146,7 @@ namespace ormi::backends::cpu::jit {
                     compiler.executable.string() + "\n" + result.output
             );
         }
+
         if (result.state == platform::Process::State::crashed) {
             ORMI_THROW(
                 jitError,
@@ -143,6 +155,7 @@ namespace ormi::backends::cpu::jit {
                     compiler.executable.string() + "\n" + result.output
             );
         }
+
         return result;
     }
 

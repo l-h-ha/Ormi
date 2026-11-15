@@ -47,6 +47,7 @@ namespace ormi::backends::cuda {
                 }
 
                 const auto tensor_axis = output_axis - rank_offset;
+
                 if (tensor.shape()[tensor_axis] == 1) {
                     continue;
                 }
@@ -79,8 +80,10 @@ namespace ormi::backends::cuda {
 
                 if (output_dim != 1) {
                     std::size_t stride = 0;
+
                     if (output_axis >= rank_offset) {
                         const auto tensor_axis = output_axis - rank_offset;
+
                         if (tensor.shape()[tensor_axis] != 1) {
                             stride = static_cast<std::size_t>(strides[tensor_axis]);
                         }
@@ -91,13 +94,17 @@ namespace ormi::backends::cuda {
                     }
 
                     const auto candidate = stride / trailing;
+
                     if (candidate > static_cast<std::size_t>(std::numeric_limits<long long>::max())) {
                         return std::nullopt;
                     }
+
                     const auto candidate_stride = static_cast<long long>(candidate);
+
                     if (result && *result != candidate_stride) {
                         return std::nullopt;
                     }
+
                     result = candidate_stride;
                 }
 
@@ -207,6 +214,7 @@ namespace ormi::backends::cuda {
             check(cudaSetDevice(cuda_state.index()), "cudaSetDevice");
 
             const auto shape = core::ops::matmul_shape(lhs.shape(), rhs.shape());
+
             if (out.numel() == 0) {
                 return;
             }
@@ -243,6 +251,7 @@ namespace ormi::backends::cuda {
                           std::is_same_v<T, __half>) {
                 const auto lhs_batch_stride = regular_batch_stride(shape.batch, lhs, lhs_rank);
                 const auto rhs_batch_stride = regular_batch_stride(shape.batch, rhs, rhs_rank);
+
                 if (batches > 0 && fits_int(batches) && lhs_batch_stride && rhs_batch_stride &&
                     blas::gemm(
                         out.dtype(),
@@ -261,6 +270,7 @@ namespace ormi::backends::cuda {
             }
 
             std::size_t batch = 0;
+
             while (batch < batches) {
                 const auto lhs_offset = batch_offset(batch, shape.batch, lhs, lhs_rank);
                 const auto rhs_offset = batch_offset(batch, shape.batch, rhs, rhs_rank);

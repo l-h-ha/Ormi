@@ -29,26 +29,32 @@ namespace {
 
     std::shared_ptr<Tensor> unary_chain(std::int64_t operations) {
         auto result = input();
+
         for (std::int64_t operation = 0; operation < operations; ++operation) {
             result = ormi::core::ops::neg(result);
         }
+
         return result;
     }
 
     std::shared_ptr<Tensor> shared_chain(std::int64_t operations) {
         const auto shared = input();
         auto result = shared;
+
         for (std::int64_t operation = 0; operation < operations; ++operation) {
             result = ormi::core::ops::add(result, shared);
         }
+
         return result;
     }
 
     std::shared_ptr<Tensor> distinct_chain(std::int64_t operations) {
         auto result = input();
+
         for (std::int64_t operation = 0; operation < operations; ++operation) {
             result = ormi::core::ops::add(result, input());
         }
+
         return result;
     }
 
@@ -56,6 +62,7 @@ namespace {
         std::vector<std::shared_ptr<Tensor>> level;
         const auto leaves = operations + 1;
         level.reserve(static_cast<std::size_t>(leaves));
+
         for (std::int64_t leaf = 0; leaf < leaves; ++leaf) {
             level.push_back(input());
         }
@@ -64,36 +71,45 @@ namespace {
             std::vector<std::shared_ptr<Tensor>> next;
             next.reserve((level.size() + 1) / 2);
             std::size_t index = 0;
+
             for (; index + 1 < level.size(); index += 2) {
                 next.push_back(ormi::core::ops::add(level[index], level[index + 1]));
             }
+
             if (index < level.size()) {
                 next.push_back(std::move(level[index]));
             }
+
             level = std::move(next);
         }
+
         return level.front();
     }
 
     std::shared_ptr<Tensor> broadcast_chain(std::int64_t operations) {
         auto result = input({2, 3, 4});
         const auto row = input({3, 1});
+
         for (std::int64_t operation = 0; operation < operations; ++operation) {
             result = ormi::core::ops::add(result, row);
         }
+
         return result;
     }
 
     std::shared_ptr<Tensor> reduction_chain(std::int64_t operations) {
         auto result = input({2, 3, 4});
+
         for (std::int64_t operation = 0; operation < operations; ++operation) {
             result = ormi::core::ops::neg(result);
         }
+
         return ormi::core::ops::mean(result, {0, 2});
     }
 
     void bmBuild(benchmark::State& state, Graph graph) {
         const auto root = graph(state.range(0));
+
         if (!ormi::core::runtime::fusion::build(*root)) {
             state.SkipWithError("The graph did not produce a fusion expression.");
             return;

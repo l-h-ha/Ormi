@@ -29,9 +29,11 @@ namespace ormi::backends::cuda::fusion::execution {
 
         int finish_threads(std::size_t parts) {
             int threads = 1;
+
             while (threads < 256 && static_cast<std::size_t>(threads) < parts) {
                 threads *= 2;
             }
+
             return threads;
         }
 
@@ -120,6 +122,7 @@ namespace ormi::backends::cuda::fusion::execution {
             );
             const auto value_bytes = accumulator_bytes(expression.dtype);
             auto direct = !reduction;
+
             if (reduction) {
                 direct = compiled->tiled.has_value() || (
                     expression.reduction->op == core::ops::ReduceOp::sum &&
@@ -127,6 +130,7 @@ namespace ormi::backends::cuda::fusion::execution {
                     expression.dtype != core::DType::float16
                 );
             }
+
             if (
                 reduction &&
                 !direct &&
@@ -137,6 +141,7 @@ namespace ormi::backends::cuda::fusion::execution {
                     "CUDA fusion workspace size overflow."
                 );
             }
+
             const auto partials_bytes = reduction && !direct
                 ? static_cast<std::size_t>(tasks) * value_bytes
                 : std::size_t{0};
@@ -188,19 +193,24 @@ namespace ormi::backends::cuda::fusion::execution {
                 .partials = nullptr,
                 .partials_bytes = partials_bytes
             });
+
             if (result->memory) {
                 result->partials = result->memory->allocate(partials_bytes);
             }
-            // These addresses stay valid: the heap-owned call and pointer vectors no longer move.
+
+            // The heap-owned Call and pointer vectors keep argument addresses stable.
             result->arguments.reserve(
                 result->outputs.size() + result->inputs.size() + 1
             );
+
             for (auto& output : result->outputs) {
                 result->arguments.push_back(&output);
             }
+
             for (auto& input : result->inputs) {
                 result->arguments.push_back(&input);
             }
+
             result->arguments.push_back(&result->count);
             return result;
         }
@@ -209,7 +219,9 @@ namespace ormi::backends::cuda::fusion::execution {
             for (std::size_t i = 0; i < call.tensors.size(); ++i) {
                 call.inputs[i] = call.tensors[i]->data();
             }
+
             call.outputs[0] = call.direct ? out.data() : call.partials;
+
             for (std::size_t i = 0; i < call.auxiliary_outputs.size(); ++i) {
                 call.outputs[i + 1] = call.auxiliary_outputs[i]->data();
             }

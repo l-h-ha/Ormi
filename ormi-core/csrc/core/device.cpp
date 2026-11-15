@@ -54,6 +54,7 @@ namespace ormi::core {
         }
 
         const auto& entry = runtime::catalog::entries[backend_id];
+
         if (!entry.indexed && index != 0) {
             ORMI_THROW(
                 DeviceError,

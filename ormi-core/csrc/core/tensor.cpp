@@ -10,10 +10,26 @@
 
 namespace ormi::core {
     namespace {
+        std::size_t graph_depth(const std::vector<std::shared_ptr<Tensor>>& parents) {
+            std::size_t depth = 0;
+
+            for (const auto& parent : parents) {
+                const auto previous = parent->graph_depth();
+                const auto next = previous == std::numeric_limits<std::size_t>::max() ? previous : previous + 1;
+
+                if (next > depth) {
+                    depth = next;
+                }
+            }
+
+            return depth;
+        }
+
         void require_copy_destination(const Tensor& tensor) {
             if (tensor.op() || !tensor.realized()) {
                 ORMI_THROW(OperationError, "Copy destination must be a realized leaf tensor.");
             }
+
             if (!tensor.is_contiguous()) {
                 ORMI_THROW(OperationError, "Copy destination must be contiguous.");
             }
@@ -172,7 +188,7 @@ namespace ormi::core {
           dtype_(dtype),
           strides_(contiguous_strides(shape_)),
           offset_bytes_(0) {
-        if (parents_.size() != op_->parents) {
+        if (op_->parents != variadic_parents && parents_.size() != op_->parents) {
             ORMI_THROW(OperationError, "Lazy tensor parent count does not match its operation.");
         }
 
@@ -193,6 +209,8 @@ namespace ormi::core {
                 ORMI_THROW(DeviceError, "A lazy tensor and its parents must use the same device.");
             }
         }
+
+        graph_depth_ = core::graph_depth(parents_);
     }
 
     Tensor::Tensor(
@@ -217,6 +235,7 @@ namespace ormi::core {
         }
 
         validate_strides(shape_, strides_);
+        graph_depth_ = core::graph_depth(parents_);
     }
 
     Tensor::Tensor(OpRef op, std::vector<std::shared_ptr<Tensor>> parents)
@@ -230,17 +249,21 @@ namespace ormi::core {
           strides_(parents_[0]->strides_),
           offset_bytes_(parents_[0]->offset_bytes_) {
         if (op_->output != Output::alias || op_->prepare || parents_.empty() ||
-            parents_.size() != op_->parents) {
+            (op_->parents != variadic_parents && parents_.size() != op_->parents)) {
             ORMI_THROW(OperationError, "An alias requires an alias operation and its declared parents.");
         }
+
         for (const auto& parent : parents_) {
             if (!parent) {
                 ORMI_THROW(OperationError, "An alias cannot have a null parent.");
             }
+
             if (parent->device() != parents_[0]->device()) {
                 ORMI_THROW(DeviceError, "An alias and its dependencies must use the same device.");
             }
         }
+
+        graph_depth_ = core::graph_depth(parents_);
     }
 
     void Tensor::realize() {
@@ -253,55 +276,70 @@ namespace ormi::core {
 
     void Tensor::copy_from(const Tensor& source) {
         require_copy_destination(*this);
+
         if (shape_ != source.shape_) {
             ORMI_THROW(ShapeError, "Copy source and destination shapes must match.");
         }
+
         if (dtype_ != source.dtype_) {
             ORMI_THROW(DTypeError, "Copy source and destination dtypes must match.");
         }
+
         if (!source.realized()) {
             ORMI_THROW(OperationError, "Copy source must be realized before copying.");
         }
+
         if (!source.is_contiguous()) {
             ORMI_THROW(OperationError, "Copy source must be contiguous.");
         }
 
         const auto size = bytes();
+
         if (size == 0) {
             return;
         }
+
         auto* destination = data();
         const auto* value = source.data();
+
         if (device_ == source.device_ && destination == value) {
             return;
         }
+
         if (buffer_ == source.buffer_ && overlaps(destination, value, size)) {
             ORMI_THROW(OperationError, "Copy source and destination must not overlap.");
         }
+
         memory::copy(destination, device_, value, source.device_, size);
     }
 
     void Tensor::copy_from(std::span<const std::byte> source) {
         require_copy_destination(*this);
+
         if (source.size() != bytes()) {
             ORMI_THROW(ShapeError, "Host copy byte count must match the destination tensor.");
         }
+
         if (source.empty()) {
             return;
         }
+
         if (!source.data()) {
             ORMI_THROW(MemoryError, "Host copy source cannot be null.");
         }
 
         auto* destination = data();
+
         if (device_.is_host()) {
             if (destination == source.data()) {
                 return;
             }
+
             if (overlaps(destination, source.data(), source.size())) {
                 ORMI_THROW(OperationError, "Copy source and destination must not overlap.");
             }
         }
+
         memory::copy(destination, device_, source.data(), Device::cpu(), source.size());
     }
 
@@ -332,6 +370,10 @@ namespace ormi::core {
 
     const std::vector<std::shared_ptr<Tensor>>& Tensor::parents() const {
         return parents_;
+    }
+
+    std::size_t Tensor::graph_depth() const {
+        return graph_depth_;
     }
 
     Device Tensor::device() const {

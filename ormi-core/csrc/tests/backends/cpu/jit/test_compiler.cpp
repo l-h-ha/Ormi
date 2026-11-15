@@ -150,6 +150,7 @@ namespace {
             std::pair{"clang-cl", CXX::clang_cl},
             std::pair{"cl", CXX::msvc}
         };
+
         for (const auto& [name, id] : cases) {
             const auto executable = copy_compiler(temporary, name);
             environment("ORMI_CPU_JIT_CXX", executable.string().c_str());
@@ -284,6 +285,7 @@ namespace {
             FAIL() << "Expected automatic compiler compatibility rejection.";
         } catch (const ormi::jitError& error) {
             const std::string message(error.what());
+
             EXPECT_NE(
                 message.find("No compatible CPU JIT compiler was found"),
                 std::string::npos
@@ -313,6 +315,7 @@ namespace {
                 std::string::npos
             );
         }
+
         environment("ORMI_CPU_JIT_TIMEOUT_MS", "");
     }
 
@@ -336,6 +339,7 @@ namespace {
                 std::string::npos
             );
         }
+
         environment("ORMI_CPU_JIT_TIMEOUT_MS", "");
     }
 
@@ -375,6 +379,7 @@ namespace {
 
             std::unordered_set<std::string> keys;
             bool compiler_on_path = false;
+
             for (const auto& variable : compiler.environment) {
                 const auto separator = variable.find('=');
                 auto key = variable.substr(0, separator);
@@ -387,6 +392,7 @@ namespace {
                     }
                 );
                 const bool is_path = key == "path";
+
                 EXPECT_TRUE(keys.insert(std::move(key)).second);
 
                 if (is_path) {
@@ -412,6 +418,7 @@ namespace {
                         value.find(compiler_directory) != std::string::npos;
                 }
             }
+
             EXPECT_TRUE(compiler_on_path);
         } catch (const ormi::jitError& error) {
             GTEST_SKIP() << "Configured MSVC is unavailable: " << error.what();

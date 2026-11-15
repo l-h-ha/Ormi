@@ -42,13 +42,13 @@ def pinn_loss(
     model: nn.Module,
     collocation_points: om.Tensor,
 ) -> om.Tensor:
-    # Equation is u''(x) + u(x) = 0.
+    # Solve u''(x) + u(x) = 0.
     prediction = model(collocation_points)
     second = om.partial(prediction, collocation_points, order=2)
     residual = second + prediction
     residual_loss = nn.mse_loss(residual, om.zeros_like(residual))
 
-    # The initial conditions select u(x) = sin(x) from all ODE solutions.
+    # Initial conditions select u(x) = sin(x).
     x0 = om.tensor([[0.0]], om.float64, collocation_points.device)
     u0 = model(x0)
     du0 = om.partial(u0, x0)

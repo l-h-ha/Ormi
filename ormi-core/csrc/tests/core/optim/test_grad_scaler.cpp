@@ -79,6 +79,7 @@ namespace {
         EXPECT_EQ(scaled->parents()[0], loss);
 
         const auto& factor = scaled->parents()[1];
+
         EXPECT_FALSE(factor->realized());
         EXPECT_TRUE(factor->shape().scalar());
         EXPECT_EQ(factor->dtype(), loss->dtype());
@@ -118,6 +119,7 @@ namespace {
         EXPECT_EQ((*next)->parents()[1], scaled_gradient);
 
         const auto& options = std::get<ormi::core::SGD>((*next)->attrs());
+
         EXPECT_DOUBLE_EQ(options.step_size, 0.0125);
         EXPECT_FLOAT_EQ(*static_cast<const float*>((*next)->data()), 2.4f);
     }
@@ -206,6 +208,7 @@ namespace {
         EXPECT_DOUBLE_EQ(scaler.value(), 32.0);
 
         *static_cast<float*>(gradient->data()) = std::numeric_limits<float>::quiet_NaN();
+
         EXPECT_FALSE(scaler.step(parameters, gradients, 0.1).has_value());
         EXPECT_DOUBLE_EQ(scaler.value(), 16.0);
     }

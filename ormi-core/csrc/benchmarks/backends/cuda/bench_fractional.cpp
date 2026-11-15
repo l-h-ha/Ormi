@@ -22,10 +22,12 @@ namespace {
             state.SkipWithError(cudaGetErrorString(status));
             return false;
         }
+
         if (devices == 0) {
             state.SkipWithError("No CUDA device is available.");
             return false;
         }
+
         return true;
     }
 
@@ -47,6 +49,7 @@ namespace {
         );
         input->realize();
         std::shared_ptr<ormi::core::Tensor> initial_derivative;
+
         if (higher_order) {
             initial_derivative = ormi::core::ops::full(
                 {lines},
@@ -57,6 +60,7 @@ namespace {
         }
 
         ormi::core::runtime::device::synchronize(device);
+
         for (auto _ : state) {
             const auto result = ormi::core::ops::caputo(
                 input,
@@ -92,6 +96,7 @@ namespace {
             device
         );
         std::shared_ptr<ormi::core::Tensor> initial_derivative;
+
         if (higher_order) {
             initial_derivative = ormi::core::ops::full(
                 {lines},
@@ -99,6 +104,7 @@ namespace {
                 device
             );
         }
+
         auto result = ormi::core::ops::caputo(
             input,
             higher_order ? 1.5 : 0.5,
@@ -115,6 +121,7 @@ namespace {
             );
             result = ormi::core::grad(result, input, seed);
         }
+
         ormi::core::Plan plan({result});
         std::optional<ormi::core::Plan::Replay> replay;
 
@@ -133,6 +140,7 @@ namespace {
             } else {
                 plan.run();
             }
+
             ormi::core::runtime::device::synchronize(device);
         }
 

@@ -50,6 +50,7 @@ namespace {
             if (const char* value = std::getenv("ORMI_CPU_JIT_TIMEOUT_MS")) {
                 previous_timeout_ = value;
             }
+
             timeout(nullptr);
             invocation = {};
             root_ = std::filesystem::temp_directory_path() /
@@ -69,6 +70,7 @@ namespace {
         void write(const std::filesystem::path& path) {
             std::ofstream file(path);
             file << "fixture";
+
             ASSERT_TRUE(file.good());
         }
 
@@ -116,22 +118,28 @@ namespace {
                     ? std::vector<std::string>{"/nologo", "/std:c++20", "/O2"}
                     : std::vector<std::string>{"-std=c++20", "-O3", "-DNDEBUG"};
                 const std::string define = msvc ? "/D" : "-D";
+
                 if (functions.functions) {
                     expected.push_back(define + "ORMI_USE_VECMATH=1");
+
                     if (functions.abi == jit::MathABI::direct) {
                         expected.push_back(define + "ORMI_USE_DIRECT_VECMATH=1");
                     }
                 }
+
                 if (target.avx2) {
                     expected.emplace_back(msvc ? "/arch:AVX2" : "-mavx2");
                     expected.push_back(define + "ORMI_USE_AVX2=1");
                 }
+
                 if (target.f16c) {
                     if (!msvc) {
                         expected.emplace_back("-mf16c");
                     }
+
                     expected.push_back(define + "ORMI_USE_F16C=1");
                 }
+
                 if (msvc) {
                     const std::vector<std::string> tail{
                         "/LD", "/EHsc", "/Fo:" + object_.string(),
@@ -168,6 +176,7 @@ namespace {
                 case jit::CXX::clang_cl: return "clang_cl";
                 case jit::CXX::msvc: return "msvc";
             }
+
             return "unknown";
         });
 
@@ -182,15 +191,19 @@ namespace {
 
     TEST_F(CPUJITInvocationTest, readsTimeoutOnEachInvocation) {
         (void)jit::run(compiler_, {});
+
         EXPECT_EQ(invocation.timeout, std::chrono::milliseconds(120000));
         timeout("");
         (void)jit::run(compiler_, {});
+
         EXPECT_EQ(invocation.timeout, std::chrono::milliseconds(120000));
         timeout("0");
         (void)jit::run(compiler_, {});
+
         EXPECT_EQ(invocation.timeout, (std::chrono::milliseconds::max)());
         timeout("0017");
         (void)jit::run(compiler_, {});
+
         EXPECT_EQ(invocation.timeout, std::chrono::milliseconds(17));
     }
 
@@ -198,6 +211,7 @@ namespace {
         for (const auto value : {"-1", "+1", "1 ", " 1", "abc", "18446744073709551616"}) {
             SCOPED_TRACE(value);
             timeout(value);
+
             try {
                 (void)jit::run(compiler_, {});
                 FAIL() << "Expected timeout validation to fail.";
@@ -206,17 +220,20 @@ namespace {
                     "ORMI_CPU_JIT_TIMEOUT_MS must be an unsigned decimal millisecond count.");
             }
         }
+
         EXPECT_EQ(invocation.calls, 0);
     }
 
     TEST_F(CPUJITInvocationTest, rejectsUnrepresentableTimeoutBeforeLaunching) {
         timeout("18446744073709551615");
+
         try {
             (void)jit::run(compiler_, {});
             FAIL() << "Expected timeout overflow to fail.";
         } catch (const ormi::jitError& error) {
             EXPECT_STREQ(error.what(), "ORMI_CPU_JIT_TIMEOUT_MS is too large.");
         }
+
         EXPECT_EQ(invocation.calls, 0);
     }
 
@@ -232,6 +249,7 @@ namespace {
     TEST_F(CPUJITInvocationTest, preservesTimeoutDiagnostic) {
         timeout("17");
         invocation.result.state = Process::State::timed_out;
+
         try {
             (void)jit::run(compiler_, {});
             FAIL() << "Expected compiler timeout.";
@@ -243,6 +261,7 @@ namespace {
 
     TEST_F(CPUJITInvocationTest, preservesCrashDiagnostic) {
         invocation.result = {-7, "crash output", Process::State::crashed};
+
         try {
             (void)jit::run(compiler_, {});
             FAIL() << "Expected compiler crash.";
@@ -265,6 +284,7 @@ namespace {
         write(output_);
         write(object_);
         invocation.result.code = 23;
+
         try {
             jit::build(compiler_, {}, {}, source_, output_);
             FAIL() << "Expected nonzero compiler exit to fail the build.";
@@ -272,22 +292,26 @@ namespace {
             EXPECT_EQ(error.what(), "CPU JIT compiler failed with exit code 23.\nCompiler: " +
                 compiler_.executable.string() + "\nTarget: baseline\n" + invocation.result.output);
         }
+
         EXPECT_FALSE(std::filesystem::exists(object_));
     }
 
     TEST_F(CPUJITInvocationTest, rejectsSuccessfulExitWithoutAnOutputFile) {
         write(object_);
+
         EXPECT_THROW(jit::build(compiler_, {}, {}, source_, output_), ormi::jitError);
         EXPECT_FALSE(std::filesystem::exists(object_));
     }
 
     TEST_F(CPUJITInvocationTest, rejectsDirectoryAsOutputFile) {
         std::filesystem::create_directory(output_);
+
         EXPECT_THROW(jit::build(compiler_, {}, {}, source_, output_), ormi::jitError);
     }
 
     TEST_F(CPUJITInvocationTest, rejectsInvalidTargetBeforeLaunching) {
         const jit::Target target{.f16c = true};
+
         EXPECT_THROW(jit::build(compiler_, target, {}, source_, output_), ormi::jitError);
         EXPECT_EQ(invocation.calls, 0);
     }
@@ -295,6 +319,7 @@ namespace {
     TEST_F(CPUJITInvocationTest, leavesObjectUntouchedWhenProcessDoesNotExitNormally) {
         write(object_);
         invocation.result.state = Process::State::timed_out;
+
         EXPECT_THROW(jit::build(compiler_, {}, {}, source_, output_), ormi::jitError);
         EXPECT_TRUE(std::filesystem::exists(object_));
     }

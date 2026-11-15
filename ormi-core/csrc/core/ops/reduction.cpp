@@ -125,9 +125,11 @@ namespace ormi::core::ops {
             const auto& attrs = std::get<Reduce>(node->attrs());
             const auto difference = abs(sub(input, expanded_adjoint(node, node)));
             auto mask = sub(ones_like(input), positive(difference));
+
             if (mask->dtype() == DType::float16) {
                 mask = cast(mask, DType::float32);
             }
+
             const auto count = sum(mask, attrs.axes, true);
             const auto gradient = mul(expanded_adjoint(node, upstream), div(mask, count));
             gradients.add(input, cast(gradient, input->dtype()));
@@ -224,13 +226,16 @@ namespace ormi::core::ops {
     ) {
         if (!input)
             ORMI_THROW(OperationError, "Max requires a tensor.");
+
         if (!is_floating(input->dtype()))
             ORMI_THROW(DTypeError, "Max requires a floating-point tensor.");
         axes = normalize_axes(std::move(axes), input->rank());
+
         for (const auto axis : axes) {
             if (input->shape()[static_cast<std::size_t>(axis)] == 0)
                 ORMI_THROW(ShapeError, "Max cannot reduce an empty axis.");
         }
+
         auto shape = reduced_shape(input->shape(), axes, keepdims);
         return std::make_shared<Tensor>(
             op_ref<max_op>(),

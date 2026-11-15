@@ -39,6 +39,17 @@ namespace ormi::core {
         std::size_t index;
     };
 
+    struct Slice {
+        std::int64_t axis;
+        std::int64_t start;
+        std::int64_t step;
+        bool squeeze = false;
+    };
+
+    struct Concat {
+        std::int64_t axis;
+    };
+
     struct Caputo {
         struct Coefficients {
             std::vector<double> forward;
@@ -60,5 +71,5 @@ namespace ormi::core {
         std::shared_ptr<memory::Buffer> counter;
     };
 
-    using Attrs = std::variant<std::monostate, Reduce, Permute, SGD, Pick, Caputo, Scalar, Bernoulli, Select>;
+    using Attrs = std::variant<std::monostate, Reduce, Permute, SGD, Pick, Caputo, Scalar, Bernoulli, Select, Slice, Concat>;
 }

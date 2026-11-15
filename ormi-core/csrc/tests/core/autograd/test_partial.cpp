@@ -27,12 +27,14 @@ namespace {
         const auto first = partial(output, input);
         const auto second = partial(output, input, {}, {}, 2);
         const auto summed = grad(ops::sum(output), input);
+
         EXPECT_FALSE(output->realized());
         EXPECT_FALSE(first->realized());
         EXPECT_FALSE(second->realized());
         EXPECT_EQ(first->shape(), (Shape{2, 1}));
 
         Plan({first, second, summed}).run();
+
         for (std::size_t i = 0; i < 2; ++i) {
             EXPECT_DOUBLE_EQ(static_cast<const double*>(first->data())[i], 0.5);
             EXPECT_DOUBLE_EQ(static_cast<const double*>(second->data())[i], 0.0);
@@ -50,14 +52,18 @@ namespace {
         const auto first = partial(output, input, -1, 0);
         const auto second = partial(output, input, -1, 0, 2);
         const auto weight_gradient = grad(ops::sum(second), weight);
+
         EXPECT_EQ(first->shape(), (Shape{2, 1, 2, 1}));
         EXPECT_FALSE(weight_gradient->realized());
         Plan({first, second, weight_gradient}).run();
+
         for (std::size_t i = 0; i < 4; ++i) {
             EXPECT_DOUBLE_EQ(static_cast<const double*>(first->data())[i], 12.0);
             EXPECT_DOUBLE_EQ(static_cast<const double*>(second->data())[i], 6.0);
         }
+
         const auto* derivative = static_cast<const double*>(weight_gradient->data());
+
         EXPECT_DOUBLE_EQ(derivative[0], 0.0);
         EXPECT_DOUBLE_EQ(derivative[1], 0.0);
         EXPECT_DOUBLE_EQ(derivative[2], 8.0);
@@ -67,6 +73,7 @@ namespace {
     TEST(PartialTest, rejectsAmbiguousSelectorsAndInvalidMetadataBeforeExecution) {
         const auto input = ops::full({2, 3}, 1.0, Device::cpu());
         const auto output = ops::full({2, 2}, 1.0, Device::cpu());
+
         EXPECT_THROW(partial(nullptr, input), ormi::OperationError);
         EXPECT_THROW(partial(output, nullptr), ormi::OperationError);
         EXPECT_THROW(partial(output, input), ormi::ShapeError);
@@ -82,6 +89,7 @@ namespace {
 
         const auto extent = static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max()) + 2;
         const auto large = ops::full({extent, 1}, 1.0, Device::cpu());
+
         EXPECT_THROW(partial(large, large), ormi::ShapeError);
         EXPECT_FALSE(large->realized());
     }

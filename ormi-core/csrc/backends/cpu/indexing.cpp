@@ -35,6 +35,7 @@ namespace ormi::backends::cpu {
 
                 for (std::size_t i = shape.rank(); i > 0; --i) {
                     const auto dimension = i - 1;
+
                     if (dimension == axis && !scatter) {
                         continue;
                     }
@@ -42,6 +43,7 @@ namespace ormi::backends::cpu {
                     const auto size = static_cast<std::size_t>(shape[dimension]);
                     const auto coordinate = remaining % size;
                     remaining /= size;
+
                     if (dimension == axis) {
                         class_coordinate = static_cast<std::int64_t>(coordinate);
                         continue;
@@ -54,10 +56,12 @@ namespace ormi::backends::cpu {
                 }
 
                 const auto label = labels[storage_offset(label_linear, indices)];
+
                 if (attrs.ignore_index && label == *attrs.ignore_index) {
                     output[linear] = T(0.0f);
                     continue;
                 }
+
                 if (label < 0 || label >= extent) {
                     output[linear] = T(std::numeric_limits<float>::quiet_NaN());
                     continue;

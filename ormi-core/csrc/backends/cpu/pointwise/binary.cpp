@@ -26,10 +26,13 @@ namespace ormi::backends::cpu {
             } else if constexpr (Op == core::ops::BinaryOp::minimum || Op == core::ops::BinaryOp::maximum) {
                 using Value = std::conditional_t<std::is_same_v<T, core::Float16>, float, T>;
                 const auto left = static_cast<Value>(lhs), right = static_cast<Value>(rhs);
+
                 if (left != left)
                     return lhs;
+
                 if (right != right)
                     return rhs;
+
                 if constexpr (Op == core::ops::BinaryOp::minimum)
                     return left < right ? lhs : rhs;
                 else
@@ -52,6 +55,7 @@ namespace ormi::backends::cpu {
 
             for (std::size_t axis = rank_offset; axis < out_rank; ++axis) {
                 const auto in_axis = axis - rank_offset;
+
                 if (in_dims[in_axis] != 1) {
                     aligned[axis] = static_cast<std::size_t>(strides[in_axis]);
                 }
@@ -75,11 +79,13 @@ namespace ormi::backends::cpu {
                 }
             } else if (lhs_stride == 0 && rhs_stride == 1) {
                 const auto value = lhs[0];
+
                 for (std::size_t i = 0; i < elements; ++i) {
                     out[i] = apply_binary<T, Op>(value, rhs[i]);
                 }
             } else if (lhs_stride == 1 && rhs_stride == 0) {
                 const auto value = rhs[0];
+
                 for (std::size_t i = 0; i < elements; ++i) {
                     out[i] = apply_binary<T, Op>(lhs[i], value);
                 }
@@ -104,16 +110,19 @@ namespace ormi::backends::cpu {
                 for (std::size_t i = 0; i < elements; ++i) {
                     out_data[i] = apply_binary<T, Op>(lhs_data[i], rhs_data[i]);
                 }
+
                 return;
             }
 
             if (elements == 0) {
                 return;
             }
+
             if (lhs.numel() == 1 && rhs.is_contiguous() && rhs.shape() == out.shape()) {
                 binary_loop<T, Op>(out_data, lhs_data, rhs_data, elements, 0, 1);
                 return;
             }
+
             if (rhs.numel() == 1 && lhs.is_contiguous() && lhs.shape() == out.shape()) {
                 binary_loop<T, Op>(out_data, lhs_data, rhs_data, elements, 1, 0);
                 return;
@@ -128,24 +137,29 @@ namespace ormi::backends::cpu {
             std::size_t lhs_step = 0;
             std::size_t rhs_step = 0;
             auto outer_axes = out.rank();
+
             while (outer_axes > 0) {
                 const auto axis = outer_axes - 1;
                 const auto extent = static_cast<std::size_t>(out_dims[axis]);
+
                 if (extent == 1) {
                     --outer_axes;
                     continue;
                 }
+
                 if (span == 1) {
                     lhs_step = lhs_strides[axis];
                     rhs_step = rhs_strides[axis];
                 } else if (lhs_strides[axis] != lhs_step * span || rhs_strides[axis] != rhs_step * span) {
                     break;
                 }
+
                 span *= extent;
                 --outer_axes;
             }
 
             const auto rows = elements / span;
+
             for (std::size_t row = 0; row < rows; ++row) {
                 std::size_t linear = row;
                 std::size_t lhs_offset = 0;

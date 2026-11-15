@@ -61,11 +61,14 @@ namespace {
             "trailing slash\\", ";$()&*"
         };
         std::string expected;
+
         for (std::size_t i = 1; i < arguments.size(); ++i) {
             expected += std::to_string(arguments[i].size()) + ":" +
                 arguments[i] + newline;
         }
+
         const auto result = ormi::platform::run(helper, arguments);
+
         EXPECT_EQ(result.state, ormi::platform::Process::State::exited);
         EXPECT_EQ(result.code, 0);
         EXPECT_EQ(result.output, expected);
@@ -77,6 +80,7 @@ namespace {
             std::vector<std::string>{"environment", "ORMI_PROCESS_TEST_VALUE"},
             std::vector<std::string>{"ORMI_PROCESS_TEST_VALUE=two words=one value"}
         );
+
         EXPECT_EQ(result.state, ormi::platform::Process::State::exited);
         EXPECT_EQ(result.code, 0);
         EXPECT_EQ(result.output, "two words=one value");
@@ -88,6 +92,7 @@ namespace {
         const auto result = ormi::platform::run(
             helper, std::vector<std::string>{"environment", "PATH"}
         );
+
         EXPECT_EQ(result.state, ormi::platform::Process::State::exited);
         EXPECT_EQ(result.code, 0);
         EXPECT_EQ(result.output, expected);
@@ -97,6 +102,7 @@ namespace {
         const auto result = ormi::platform::run(
             helper, std::vector<std::string>{"streams"}
         );
+
         EXPECT_EQ(result.state, ormi::platform::Process::State::exited);
         EXPECT_EQ(result.code, 0);
         EXPECT_EQ(result.output, std::string("stdout") + newline + "stderr" + newline);
@@ -107,6 +113,7 @@ namespace {
             helper, std::vector<std::string>{"large"}, {},
             std::chrono::seconds(10)
         );
+
         EXPECT_EQ(result.state, ormi::platform::Process::State::exited);
         EXPECT_EQ(result.code, 17);
         EXPECT_EQ(result.output,
@@ -117,6 +124,7 @@ namespace {
         const auto result = ormi::platform::run(
             helper, std::vector<std::string>{"quiet"}
         );
+
         EXPECT_EQ(result.state, ormi::platform::Process::State::exited);
         EXPECT_EQ(result.code, 0);
         EXPECT_TRUE(result.output.empty());
@@ -124,6 +132,7 @@ namespace {
 
     TEST(PlatformProcessTest, keepsConcurrentCallsIndependent) {
         std::vector<std::future<ormi::platform::Process>> calls;
+
         for (unsigned i = 0; i < 8; ++i) {
             calls.push_back(std::async(std::launch::async, [i] {
                 return ormi::platform::run(
@@ -133,8 +142,10 @@ namespace {
                 );
             }));
         }
+
         for (std::size_t i = 0; i < calls.size(); ++i) {
             const auto result = calls[i].get();
+
             EXPECT_EQ(result.state, ormi::platform::Process::State::exited);
             EXPECT_EQ(result.code, 0);
             EXPECT_EQ(result.output, std::to_string(i));

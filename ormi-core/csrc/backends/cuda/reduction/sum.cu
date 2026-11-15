@@ -80,6 +80,7 @@ namespace ormi::backends::cuda {
                 if (threadIdx.x < width) {
                     partial[threadIdx.x] += partial[threadIdx.x + width];
                 }
+
                 __syncthreads();
             }
 

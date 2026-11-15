@@ -39,6 +39,7 @@ from . import nn
 ###
 
 full = ops.full
+concat = ops.concat
 zeros = ops.zeros
 ones = ops.ones
 zeros_like = ops.zeros_like
@@ -47,7 +48,7 @@ sgd = optim.sgd
 GradScaler = optim.GradScaler
 ScalePolicy = optim.ScalePolicy
 
-__version__ = "0.1.0a7"
+__version__ = "0.1.0a8"
 
 __all__ = [
     "Autocast",
@@ -68,6 +69,7 @@ __all__ = [
     "Tensor",
     "autocast",
     "bool_",
+    "concat",
     "cpu",
     "diff",
     "dtype_name",

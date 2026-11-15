@@ -24,6 +24,7 @@ namespace ormi::backends::cpu {
             std::mt19937_64 generator(seed);
             auto* output = static_cast<T*>(out.data());
             const auto scale = static_cast<T>(1.0 / (1.0 - attrs.probability));
+
             for (std::size_t i = 0; i < out.numel(); ++i) {
                 const auto uniform = std::generate_canonical<double, 53>(generator);
                 output[i] = uniform < attrs.probability ? T(0) : scale;
@@ -35,6 +36,7 @@ namespace ormi::backends::cpu {
         auto& counter = *static_cast<std::uint64_t*>(attrs.counter->data());
         const auto execution =
             std::atomic_ref<std::uint64_t>(counter).fetch_add(1, std::memory_order_relaxed);
+
         if (out.dtype() == core::DType::float32) {
             fill_mask<float>(out, attrs, execution);
         } else if (out.dtype() == core::DType::float64) {

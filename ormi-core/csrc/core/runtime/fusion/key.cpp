@@ -43,12 +43,15 @@ namespace ormi::core::runtime::fusion {
         );
         result = combine(result, expression.output);
         result = combine(result, expression.auxiliary_outputs.size());
+
         for (const auto output : expression.auxiliary_outputs) {
             result = combine(result, output);
         }
+
         result = combine(result, expression.nodes.size());
         result = combine(result, expression.reduction.has_value());
         result = combine(result, expression.shape.size());
+
         for (const auto extent : expression.shape) {
             result = combine(result, extent);
         }
@@ -59,12 +62,15 @@ namespace ormi::core::runtime::fusion {
                 static_cast<std::uint64_t>(expression.reduction->op)
             );
             result = combine(result, expression.reduction->output.size);
+
             for (const auto& axis : expression.reduction->output.axes) {
                 result = combine(result, axis.divisor);
                 result = combine(result, axis.extent);
                 result = combine(result, axis.stride);
             }
+
             result = combine(result, expression.reduction->reduced.size);
+
             for (const auto& axis : expression.reduction->reduced.axes) {
                 result = combine(result, axis.divisor);
                 result = combine(result, axis.extent);
@@ -81,9 +87,11 @@ namespace ormi::core::runtime::fusion {
             std::visit(
                 [&result](const auto& value) {
                     using T = std::decay_t<decltype(value)>;
+
                     if constexpr (std::is_same_v<T, Input>) {
                         result = combine(result, value.index);
                         result = combine(result, value.linear);
+
                         for (const auto& axis : value.axes) {
                             result = combine(result, axis.divisor);
                             result = combine(result, axis.extent);

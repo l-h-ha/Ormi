@@ -18,6 +18,7 @@ namespace ormi::backends::cpu {
             caputo::l1(op, out, input, attrs);
             return;
         }
+
         caputo::l2(op, out, input, initial_derivative, attrs);
     }
 }

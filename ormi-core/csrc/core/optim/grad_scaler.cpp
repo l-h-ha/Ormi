@@ -25,17 +25,21 @@ namespace ormi::core::optim {
                     return scale;
                 case DType::float32: {
                     const auto value = static_cast<float>(scale);
+
                     if (!std::isfinite(value) || value == 0.0f) {
                         ORMI_THROW(DTypeError, "Gradient scale is not representable as Float32.");
                     }
+
                     return value;
                 }
                 case DType::float16: {
                     const auto value = Float16(static_cast<float>(scale));
                     const auto converted = static_cast<float>(value);
+
                     if (!std::isfinite(converted) || converted == 0.0f) {
                         ORMI_THROW(DTypeError, "Gradient scale is not representable as Float16.");
                     }
+
                     return value;
                 }
                 case DType::int32:
@@ -187,6 +191,7 @@ namespace ormi::core::optim {
         }
 
         ++finite_steps_;
+
         if (finite_steps_ != policy_.interval) {
             return;
         }

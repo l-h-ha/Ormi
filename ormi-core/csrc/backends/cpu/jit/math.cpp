@@ -26,6 +26,7 @@ namespace ormi::backends::cpu::jit {
         const auto* current = std::get_if<Unary>(
             &expression.nodes[index].instruction
         );
+
         if (
             !current ||
             (
@@ -37,10 +38,12 @@ namespace ormi::backends::cpu::jit {
         }
 
         std::size_t occurrence = 0;
+
         for (std::size_t i = 0; i < index; ++i) {
             const auto* prior = std::get_if<Unary>(
                 &expression.nodes[i].instruction
             );
+
             if (
                 prior &&
                 prior->op == current->op &&
@@ -53,10 +56,12 @@ namespace ormi::backends::cpu::jit {
         const auto opposite = current->op == core::ops::UnaryOp::sin
             ? core::ops::UnaryOp::cos
             : core::ops::UnaryOp::sin;
+
         for (std::size_t i = 0; i < expression.nodes.size(); ++i) {
             const auto* candidate = std::get_if<Unary>(
                 &expression.nodes[i].instruction
             );
+
             if (
                 !candidate ||
                 candidate->op != opposite ||
@@ -65,11 +70,14 @@ namespace ormi::backends::cpu::jit {
             ) {
                 continue;
             }
+
             if (occurrence == 0) {
                 return static_cast<Index>(i);
             }
+
             --occurrence;
         }
+
         return std::nullopt;
     }
 

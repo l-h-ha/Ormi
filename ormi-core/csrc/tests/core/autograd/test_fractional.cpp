@@ -32,6 +32,7 @@ namespace {
         for (std::size_t i = 0; i < values.size(); ++i) {
             data[i] = values[i];
         }
+
         return result;
     }
 
@@ -65,6 +66,7 @@ namespace {
                 matrix[n * count + column - 1] -= weight;
             }
         }
+
         return matrix;
     }
 
@@ -95,6 +97,7 @@ namespace {
                 }
             }
         }
+
         return matrix;
     }
 
@@ -114,6 +117,7 @@ namespace {
             );
             result[n] = -2.0 * spacing * weight;
         }
+
         return result;
     }
 
@@ -133,6 +137,7 @@ namespace {
                 result[row] += matrix[index] * values[column];
             }
         }
+
         return result;
     }
 
@@ -223,13 +228,16 @@ namespace {
         const auto matrix =
             l1_matrix(input_values.size(), alpha, spacing);
         auto expected = multiply(matrix, input_values, false);
+
         for (auto& value : expected) {
             value *= 2.0;
         }
+
         expected = multiply(matrix, expected, true);
 
         const auto* actual =
             static_cast<const double*>(gradient->data());
+
         for (std::size_t i = 0; i < expected.size(); ++i) {
             EXPECT_NEAR(actual[i], expected[i], 1e-11);
         }
@@ -270,15 +278,18 @@ namespace {
         const auto initial_column =
             l2_initial_column(seed_values.size(), alpha, spacing);
         double expected_initial = 0.0;
+
         for (std::size_t i = 0; i < seed_values.size(); ++i) {
             expected_initial += initial_column[i] * seed_values[i];
         }
 
         const auto* history =
             static_cast<const double*>(gradients[0]->data());
+
         for (std::size_t i = 0; i < expected_history.size(); ++i) {
             EXPECT_NEAR(history[i], expected_history[i], 1e-12);
         }
+
         EXPECT_NEAR(
             *static_cast<const double*>(gradients[1]->data()),
             expected_initial,

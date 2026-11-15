@@ -50,20 +50,26 @@ namespace {
         runtime::device::synchronize(device);
 
         std::size_t index = 0;
+
         for (auto _ : state) {
             index ^= 1;
+
             if (rebuild) {
                 input = std::make_shared<Tensor>(device, input_shape, DType::float32);
                 target = std::make_shared<Tensor>(device, target_shape, DType::float32);
             }
+
             input->copy_from(std::as_bytes(std::span(values[index])));
             target->copy_from(std::as_bytes(std::span(labels[index])));
+
             if (rebuild) {
                 plan = training_plan(input, target, weight);
             }
+
             plan.run();
             runtime::device::synchronize(device);
         }
+
         state.SetItemsProcessed(state.iterations() * batch);
     }
 }

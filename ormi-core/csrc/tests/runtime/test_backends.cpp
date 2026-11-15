@@ -72,6 +72,7 @@ namespace {
         EXPECT_TRUE(backends.available(cpu_id));
 
         const auto& cpu = backends.require(cpu_id);
+
         EXPECT_EQ(cpu.abi, ormi::core::runtime::backend_abi);
         EXPECT_NE(cpu.memory.allocator, nullptr);
         EXPECT_NE(cpu.memory.synchronize, nullptr);

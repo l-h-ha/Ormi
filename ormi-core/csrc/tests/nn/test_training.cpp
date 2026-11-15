@@ -29,6 +29,7 @@ namespace {
         const auto second = ormi::core::grad(ormi::core::ops::sum(first), input);
         const auto third = ormi::core::grad(ormi::core::ops::sum(second), input);
         const auto mixed = ormi::core::grad(ormi::core::ops::sum(second), weight);
+
         EXPECT_FALSE(output->realized());
         EXPECT_FALSE(first->realized());
         EXPECT_FALSE(second->realized());
@@ -50,16 +51,20 @@ namespace {
         const auto loss = ormi::nn::mse_loss((*layer)(nn_test::leaf({4, 1})), nn_test::leaf({4, 1}, 0.0));
         const auto gradients = ormi::core::grad(loss, parameters);
         std::vector<ormi::core::Plan::Update> updates;
+
         for (std::size_t i = 0; i < parameters.size(); ++i) {
             updates.push_back({parameters[i], ormi::core::optim::sgd(parameters[i], gradients[i], 0.1)});
         }
+
         ormi::core::Plan plan({loss}, updates);
         const auto steps = plan.steps();
         const auto buffers = plan.storage_buffers();
         const auto bytes = plan.storage_bytes();
         const auto* storage = parameters[0]->data();
+
         for (int i = 0; i < 8; ++i) {
             plan.run();
+
             EXPECT_NEAR(
                 *static_cast<const double*>(parameters[0]->data()),
                 2.0 * std::pow(0.8, i + 1),
@@ -69,6 +74,7 @@ namespace {
             EXPECT_EQ(parameters[0]->data(), storage);
             EXPECT_EQ(parameters[0]->op(), nullptr);
         }
+
         EXPECT_EQ(plan.steps(), steps);
         EXPECT_EQ(plan.storage_buffers(), buffers);
         EXPECT_EQ(plan.storage_bytes(), bytes);
@@ -80,6 +86,7 @@ namespace {
             const ormi::nn::Linear layer(nn_test::leaf({2, 1}, 3.0), nn_test::leaf({1}, 0.5));
             output = layer(nn_test::leaf({2}, 2.0));
         }
+
         EXPECT_DOUBLE_EQ(*static_cast<const double*>(output->data()), 12.5);
     }
 }

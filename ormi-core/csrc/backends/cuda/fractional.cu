@@ -36,11 +36,13 @@ namespace ormi::backends::cuda {
             std::size_t axis
         ) {
             std::size_t result = 1;
+
             for (std::size_t i = axis; i < initial_derivative.rank(); ++i) {
                 result *= static_cast<std::size_t>(
                     initial_derivative.shape()[i]
                 );
             }
+
             return result;
         }
 
@@ -60,21 +62,26 @@ namespace ormi::backends::cuda {
 
                 T value{};
                 auto weight = static_cast<T>(weights[0]);
+
                 for (std::size_t n = 1; n < count; ++n) {
                     value -= weight * input[base + n * input_axis_stride];
+
                     if (n < count - 1) {
                         weight += static_cast<T>(weights[n]);
                     }
                 }
+
                 return value;
             }
 
             auto value = static_cast<T>(weights[0]) *
                 input[base + coordinate * input_axis_stride];
+
             for (std::size_t n = coordinate + 1; n < count; ++n) {
                 value += static_cast<T>(weights[n - coordinate]) *
                     input[base + n * input_axis_stride];
             }
+
             return value;
         }
 
@@ -94,6 +101,7 @@ namespace ormi::backends::cuda {
 
                 for (std::size_t n = 1; n < count; ++n) {
                     T current{};
+
                     if (n == 1) {
                         current = static_cast<T>(weights[0]);
                     } else {
@@ -113,15 +121,18 @@ namespace ormi::backends::cuda {
                     previous_previous = previous;
                     previous = current;
                 }
+
                 return value;
             }
 
             auto value = static_cast<T>(weights[0]) *
                 input[base + coordinate * input_axis_stride];
+
             for (std::size_t n = coordinate + 1; n < count; ++n) {
                 value += static_cast<T>(weights[n - coordinate]) *
                     input[base + n * input_axis_stride];
             }
+
             return value;
         }
 
@@ -161,6 +172,7 @@ namespace ormi::backends::cuda {
                                 input_index
                             )];
                     }
+
                     out[linear] = value;
                     continue;
                 }
@@ -210,6 +222,7 @@ namespace ormi::backends::cuda {
                                 second_difference = static_cast<T>(2) * (
                                     input[base + input_axis_stride] - input[base]
                                 );
+
                                 if (initial_derivative) {
                                     const auto outer =
                                         linear / (count * axis_stride);
@@ -231,10 +244,12 @@ namespace ormi::backends::cuda {
                                     static_cast<T>(2) * input[center] +
                                     input[center - input_axis_stride];
                             }
+
                             value += static_cast<T>(weights[k]) *
                                 second_difference;
                         }
                     }
+
                     out[linear] = value;
                 } else if (second_order) {
                     out[linear] = l2_adjoint(
@@ -386,11 +401,13 @@ namespace ormi::backends::cuda {
                         result->memory->allocate(result->weights_bytes)
                     );
                 }
+
                 if (result->workspace_bytes != 0) {
                     result->workspace = result->memory->allocate(
                         result->workspace_bytes
                     );
                 }
+
                 if (result->weights_bytes != 0) {
                     check(
                         cudaMemcpyAsync(
@@ -508,6 +525,7 @@ namespace ormi::backends::cuda {
         const auto buffers =
             static_cast<std::size_t>(prepared->weights != nullptr) +
             static_cast<std::size_t>(prepared->workspace != nullptr);
+
         if (
             prepared->weights_bytes >
             std::numeric_limits<std::size_t>::max() -
@@ -516,6 +534,7 @@ namespace ormi::backends::cuda {
             drop_setup(prepared.release());
             ORMI_THROW(MemoryError, "CUDA fractional setup size overflow.");
         }
+
         const auto bytes =
             prepared->weights_bytes + prepared->workspace_bytes;
         return core::Setup(

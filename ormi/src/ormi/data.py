@@ -1,4 +1,4 @@
-"""Batch host arrays."""
+"""Batch NumPy arrays."""
 
 from __future__ import annotations
 
@@ -28,42 +28,41 @@ def batches(
     Parameters
     ----------
     *arrays : numpy.ndarray
-        One or more arrays with the same length along axis 0. Other dimensions
-        and dtypes stay unchanged. Scalars and non-array inputs are rejected.
+        Arrays with matching lengths along axis 0. Other dimensions and dtypes
+        stay unchanged. Scalars and non-array inputs are rejected.
     batch_size : int
-        Maximum number of samples per batch. Must be positive.
+        Positive maximum number of samples per batch.
     shuffle : bool, default=False
         Shuffle all arrays using the same sample order.
     seed : int or None, default=None
-        Nonnegative seed for a local generator. Separate calls with the same
-        seed repeat the order. Requires ``shuffle=True`` and cannot be used with
-        ``rng``.
+        Nonnegative local seed. Repeated calls with the same seed repeat the
+        order. Requires ``shuffle=True`` and ``rng=None``.
     rng : numpy.random.Generator or None, default=None
-        Generator to advance when iteration starts. Reuse it for reproducible
-        but different orders across epochs. Requires ``shuffle=True``.
+        Generator advanced when iteration starts. Reuse it for reproducible
+        reshuffling across epochs. Requires ``shuffle=True``.
     drop_last : bool, default=False
         Discard an incomplete final batch. Otherwise, yield it without padding.
 
     Yields
     ------
     batch : tuple of numpy.ndarray
-        One batch per input, in a tuple even for a single input. Without
-        shuffling, batches share the source data. Shuffling returns copies.
+        Tuple of batches, one per input, even for a single input. Unshuffled
+        batches share source data. Shuffling returns copies.
 
     Raises
     ------
     TypeError
-        If an input is not a NumPy array or an option has an invalid type.
+        If an input is not a NumPy array or an option type is invalid.
     ValueError
-        If no arrays are supplied, sample counts differ, an array is scalar,
-        or batch and shuffle options are incompatible or out of range.
+        If no arrays are supplied, an array is scalar, sample counts differ,
+        or options are incompatible or out of range.
 
     Notes
     -----
-    Arguments are checked on this call. The returned iterator can be used once.
-    No tensors are created or copied to a device. Empty iterations draw no
-    randomness. NumPy's global random state is unchanged. Do not change input
-    shapes or dtypes during iteration.
+    Arguments are checked immediately. The iterator is single-use. No tensors
+    are created or sent to a device. Empty iterations draw no randomness.
+    NumPy's global random state is unchanged. Keep input shapes and dtypes fixed
+    during iteration.
     """
 
     batch_size, seed, count = _validate_batches(arrays, batch_size, shuffle, seed, rng, drop_last)

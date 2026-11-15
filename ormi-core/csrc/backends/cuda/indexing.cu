@@ -44,6 +44,7 @@ namespace ormi::backends::cuda {
             Index index
         ) {
             const auto step = static_cast<std::size_t>(blockDim.x) * gridDim.x;
+
             for (std::size_t linear = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
                  linear < count;
                  linear += step) {
@@ -54,12 +55,14 @@ namespace ormi::backends::cuda {
 
                 for (std::size_t i = index.rank; i > 0; --i) {
                     const auto axis = i - 1;
+
                     if (axis == index.axis && !scatter) {
                         continue;
                     }
 
                     const auto coordinate = remaining % index.dims[axis];
                     remaining /= index.dims[axis];
+
                     if (axis == index.axis) {
                         class_coordinate = coordinate;
                         continue;
@@ -70,10 +73,12 @@ namespace ormi::backends::cuda {
                 }
 
                 const auto label = labels[label_offset];
+
                 if (index.has_ignore_index && label == index.ignore_index) {
                     out[linear] = stored<T>(0);
                     continue;
                 }
+
                 if (label < 0 || static_cast<std::size_t>(label) >= index.dims[index.axis]) {
                     out[linear] = stored<T>(nanf(""));
                     continue;
@@ -96,6 +101,7 @@ namespace ormi::backends::cuda {
         template <typename T>
         __global__ void scatter_scalar_kernel(T* out, const T* scalar, std::size_t count, std::size_t index) {
             const auto step = static_cast<std::size_t>(blockDim.x) * gridDim.x;
+
             for (std::size_t linear = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
                  linear < count;
                  linear += step) {
@@ -113,6 +119,7 @@ namespace ormi::backends::cuda {
             if (out.numel() == 0) {
                 return;
             }
+
             if (attrs.shape.rank() > 64) {
                 ORMI_THROW(ShapeError, "CUDA indexed selection supports at most 64 dimensions.");
             }
@@ -127,10 +134,12 @@ namespace ormi::backends::cuda {
 
             for (std::size_t axis = 0; axis < index.rank; ++axis) {
                 index.dims[axis] = static_cast<std::size_t>(attrs.shape[axis]);
+
                 if (axis == index.axis) {
                     if constexpr (!scatter) {
                         index.value_strides[axis] = static_cast<std::size_t>(value_strides[axis]);
                     }
+
                     continue;
                 }
 
@@ -144,6 +153,7 @@ namespace ormi::backends::cuda {
             check(cudaSetDevice(device.index()), "cudaSetDevice");
             const auto blocks = elementwise::blocks(out.numel());
             const auto* labels = static_cast<const std::int32_t*>(indices.data());
+
             switch (out.dtype()) {
                 case core::DType::float64:
                     select_kernel<double, scatter><<<blocks, 256, 0, device.stream()>>>(
@@ -175,6 +185,7 @@ namespace ormi::backends::cuda {
                 default:
                     ORMI_THROW(DTypeError, "Indexed selection requires floating-point input.");
             }
+
             check(cudaGetLastError(), "CUDA indexed selection");
         }
     }
@@ -187,6 +198,7 @@ namespace ormi::backends::cuda {
         auto& device = state(out.device());
         check(cudaSetDevice(device.index()), "cudaSetDevice");
         const auto blocks = elementwise::blocks(out.numel());
+
         switch (out.dtype()) {
             case core::DType::float64:
                 scatter_scalar_kernel<double><<<blocks, 256, 0, device.stream()>>>(
@@ -215,6 +227,7 @@ namespace ormi::backends::cuda {
             default:
                 ORMI_THROW(DTypeError, "CUDA scalar scatter requires floating-point input.");
         }
+
         check(cudaGetLastError(), "CUDA scalar scatter");
     }
 

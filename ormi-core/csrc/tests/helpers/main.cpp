@@ -17,6 +17,7 @@ namespace {
 
     void isolate(const char* name) {
         const char* root = std::getenv(name);
+
         if (!root || *root == '\0') {
             return;
         }

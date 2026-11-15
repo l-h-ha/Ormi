@@ -17,6 +17,7 @@ namespace {
         const auto result = ormi::platform::run(
             ORMI_EXECUTOR_HELPER, arguments, {}, std::chrono::seconds(10)
         );
+
         EXPECT_EQ(result.state, ormi::platform::Process::State::exited) << result.output;
         EXPECT_EQ(result.code, expected_code) << result.output;
     }

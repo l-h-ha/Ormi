@@ -28,14 +28,17 @@ namespace {
         void SetUp() override {
             int devices = 0;
             const auto status = cudaGetDeviceCount(&devices);
+
             if (status != cudaSuccess) {
                 GTEST_SKIP()
                     << "CUDA runtime is unavailable: "
                     << cudaGetErrorString(status);
             }
+
             if (devices == 0) {
                 GTEST_SKIP() << "No CUDA device is available.";
             }
+
             ready_ = true;
         }
 
@@ -43,6 +46,7 @@ namespace {
             if (!ready_) {
                 return;
             }
+
             const auto device = ormi::core::Device::from("cuda");
             ormi::core::runtime::device::synchronize(device);
         }
@@ -90,6 +94,7 @@ namespace {
 
         for (int repetition = 0; repetition < 8; ++repetition) {
             const ormi::core::Plan plan({output});
+
             EXPECT_EQ(plan.steps(), 1);
             EXPECT_EQ(plan.storage_buffers(), 2);
             EXPECT_GT(plan.storage_bytes(), output->bytes());
@@ -99,6 +104,7 @@ namespace {
         ormi::core::runtime::device::synchronize(value->device());
 
         output->realize();
+
         EXPECT_NEAR(read(output), std::sin(0.75f), 1.0e-6f);
     }
 
@@ -118,6 +124,7 @@ namespace {
         constexpr std::size_t workers = 4;
         std::vector<Tensor> outputs;
         outputs.reserve(workers);
+
         for (std::size_t worker = 0; worker < workers; ++worker) {
             outputs.push_back(expression(input(4096)));
         }
@@ -126,9 +133,11 @@ namespace {
         std::vector<std::exception_ptr> errors(workers);
         std::vector<std::thread> threads;
         threads.reserve(workers);
+
         for (std::size_t worker = 0; worker < workers; ++worker) {
             threads.emplace_back([&, worker] {
                 start.wait();
+
                 try {
                     outputs[worker]->realize();
                 } catch (...) {
@@ -138,9 +147,11 @@ namespace {
         }
 
         start.count_down();
+
         for (auto& thread : threads) {
             thread.join();
         }
+
         for (const auto& error : errors) {
             if (error) {
                 std::rethrow_exception(error);
@@ -150,6 +161,7 @@ namespace {
         ormi::core::runtime::device::synchronize(
             ormi::core::Device::from("cuda")
         );
+
         for (const auto& output : outputs) {
             EXPECT_NEAR(read(output), std::sin(0.75f), 1.0e-6f);
         }

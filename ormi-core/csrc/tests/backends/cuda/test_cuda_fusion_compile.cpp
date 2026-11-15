@@ -51,20 +51,19 @@ namespace {
         void SetUp() override {
             int devices = 0;
             const auto status = cudaGetDeviceCount(&devices);
+
             if (status != cudaSuccess) {
                 GTEST_SKIP() << cudaGetErrorString(status);
             }
+
             if (devices == 0) {
                 GTEST_SKIP() << "No CUDA device is available.";
             }
+
             ASSERT_EQ(cudaSetDevice(0), cudaSuccess);
             ASSERT_EQ(cudaDeviceGetAttribute(&major_, cudaDevAttrComputeCapabilityMajor, 0), cudaSuccess);
             ASSERT_EQ(cudaDeviceGetAttribute(&minor_, cudaDevAttrComputeCapabilityMinor, 0), cudaSuccess);
-            int major = 0;
-            int minor = 0;
-            ASSERT_EQ(nvrtcVersion(&major, &minor), NVRTC_SUCCESS);
-            context_ = "compute_" + std::to_string(major_) + std::to_string(minor_) +
-                "\nnvrtc_" + std::to_string(major) + "." + std::to_string(minor);
+            context_ = fusion::nvrtc::context(major_, minor_);
 
             directory_ = std::filesystem::temp_directory_path() /
                 ("ormi-cuda-fusion-compile-test-" +
@@ -80,8 +79,10 @@ namespace {
             if (directory_.empty()) {
                 return;
             }
+
             std::error_code error;
             std::filesystem::remove_all(directory_, error);
+
             EXPECT_FALSE(error) << error.message();
             environment("ORMI_CUDA_JIT_CACHE_DIR",
                 previous_directory_ ? previous_directory_->c_str() : "");
@@ -91,22 +92,30 @@ namespace {
 
         std::string ptx(const char* source) const {
             nvrtcProgram program = nullptr;
+
             if (nvrtcCreateProgram(&program, source, "failure.cu", 0, nullptr, nullptr) != NVRTC_SUCCESS) {
                 throw std::runtime_error("Cannot create test NVRTC program.");
             }
+
             std::string result;
+
             try {
                 const auto architecture = "--gpu-architecture=compute_" +
-                    std::to_string(major_) + std::to_string(minor_);
+                    std::to_string(fusion::nvrtc::target(major_, minor_));
                 const char* options[]{"--std=c++17", architecture.c_str()};
+
                 if (nvrtcCompileProgram(program, 2, options) != NVRTC_SUCCESS) {
                     throw std::runtime_error("Cannot compile test PTX.");
                 }
+
                 std::size_t size = 0;
+
                 if (nvrtcGetPTXSize(program, &size) != NVRTC_SUCCESS) {
                     throw std::runtime_error("Cannot size test PTX.");
                 }
+
                 result.resize(size);
+
                 if (nvrtcGetPTX(program, result.data()) != NVRTC_SUCCESS) {
                     throw std::runtime_error("Cannot retrieve test PTX.");
                 }
@@ -114,6 +123,7 @@ namespace {
                 (void)nvrtcDestroyProgram(&program);
                 throw;
             }
+
             (void)nvrtcDestroyProgram(&program);
             return result;
         }
@@ -123,15 +133,19 @@ namespace {
             const auto input = ops::full(std::move(shape), 0.5f, device);
             input->realize();
             auto graph = ops::add(ops::mul(input, input), input);
+
             if (reduce) {
                 graph = ops::sum(graph, {0});
             }
+
             const auto expression = runtime::fusion::build(*graph);
+
             ASSERT_TRUE(expression);
             const auto output = ops::full(graph->shape(), 0.0f, device);
             output->realize();
             const auto source = fusion::emit(*expression);
             const auto artifact = fusion::cache::get(source, context_, [&] { return bad_ptx; });
+
             ASSERT_FALSE(artifact.cached);
             ASSERT_EQ(artifact.ptx, bad_ptx);
 
@@ -144,10 +158,13 @@ namespace {
                     EXPECT_NE(std::string(error.what()).find(operation), std::string::npos)
                         << error.what();
                 }
+
                 EXPECT_FALSE(graph->realized());
             }
+
             ASSERT_EQ(fusion::cache::info().entries, 1u);
             fusion::cache::clear();
+
             ASSERT_EQ(fusion::cache::info().entries, 0u);
 
             auto setup = runtime::backend(device).fusion.prepare(*output, {}, *expression);
@@ -157,9 +174,11 @@ namespace {
             const auto expected = reduce
                 ? 0.75f * static_cast<float>(input->shape()[0])
                 : 0.75f;
+
             for (const auto value : values) {
                 EXPECT_FLOAT_EQ(value, expected);
             }
+
             EXPECT_FALSE(graph->realized());
             ASSERT_EQ(fusion::cache::info().entries, 1u);
 
@@ -168,9 +187,11 @@ namespace {
             auto cached = runtime::backend(device).fusion.prepare(*output, {}, *expression);
             cached.run(*output);
             memory::copy(values.data(), Device::cpu(), output->data(), device, output->bytes());
+
             for (const auto value : values) {
                 EXPECT_FLOAT_EQ(value, expected);
             }
+
             EXPECT_EQ(fusion::cache::info().entries, 0u);
         }
 
@@ -188,22 +209,26 @@ namespace {
 
     TEST_F(CUDAFusionCompileTest, failedCompilationDoesNotPublishAndCanRetry) {
         const std::string source = "extern \"C\" __global__ void ormi_kernel() {}";
+
         for (int attempt = 0; attempt < 3; ++attempt) {
             EXPECT_THROW((void)fusion::cache::get(source, context_, [&] {
                 return fusion::nvrtc::compile("#error ORMI_CACHE_BUILD_FAILURE\n", major_, minor_);
             }), ormi::jitError);
+
             EXPECT_EQ(fusion::cache::info().entries, 0u);
         }
 
         const auto artifact = fusion::cache::get(source, context_, [&] {
             return fusion::nvrtc::compile(source, major_, minor_);
         });
+
         EXPECT_FALSE(artifact.cached);
         EXPECT_NE(artifact.ptx.find(".entry ormi_kernel"), std::string::npos);
         const auto cached = fusion::cache::get(source, context_, [] {
             ADD_FAILURE() << "A valid NVRTC artifact was rebuilt.";
             return std::string{};
         });
+
         EXPECT_TRUE(cached.cached);
         EXPECT_EQ(cached.ptx, artifact.ptx);
         EXPECT_EQ(fusion::cache::info().entries, 1u);
@@ -225,6 +250,7 @@ namespace {
         input->realize();
         const auto graph = ops::sum(ops::add(ops::mul(input, input), input), {0});
         const auto expression = runtime::fusion::build(*graph);
+
         ASSERT_TRUE(expression);
         ASSERT_TRUE(fusion::tile(*expression));
         EXPECT_EQ(fusion::emit(*expression).find("ormi_finish"), std::string::npos);
@@ -235,6 +261,7 @@ namespace {
         setup.run(*output);
         std::vector<float> values(output->numel());
         memory::copy(values.data(), Device::cpu(), output->data(), device, output->bytes());
+
         for (const auto value : values) {
             EXPECT_FLOAT_EQ(value, 3.75f);
         }

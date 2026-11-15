@@ -146,6 +146,10 @@ classes:
       - name: realize
         binding: ormi::bindings::tensor_realize
         returns: Tensor
+      - name: __getitem__
+        binding: ormi::bindings::tensor_getitem
+        args: [{name: index, py_type: Any}]
+        returns: Tensor
       - name: numpy
         binding: ormi::bindings::tensor_numpy
         returns: Any
@@ -247,8 +251,7 @@ classes:
             default: null
         returns: Tensor
       - name: grad
-        expr: >-
-          static_cast<std::vector<std::shared_ptr<ormi::core::Tensor>> (*)(const std::shared_ptr<ormi::core::Tensor>&, const std::vector<std::shared_ptr<ormi::core::Tensor>>&, std::shared_ptr<ormi::core::Tensor>)>(&ormi::core::grad)
+        binding: ormi::bindings::tensor_grad_many
         args:
           - name: inputs
             py_type: Sequence[Tensor]
@@ -407,8 +410,7 @@ functions:
         default: null
     returns: Tensor
   - python: grad
-    expr: >-
-      static_cast<std::vector<std::shared_ptr<ormi::core::Tensor>> (*)(const std::shared_ptr<ormi::core::Tensor>&, const std::vector<std::shared_ptr<ormi::core::Tensor>>&, std::shared_ptr<ormi::core::Tensor>)>(&ormi::core::grad)
+    binding: ormi::bindings::tensor_grad_many
     args:
       - name: output
         py_type: Tensor

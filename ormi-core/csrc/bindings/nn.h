@@ -23,11 +23,13 @@ namespace ormi::bindings {
 
             pybind11::gil_scoped_acquire gil;
             const auto forward = pybind11::get_override(this, "forward");
+
             if (!forward) {
                 ORMI_THROW(OperationError, "A Python Module subclass must implement forward().");
             }
 
             const auto output = forward(input);
+
             if (!pybind11::isinstance<core::Tensor>(output)) {
                 ORMI_THROW(OperationError, "Module.forward() must return a Tensor.");
             }

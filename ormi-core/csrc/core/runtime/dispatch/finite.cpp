@@ -13,6 +13,7 @@ namespace ormi::core::runtime::finite {
         }
 
         const auto* first = inputs.front();
+
         if (first == nullptr) {
             ORMI_THROW(OperationError, "Finiteness query received a null tensor.");
         }

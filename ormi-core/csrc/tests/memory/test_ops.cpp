@@ -14,6 +14,7 @@ namespace {
         ormi::core::memory::fill(buffer, 0x7f);
 
         const auto* bytes = static_cast<const unsigned char*>(buffer.data());
+
         EXPECT_EQ(bytes[0], 0x7f);
         EXPECT_EQ(bytes[1], 0x7f);
         EXPECT_EQ(bytes[2], 0x7f);
@@ -27,6 +28,7 @@ namespace {
         ormi::core::memory::zero(buffer);
 
         const auto* bytes = static_cast<const unsigned char*>(buffer.data());
+
         EXPECT_EQ(bytes[0], 0x00);
         EXPECT_EQ(bytes[1], 0x00);
         EXPECT_EQ(bytes[2], 0x00);
@@ -46,6 +48,7 @@ namespace {
         ormi::core::memory::copy(dst, src);
 
         const auto* dst_bytes = static_cast<const unsigned char*>(dst.data());
+
         EXPECT_EQ(dst_bytes[0], 1);
         EXPECT_EQ(dst_bytes[1], 2);
         EXPECT_EQ(dst_bytes[2], 3);

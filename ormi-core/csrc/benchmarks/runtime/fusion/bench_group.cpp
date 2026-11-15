@@ -27,17 +27,21 @@ namespace {
     Roots binary_chain(std::int64_t operations) {
         const auto source = input();
         auto result = source;
+
         for (std::int64_t operation = 0; operation < operations; ++operation) {
             result = ormi::core::ops::add(result, source);
         }
+
         return {result};
     }
 
     Roots unary_chain(std::int64_t operations) {
         auto result = input();
+
         for (std::int64_t operation = 0; operation < operations; ++operation) {
             result = ormi::core::ops::neg(result);
         }
+
         return {result};
     }
 
@@ -46,9 +50,11 @@ namespace {
         const auto parent = ormi::core::ops::add(source, source);
         Roots roots;
         roots.reserve(static_cast<std::size_t>(outputs));
+
         for (std::int64_t output = 0; output < outputs; ++output) {
             roots.push_back(ormi::core::ops::neg(parent));
         }
+
         return roots;
     }
 
@@ -59,16 +65,19 @@ namespace {
 
         for (std::int64_t parent = 0; parent < parents; ++parent) {
             const auto mapped = ormi::core::ops::add(source, source);
+
             for (std::int64_t output = 0; output < outputs_per_parent; ++output) {
                 roots.push_back(ormi::core::ops::neg(mapped));
             }
         }
+
         return roots;
     }
 
     void measure(benchmark::State& state, const Roots& owners) {
         std::vector<Tensor*> roots;
         roots.reserve(owners.size());
+
         for (const auto& owner : owners) {
             roots.push_back(owner.get());
         }

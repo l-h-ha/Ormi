@@ -20,6 +20,7 @@ namespace ormi::core::runtime {
             if (id >= catalog::entries.size()) {
                 ORMI_THROW(DeviceError, "Invalid backend id.");
             }
+
             return catalog::entries[id];
         }
     }
@@ -42,6 +43,7 @@ namespace ormi::core::runtime {
 
         for (std::size_t id = 0; id < catalog::entries.size(); ++id) {
             const auto& entry = catalog::entries[id];
+
             if (entry.init) {
                 init(static_cast<BackendId>(id));
             }
@@ -86,9 +88,11 @@ namespace ormi::core::runtime {
         }
 
         const auto* backend = resolved_[id].load(std::memory_order_relaxed);
+
         if (!backend) {
             ORMI_THROW(DeviceError, "Backend is not available.");
         }
+
         return *backend;
     }
 
@@ -107,12 +111,14 @@ namespace ormi::core::runtime {
             loaded->library.symbol(plugin::entry)
         );
         const auto* backend = plugin_init();
+
         if (!backend) {
             ORMI_THROW(
                 DeviceError,
                 "Backend initialization returned no function table."
             );
         }
+
         if (backend->abi != backend_abi) {
             ORMI_THROW(DeviceError, "Backend interface version does not match this ORMI core.");
         }

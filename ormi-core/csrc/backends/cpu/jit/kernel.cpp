@@ -17,6 +17,7 @@ namespace ormi::backends::cpu::jit {
         if (!expression.auxiliary_outputs.empty() && expression.reduction) {
             return false;
         }
+
         if (expression.reduction &&
             expression.reduction->op != core::ops::ReduceOp::sum &&
             expression.reduction->op != core::ops::ReduceOp::mean) {
@@ -49,11 +50,13 @@ namespace ormi::backends::cpu::jit {
     void prepare_many(std::span<core::runtime::FusionJob> jobs) {
         std::vector<const core::runtime::fusion::Expr*> expressions;
         expressions.reserve(jobs.size());
+
         for (const auto& job : jobs) {
             expressions.push_back(job.expression);
         }
 
         auto compiled = compile(expressions);
+
         for (std::size_t i = 0; i < jobs.size(); ++i) {
             *jobs[i].setup = execution::prepare(
                 {

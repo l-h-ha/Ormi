@@ -76,12 +76,15 @@ namespace ormi::nn::detail {
         if (!destination || !replacement || destination->op() || !destination->realized()) {
             ORMI_THROW(OperationError, "State updates require a realized leaf destination and a value.");
         }
+
         if (destination->shape() != replacement->shape()) {
             ORMI_THROW(ShapeError, "State update shapes must match.");
         }
+
         if (destination->dtype() != replacement->dtype()) {
             ORMI_THROW(DTypeError, "State update dtypes must match.");
         }
+
         if (!destination->is_contiguous() || !replacement->is_contiguous()) {
             ORMI_THROW(OperationError, "State updates require contiguous storage.");
         }

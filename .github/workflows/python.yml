@@ -1,0 +1,181 @@
+name: Python
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/**"
+      - ".github/scripts/**"
+      - ".github/tests/**"
+      - "pyproject.toml"
+      - "pytest.ini"
+      - "conftest.py"
+      - "uv.lock"
+      - "ormi/**/*.py"
+      - "ormi/**/*.pyi"
+      - "ormi/**/py.typed"
+      - "ormi/pyproject.toml"
+      - "ormi/pyrightconfig.json"
+      - "ormi-core/CMakeLists.txt"
+      - "ormi-core/CMakePresets.json"
+      - "ormi-core/pyproject.toml"
+      - "ormi-core/csrc/**"
+      - "ormi-core/src/**"
+      - "ormi-core/tests/**"
+      - "ormi-core/release-tests/**"
+      - "ormi-core/benchmarks/frameworks/**/*.py"
+      - "ormi-cuda/pyproject.toml"
+      - "ormi-cuda/src/**"
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - ".github/scripts/**"
+      - ".github/tests/**"
+      - "pyproject.toml"
+      - "pytest.ini"
+      - "conftest.py"
+      - "uv.lock"
+      - "ormi/**/*.py"
+      - "ormi/**/*.pyi"
+      - "ormi/**/py.typed"
+      - "ormi/pyproject.toml"
+      - "ormi/pyrightconfig.json"
+      - "ormi-core/CMakeLists.txt"
+      - "ormi-core/CMakePresets.json"
+      - "ormi-core/pyproject.toml"
+      - "ormi-core/csrc/**"
+      - "ormi-core/src/**"
+      - "ormi-core/tests/**"
+      - "ormi-core/release-tests/**"
+      - "ormi-core/benchmarks/frameworks/**/*.py"
+      - "ormi-cuda/pyproject.toml"
+      - "ormi-cuda/src/**"
+  workflow_dispatch:
+
+concurrency:
+  group: python-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Python 3.12 / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    env:
+      UV_PYTHON: "3.12"
+      CMAKE_GENERATOR: Ninja
+      CMAKE_BUILD_PARALLEL_LEVEL: "2"
+      ORMI_WHEEL_EXPECT_CUDA: "0"
+      ORMI_CPU_JIT_CACHE_DIR: ${{ github.workspace }}/build-python-jit
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        id: python
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.11.8"
+          enable-cache: true
+          cache-dependency-glob: |
+            uv.lock
+            pyproject.toml
+            ormi/pyproject.toml
+            ormi-core/pyproject.toml
+            ormi-cuda/pyproject.toml
+
+      - name: Setup MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install locked dependencies and Python API
+        run: uv sync --locked --dev --no-editable --no-install-package ormi-core --reinstall-package ormi
+
+      - name: Check configuration
+        run: uv run --no-sync python -m pytest --noconftest --import-mode=importlib .github/tests -q -p no:cacheprovider
+
+      - name: Check package versions
+        id: versions
+        run: uv run --no-sync python .github/scripts/check_versions.py
+
+      - name: Cache core wheel
+        id: core-wheel
+        uses: actions/cache@v5
+        with:
+          path: build-python-wheels
+          key: >-
+            core-wheel-${{ runner.os }}-${{ runner.arch }}-${{ steps.python.outputs.python-version }}-${{
+            hashFiles('ormi-core/pyproject.toml', 'ormi-core/CMakeLists.txt',
+            'ormi-core/CMakePresets.json', 'ormi-core/csrc/**', 'ormi-core/src/**',
+            'ormi-core/README.md', 'ormi-core/LICENSE', 'ormi-core/THIRD_PARTY_NOTICES.md',
+            '.github/workflows/python.yml') }}
+
+      - name: Build CPU core wheel
+        if: steps.core-wheel.outputs.cache-hit != 'true'
+        run: >-
+          uv build --wheel --package ormi-core --out-dir build-python-wheels
+          --config-setting "cmake.define.ORMI_ENABLE_CUDA=OFF"
+          --config-setting "cmake.define.ORMI_ENABLE_OPENBLAS=OFF"
+          --config-setting "cmake.define.ORMI_ENABLE_SLEEF=OFF"
+          --config-setting "cmake.define.ORMI_BUILD_TESTS=OFF"
+          --config-setting "cmake.define.ORMI_BUILD_BENCHMARKS=OFF"
+          --config-setting "cmake.define.ORMI_BUILD_EXAMPLES=OFF"
+
+      - name: Install built core
+        run: uv pip install --no-index --no-deps --find-links build-python-wheels ormi-core
+
+      - name: Check dependencies
+        run: uv pip check
+
+      - name: Resolve Windows JIT compiler
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $compiler = Get-Command cl.exe -ErrorAction Stop
+          "ORMI_CPU_JIT_CXX=$($compiler.Source)" | Out-File $env:GITHUB_ENV -Append
+          "ORMI_CPU_JIT_CXX_ID=msvc" | Out-File $env:GITHUB_ENV -Append
+
+      - name: Resolve Linux JIT compiler
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          compiler=$(command -v g++)
+          echo "ORMI_CPU_JIT_CXX=$compiler" >> "$GITHUB_ENV"
+          echo "ORMI_CPU_JIT_CXX_ID=gcc" >> "$GITHUB_ENV"
+
+      - name: Test Python core and API
+        run: >-
+          uv run --no-sync python -m pytest
+          ormi-core/tests ormi/tests ormi-core/benchmarks/frameworks/tests
+          -q -p no:cacheprovider
+
+      - name: Test installed CPU packages without a compiler
+        env:
+          ORMI_RELEASE_VERSION: ${{ steps.versions.outputs.version }}
+          ORMI_CPU_JIT_CXX: ormi-compiler-does-not-exist
+          ORMI_CPU_JIT_CXX_ID: gcc
+          ORMI_CPU_JIT_CACHE_DIR: ${{ github.workspace }}/build-python-fallback-jit
+        run: >-
+          uv run --no-sync python -m pytest
+          ormi-core/release-tests/test_cpu.py
+          ormi-core/release-tests/test_packages.py::test_core_install_is_cpu_only
+          ormi/release-tests -q -p no:cacheprovider
+
+      - name: Test installed CPU JIT
+        env:
+          ORMI_RELEASE_VERSION: ${{ steps.versions.outputs.version }}
+          ORMI_CPU_JIT_CACHE_DIR: ${{ github.workspace }}/build-python-release-jit
+        run: >-
+          uv run --no-sync python -m pytest
+          ormi-core/release-tests/test_jit.py ormi/release-tests
+          -q -p no:cacheprovider

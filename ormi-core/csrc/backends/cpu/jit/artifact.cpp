@@ -44,6 +44,7 @@ namespace ormi::backends::cpu::jit::artifact {
             auto library = std::make_shared<platform::Library>(path);
             std::vector<std::shared_ptr<Compiled>> result;
             result.reserve(kernels.size());
+
             for (std::size_t i = 0; i < kernels.size(); ++i) {
                 const auto kernel = kernels[i];
                 auto function = reinterpret_cast<Function>(
@@ -61,6 +62,7 @@ namespace ormi::backends::cpu::jit::artifact {
                     kernel.partial
                 }));
             }
+
             return result;
         }
 
@@ -72,9 +74,11 @@ namespace ormi::backends::cpu::jit::artifact {
             const auto identity = context(functions);
             {
                 auto value = cache::find(source, identity);
+
                 if (!value) {
                     return {};
                 }
+
                 try {
                     return load(value->library, kernels, functions);
                 } catch (const jitError&) {
@@ -92,6 +96,7 @@ namespace ormi::backends::cpu::jit::artifact {
             const auto direct = selected_target().avx2
                 ? math(MathABI::direct)
                 : Math{};
+
             if (direct.functions) {
                 if (auto result = cached(source, kernels, direct); !result.empty()) {
                     return result;
@@ -101,6 +106,7 @@ namespace ormi::backends::cpu::jit::artifact {
             const auto buffered = selected_target().avx2
                 ? math(MathABI::buffered)
                 : Math{};
+
             if (buffered.functions) {
                 if (auto result = cached(source, kernels, buffered); !result.empty()) {
                     return result;
@@ -127,6 +133,7 @@ namespace ormi::backends::cpu::jit::artifact {
         if (kernels.empty()) {
             ORMI_THROW(OperationError, "Cannot load an empty CPU JIT artifact.");
         }
+
         if (auto result = find(source, kernels); !result.empty()) {
             return result;
         }
@@ -135,6 +142,7 @@ namespace ormi::backends::cpu::jit::artifact {
         const auto identity = context(functions);
         {
             auto value = cache::get(source, identity, build_source);
+
             try {
                 return load(value.library, kernels, functions);
             } catch (const jitError&) {

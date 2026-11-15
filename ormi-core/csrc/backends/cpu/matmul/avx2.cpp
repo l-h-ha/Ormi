@@ -44,6 +44,7 @@ namespace ormi::backends::cpu::avx2 {
         const auto inner_block = lhs_bytes >= column_lhs_block_threshold_bytes
             ? column_lhs_inner_block
             : inner;
+
         // Sweep every output-column panel while one LHS block remains hot.
         for (
             std::size_t k_begin = 0;
@@ -319,6 +320,7 @@ namespace ormi::backends::cpu::avx2 {
             sum0 = _mm256_add_ps(sum0, sum2);
             sum1 = _mm256_add_ps(sum1, sum3);
             sum0 = _mm256_add_ps(sum0, sum1);
+
             for (; k + 8 <= inner; k += 8) {
                 sum0 = _mm256_fmadd_ps(
                     _mm256_loadu_ps(lhs_row + k),
@@ -328,9 +330,11 @@ namespace ormi::backends::cpu::avx2 {
             }
 
             auto total = horizontal_sum(sum0);
+
             for (; k < inner; ++k) {
                 total += lhs_row[k] * rhs[k];
             }
+
             out[row * static_cast<std::size_t>(out_row_stride)] = total;
         }
     }

@@ -18,9 +18,11 @@ namespace {
         void SetUp() override {
             int devices = 0;
             const auto status = cudaGetDeviceCount(&devices);
+
             if (status != cudaSuccess) {
                 GTEST_SKIP() << cudaGetErrorString(status);
             }
+
             if (devices == 0) {
                 GTEST_SKIP() << "No CUDA device is available.";
             }
@@ -46,6 +48,7 @@ namespace {
         const auto output = ormi::core::ops::full({}, 3.0f, device);
         output->realize();
         const auto stream = ormi::backends::cuda::stream(device);
+
         ASSERT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
         const auto& recording = ormi::core::runtime::backend(device).recording;
 
@@ -59,6 +62,7 @@ namespace {
         );
 
         cudaStreamCaptureStatus status{};
+
         ASSERT_EQ(cudaStreamIsCapturing(stream, &status), cudaSuccess);
         EXPECT_EQ(status, cudaStreamCaptureStatusNone);
 
@@ -69,12 +73,14 @@ namespace {
             }, output.get()),
             recording.release
         );
+
         ASSERT_NE(next, nullptr);
         recording.replay(next.get());
         float value = 3.0f;
         ormi::core::memory::copy(
             &value, ormi::core::Device::cpu(), output->data(), device, sizeof(value)
         );
+
         EXPECT_FLOAT_EQ(value, 0.0f);
     }
 }

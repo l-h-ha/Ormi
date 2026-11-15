@@ -22,8 +22,9 @@ namespace ormi::core {
 }
 
 namespace ormi::core::runtime {
-    // Bump when the table layout or a callback signature changes. Plugins must match exactly.
-    inline constexpr std::uint32_t backend_abi = 18;
+    // Bump for table layout, public attribute types, or callback signature changes.
+    // Plugins must match exactly.
+    inline constexpr std::uint32_t backend_abi = 20;
 
     using AllocatorFn = memory::Allocator* (*)(Device);
     using SyncFn = void (*)(Device);
@@ -40,7 +41,7 @@ namespace ormi::core::runtime {
     );
     using DirectCopyFn =
         bool (*)(Device dst_device, void* dst, Device src_device, const void* src, std::size_t bytes);
-    // Same-device copy that may return before completion. Keep both allocations alive until it completes.
+    // Same-device copy may return before completion. Keep both allocations alive until then.
     using CopyAsyncFn = void (*)(Device device, void* dst, const void* src, std::size_t bytes);
     using FillFn = void (*)(Device device, void* dst, unsigned char value, std::size_t bytes);
     using FillScalarFn =
@@ -138,6 +139,8 @@ namespace ormi::core::runtime {
         PrepareFusionFn prepare;
         PrepareFusionsFn prepare_many;
         FusionFn execute;
+        // Zero leaves kernel size unrestricted.
+        std::size_t max_operations = 0;
     };
 
     // record calls the host body once. replay runs only the captured device work.

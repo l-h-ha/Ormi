@@ -89,12 +89,14 @@ namespace {
 
         std::vector<ormi::core::Tensor*> roots{result.loss.get()};
         roots.reserve(1 + result.gradients.size());
+
         for (const auto& gradient : result.gradients) {
             roots.push_back(gradient.get());
         }
 
         const auto candidates = ormi::core::runtime::fusion::find_candidates(roots);
         std::unordered_set<const ormi::core::Tensor*> completed;
+
         for (auto* root : roots) {
             ormi::core::runtime::schedule::append(
                 *root,
@@ -103,6 +105,7 @@ namespace {
                 candidates
             );
         }
+
         ormi::core::runtime::prepare(result.steps);
         return result;
     }
@@ -114,9 +117,11 @@ namespace {
     double median(std::vector<double> samples) {
         std::sort(samples.begin(), samples.end());
         const auto middle = samples.size() / 2;
+
         if (samples.size() % 2 != 0) {
             return samples[middle];
         }
+
         return (samples[middle - 1] + samples[middle]) * 0.5;
     }
 
@@ -126,9 +131,11 @@ namespace {
     ) {
         std::ostringstream name;
         name << "step_";
+
         if (index < 10) {
             name << '0';
         }
+
         name << index << '_' << step.output().op()->name << "_ms";
         return name.str();
     }
@@ -137,17 +144,21 @@ namespace {
         const std::vector<ormi::core::runtime::Step>& steps
     ) {
         std::ostringstream labels;
+
         for (std::size_t index = 0; index < steps.size(); ++index) {
             if (index != 0) {
                 labels << "; ";
             }
+
             const auto& step = steps[index];
             labels << index << '=' << step.output().op()->name
                 << step.output().shape();
+
             if (step.output_count() != 1) {
                 labels << " outputs=" << step.output_count();
             }
         }
+
         return labels.str();
     }
 
@@ -163,21 +174,26 @@ namespace {
         std::vector<double> iteration(scheduled.steps.size());
         std::vector<double> totals;
         std::vector<double> gaps;
+
         for (auto _ : state) {
             const auto total_start = Clock::now();
+
             for (std::size_t index = 0; index < scheduled.steps.size(); ++index) {
                 const auto start = Clock::now();
                 scheduled.steps[index].run();
                 const auto end = Clock::now();
                 iteration[index] = milliseconds(end - start);
             }
+
             const auto total = milliseconds(Clock::now() - total_start);
 
             double accounted = 0.0;
+
             for (std::size_t index = 0; index < samples.size(); ++index) {
                 samples[index].push_back(iteration[index]);
                 accounted += iteration[index];
             }
+
             totals.push_back(total);
             gaps.push_back(total - accounted);
             benchmark::DoNotOptimize(scheduled.loss->data());
@@ -187,6 +203,7 @@ namespace {
             const auto value = median(std::move(samples[index]));
             state.counters[step_name(index, scheduled.steps[index])] = value;
         }
+
         const auto total = median(std::move(totals));
         state.counters["profile_total_ms"] = total;
         state.counters["profile_gap_ms"] = median(std::move(gaps));

@@ -181,7 +181,7 @@ wheels = [
 
 [[package]]
 name = "ormi"
-version = "0.1.0a7"
+version = "0.1.0a8"
 source = { editable = "ormi" }
 dependencies = [
     { name = "ormi-core" },
@@ -203,7 +203,7 @@ provides-extras = ["cuda", "examples"]
 
 [[package]]
 name = "ormi-core"
-version = "0.1.0a7"
+version = "0.1.0a8"
 source = { editable = "ormi-core" }
 dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -224,7 +224,7 @@ provides-extras = ["cuda"]
 
 [[package]]
 name = "ormi-cuda"
-version = "0.1.0a7"
+version = "0.1.0a8"
 source = { editable = "ormi-cuda" }
 dependencies = [
     { name = "ormi-core" },

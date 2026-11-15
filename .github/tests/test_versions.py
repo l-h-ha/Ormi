@@ -41,7 +41,7 @@ def test_matching_versions_and_tag(tmp_path, projects):
 
 @pytest.mark.parametrize("package", ["ormi", "ormi-core", "ormi-cuda"])
 def test_rejects_mismatched_versions(tmp_path, projects, package):
-    projects[package]["version"] = "0.1.0a7"
+    projects[package]["version"] = "0.1.0a8"
     write_projects(tmp_path, projects)
 
     with pytest.raises(ValueError, match="version"):

@@ -38,11 +38,13 @@ namespace ormi::nn {
             std::string_view reduction
         ) {
             detail::check_reduction(reduction);
+
             if (reduction == "none") {
                 return loss;
             }
 
             const auto total = sum(loss);
+
             if (reduction == "sum") {
                 return total;
             }
@@ -65,6 +67,7 @@ namespace ormi::nn {
         const auto [values, targets] = detail::loss_inputs(prediction, target);
         double smallest_probability = std::numeric_limits<float>::min();
         double largest_probability = std::nextafter(1.0f, 0.0f);
+
         if (values->dtype() == core::DType::float64) {
             smallest_probability = std::numeric_limits<double>::min();
             largest_probability = std::nextafter(1.0, 0.0);
@@ -93,14 +96,18 @@ namespace ormi::nn {
         const auto [values, targets] = detail::loss_inputs(logits, target);
         const auto positive_penalty = core::ops::softplus(neg(values));
         auto positive_loss = mul(targets, positive_penalty);
+
         if (pos_weight) {
             const auto weight = detail::floating(pos_weight);
+
             if (weight->device() != values->device()) {
                 ORMI_THROW(DeviceError, "BCE pos_weight must use the logits device.");
             }
+
             if (core::broadcast(weight->shape(), values->shape()) != values->shape()) {
                 ORMI_THROW(ShapeError, "BCE pos_weight must broadcast to the logits shape.");
             }
+
             positive_loss = mul(positive_loss, cast(weight, values->dtype()));
         }
 
@@ -120,9 +127,11 @@ namespace ormi::nn {
         std::int32_t ignore_index
     ) {
         const auto value = detail::floating(log_probabilities);
+
         if (!target) {
             ORMI_THROW(OperationError, "NLL requires target indices.");
         }
+
         axis = detail::axis(*value, axis);
 
         const auto selected = pick(value, target, axis, ignore_index);
@@ -143,13 +152,17 @@ namespace ormi::nn {
         if (!std::isfinite(label_smoothing) || label_smoothing < 0 || label_smoothing > 1) {
             ORMI_THROW(OperationError, "Label smoothing must be between 0 and 1.");
         }
+
         const auto value = detail::floating(logits);
+
         if (!target) {
             ORMI_THROW(OperationError, "Cross entropy requires a target tensor.");
         }
+
         axis = detail::axis(*value, axis);
 
         const auto log_probabilities = nn::log_softmax(value, axis);
+
         if (core::is_floating(target->dtype())) {
             const auto [log_values, targets] = detail::loss_inputs(log_probabilities, target);
             auto distribution = targets;

@@ -38,6 +38,7 @@ namespace {
                 auto& counts = static_cast<State*>(state)->counts;
                 ++counts.runs;
                 counts.output = &output;
+
                 if (counts.fail) {
                     ORMI_THROW(ormi::OperationError, "Prepared execution failed.");
                 }
@@ -67,11 +68,14 @@ namespace {
         Counts counts;
         {
             const auto setup = prepare(counts);
+
             EXPECT_TRUE(setup);
             EXPECT_EQ(setup.buffers(), 2);
             EXPECT_EQ(setup.bytes(), 64);
         }
+
         EXPECT_EQ(counts.runs, 0);
+
         EXPECT_EQ(counts.drops, 1);
     }
 
@@ -81,11 +85,13 @@ namespace {
             auto original = prepare(counts);
             const auto moved = std::move(original);
             expect_empty(original);
+
             EXPECT_TRUE(moved);
             EXPECT_EQ(moved.buffers(), 2);
             EXPECT_EQ(moved.bytes(), 64);
             EXPECT_EQ(counts.drops, 0);
         }
+
         EXPECT_EQ(counts.drops, 1);
     }
 
@@ -97,13 +103,16 @@ namespace {
             auto source = prepare(next);
             destination = std::move(source);
             expect_empty(source);
+
             EXPECT_TRUE(destination);
             EXPECT_EQ(destination.buffers(), 2);
             EXPECT_EQ(destination.bytes(), 64);
             EXPECT_EQ(previous.drops, 1);
             EXPECT_EQ(next.drops, 0);
         }
+
         EXPECT_EQ(previous.drops, 1);
+
         EXPECT_EQ(next.drops, 1);
     }
 
@@ -113,8 +122,10 @@ namespace {
             auto setup = prepare(counts);
             setup = {};
             expect_empty(setup);
+
             EXPECT_EQ(counts.drops, 1);
         }
+
         EXPECT_EQ(counts.drops, 1);
     }
 
@@ -124,11 +135,13 @@ namespace {
             auto setup = prepare(counts);
             auto& same = setup;
             setup = std::move(same);
+
             EXPECT_TRUE(setup);
             EXPECT_EQ(setup.buffers(), 2);
             EXPECT_EQ(setup.bytes(), 64);
             EXPECT_EQ(counts.drops, 0);
         }
+
         EXPECT_EQ(counts.drops, 1);
     }
 
@@ -139,10 +152,12 @@ namespace {
             const auto setup = prepare(counts);
             setup.run(output);
             setup.run(output);
+
             EXPECT_EQ(counts.runs, 2);
             EXPECT_EQ(counts.output, &output);
             EXPECT_EQ(counts.drops, 0);
         }
+
         EXPECT_EQ(counts.drops, 1);
     }
 
@@ -152,13 +167,16 @@ namespace {
         {
             const auto setup = prepare(counts);
             counts.fail = true;
+
             EXPECT_THROW(setup.run(output), ormi::OperationError);
             EXPECT_TRUE(setup);
             EXPECT_EQ(counts.drops, 0);
             counts.fail = false;
             setup.run(output);
+
             EXPECT_EQ(counts.runs, 2);
         }
+
         EXPECT_EQ(counts.drops, 1);
     }
 }

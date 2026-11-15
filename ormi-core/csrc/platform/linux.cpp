@@ -39,11 +39,13 @@ namespace ormi::platform {
         }
 
         const char* path = std::getenv("PATH");
+
         if (!path) {
             return std::nullopt;
         }
 
         std::string_view remaining(path);
+
         while (true) {
             const auto separator = remaining.find(':');
             const auto directory = remaining.substr(0, separator);
@@ -58,6 +60,7 @@ namespace ormi::platform {
             if (separator == std::string_view::npos) {
                 break;
             }
+
             remaining.remove_prefix(separator + 1);
         }
 
@@ -70,14 +73,17 @@ namespace ormi::platform {
     FileLock::FileLock(const std::filesystem::path& path, Lock mode, Open policy) {
         const auto flags = policy == Open::create ? O_CREAT | O_RDWR : O_RDWR;
         const auto handle = open(path.c_str(), flags, 0600);
+
         if (handle < 0) {
             if (policy == Open::existing && errno == ENOENT) {
                 return;
             }
+
             ORMI_THROW(jitError, "Cannot open cache lock: " + path.string());
         }
 
         const auto operation = mode == Lock::exclusive ? LOCK_EX : LOCK_SH;
+
         while (flock(handle, operation) != 0) {
             if (errno != EINTR) {
                 close(handle);
@@ -87,6 +93,7 @@ namespace ormi::platform {
                 );
             }
         }
+
         handle_ = handle;
     }
 
@@ -123,11 +130,13 @@ namespace ormi::platform {
                 return std::filesystem::path(configured) / "ormi";
             }
         }
+
         if (const char* home = std::getenv("HOME")) {
             if (*home) {
                 return std::filesystem::path(home) / ".cache" / "ormi";
             }
         }
+
         return std::filesystem::temp_directory_path() / "ormi-cache";
     }
 
@@ -166,6 +175,7 @@ namespace ormi::platform {
     std::size_t cpu_cores() {
         cpu_set_t allowed;
         CPU_ZERO(&allowed);
+
         if (sched_getaffinity(0, sizeof(allowed), &allowed) != 0) {
             return std::max<std::size_t>(
                 std::thread::hardware_concurrency(),
@@ -174,6 +184,7 @@ namespace ormi::platform {
         }
 
         std::set<std::pair<int, int>> cores;
+
         for (int cpu = 0; cpu < CPU_SETSIZE; ++cpu) {
             if (!CPU_ISSET(cpu, &allowed)) {
                 continue;
@@ -187,6 +198,7 @@ namespace ormi::platform {
             std::ifstream core_file(topology / "core_id");
             int package = 0;
             int core = 0;
+
             if (package_file >> package && core_file >> core) {
                 cores.emplace(package, core);
             }
@@ -195,6 +207,7 @@ namespace ormi::platform {
         if (!cores.empty()) {
             return cores.size();
         }
+
         return std::max<std::size_t>(
             std::thread::hardware_concurrency(),
             1

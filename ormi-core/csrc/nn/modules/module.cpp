@@ -15,24 +15,29 @@ namespace ormi::nn {
         if (name.empty()) {
             name = std::move(fallback);
         }
+
         if (name.find_first_of(".\\/") != std::string::npos || name.find('\0') != std::string::npos) {
             ORMI_THROW(OperationError, "Module names cannot contain '.', '/', '\\\\', or null bytes.");
         }
+
         for (const auto& entry : parameters_) {
             if (entry.first == name) {
                 ORMI_THROW(OperationError, "A module registration name is already in use: " + name);
             }
         }
+
         for (const auto& entry : buffers_) {
             if (entry.first == name) {
                 ORMI_THROW(OperationError, "A module registration name is already in use: " + name);
             }
         }
+
         for (const auto& child_name : child_names_) {
             if (child_name == name) {
                 ORMI_THROW(OperationError, "A module registration name is already in use: " + name);
             }
         }
+
         return name;
     }
 
@@ -80,6 +85,7 @@ namespace ormi::nn {
 
         name = registration_name(std::move(name), std::to_string(children_.size()));
         child_names_.push_back(std::move(name));
+
         try {
             children_.push_back(std::move(module));
         } catch (...) {
@@ -92,6 +98,7 @@ namespace ormi::nn {
         if (!buffer || buffer->op() || !buffer->realized()) {
             ORMI_THROW(OperationError, "A module buffer must be a realized leaf tensor.");
         }
+
         name = registration_name(std::move(name), "buffer_" + std::to_string(buffers_.size()));
         buffers_.emplace_back(std::move(name), std::move(buffer));
     }
@@ -105,32 +112,41 @@ namespace ormi::nn {
         while (!pending.empty()) {
             const auto* current = pending.back();
             pending.pop_back();
+
             if (!visited_modules.insert(current).second) {
                 continue;
             }
+
             for (const auto& entry : current->buffers_) {
                 const auto& buffer = entry.second;
+
                 if (visited_buffers.insert(buffer.get()).second) {
                     result.push_back(buffer);
                 }
             }
+
             for (auto child = current->children_.rbegin(); child != current->children_.rend(); ++child) {
                 pending.push_back(child->get());
             }
         }
+
         return result;
     }
 
     void Module::train(bool mode) {
         std::vector<Module*> pending{this};
         std::unordered_set<Module*> visited;
+
         while (!pending.empty()) {
             auto* current = pending.back();
             pending.pop_back();
+
             if (!visited.insert(current).second) {
                 continue;
             }
+
             current->training_ = mode;
+
             for (const auto& child : current->children_) {
                 pending.push_back(child.get());
             }
@@ -161,6 +177,7 @@ namespace ormi::nn {
 
             for (const auto& entry : current->parameters_) {
                 const auto& parameter = entry.second;
+
                 if (visited_parameters.insert(parameter.get()).second) {
                     result.push_back(parameter);
                 }
@@ -182,15 +199,19 @@ namespace ormi::nn {
     std::map<std::string, std::shared_ptr<core::Tensor>> Module::state() const {
         std::map<std::string, std::shared_ptr<core::Tensor>> result;
         std::vector<std::pair<std::string, const Module*>> pending{{"", this}};
+
         while (!pending.empty()) {
             auto [prefix, current] = std::move(pending.back());
             pending.pop_back();
+
             for (const auto& [name, tensor] : current->parameters_) {
                 result.emplace(prefix + name, tensor);
             }
+
             for (const auto& [name, tensor] : current->buffers_) {
                 result.emplace(prefix + name, tensor);
             }
+
             for (std::size_t i = current->children_.size(); i > 0; --i) {
                 pending.emplace_back(
                     prefix + current->child_names_[i - 1] + ".",
@@ -198,6 +219,7 @@ namespace ormi::nn {
                 );
             }
         }
+
         return result;
     }
 }

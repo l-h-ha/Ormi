@@ -72,12 +72,10 @@ def save(model: Module, path: str | os.PathLike[str]) -> None:
     Parameters
     ----------
     model : Module
-        Model whose registered state will be saved. State tensors must be
-        contiguous. Shared tensors are stored once.
+        Model with contiguous registered state. Shared tensors are stored once.
     path : str or os.PathLike[str]
-        Destination file. The parent directory must exist. An existing file
-        is replaced only after the new archive has been written successfully.
-        No filename extension is added.
+        Destination file with an existing parent directory. Replaced only after
+        a successful write. No filename extension is added.
 
     Raises
     ------
@@ -90,12 +88,11 @@ def save(model: Module, path: str | os.PathLike[str]) -> None:
 
     Notes
     -----
-    The file contains NumPy arrays and JSON metadata, without pickle.
-    GPU data is copied to the CPU. Do not change model state
-    while saving.
+    Files contain NumPy arrays and JSON metadata without pickle. GPU data is
+    copied to CPU. Do not change model state while saving.
 
     Model structure, training mode, optimizer and random-generator state,
-    graphs, and Plans are not saved. Create the model before loading.
+    graphs, and Plans are omitted. Create the model before loading.
     """
 
     if not isinstance(model, Module):
@@ -153,13 +150,13 @@ def _write_archive(destination: Path, arrays: dict[str, np.ndarray]) -> None:
                 pass
 
 def load(model: Module, path: str | os.PathLike[str]) -> None:
-    """Check saved state, then copy it into the model's existing tensors.
+    """Validate saved state, then copy it into existing model tensors.
 
     Parameters
     ----------
     model : Module
-        Existing model with matching state names, shapes, dtypes, and shared
-        tensors. Registered state tensors must be contiguous.
+        Model with matching state names, shapes, dtypes, and tensor sharing.
+        Registered state must be contiguous.
     path : str or os.PathLike[str]
         Archive previously written by ``save``.
 
@@ -174,13 +171,13 @@ def load(model: Module, path: str | os.PathLike[str]) -> None:
 
     Notes
     -----
-    All arrays are checked before copying. Loading updates tensor values in
-    place, preserving the Tensor objects and their storage. Copies add no
-    gradient relationship. Rerun the Plan or replay to refresh computed outputs.
+    All arrays are checked before copying. Loading preserves Tensor objects
+    and storage, adding no gradient dependencies. Rerun the Plan or replay to
+    refresh outputs.
 
     Model structure, training mode, optimizer and random-generator state,
     graphs, and Plans are not restored. Do not run or modify the model while
-    loading. If a device copy fails, earlier copies are not undone.
+    loading. Copy failures do not undo earlier copies.
     """
 
     if not isinstance(model, Module):

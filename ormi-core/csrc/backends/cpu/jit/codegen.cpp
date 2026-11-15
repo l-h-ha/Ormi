@@ -89,6 +89,7 @@ namespace ormi::backends::cpu::jit {
                 const auto type = codegen::storage_type(
                     expression.nodes[output].dtype
                 );
+
                 if (loop.vectorized && !loop.partial) {
                     source
                         << "    auto* ORMI_RESTRICT output" << i + 1
@@ -191,11 +192,13 @@ namespace ormi::backends::cpu::jit {
             emit_signature(source, expression, loop, symbol);
 
             codegen::Code code{source, expression, loop};
+
             if (expression.reduction) {
                 codegen::emit_reduction(code);
             } else {
                 codegen::emit_map(code);
             }
+
             source << "}\n";
         }
     }
@@ -215,12 +218,15 @@ namespace ormi::backends::cpu::jit {
             uses_intrinsics(expression, loop, float16),
             loop.vectorized
         );
+
         if (float16) {
             codegen::emit_float16_support(source);
         }
+
         if (loop.math) {
             codegen::emit_math_support(source);
         }
+
         emit_kernel(source, expression, loop, "ormi_kernel");
         return source.str();
     }
@@ -241,10 +247,12 @@ namespace ormi::backends::cpu::jit {
         bool intrinsics = false;
         bool math = false;
         bool vectorized = false;
+
         for (std::size_t i = 0; i < expressions.size(); ++i) {
             if (!expressions[i]) {
                 ORMI_THROW(OperationError, "CPU JIT batch contains a null expression.");
             }
+
             validate(*expressions[i]);
             const bool expression_float16 =
                 codegen::uses_float16(*expressions[i]);
@@ -268,12 +276,15 @@ namespace ormi::backends::cpu::jit {
             intrinsics,
             vectorized
         );
+
         if (float16) {
             codegen::emit_float16_support(source);
         }
+
         if (math) {
             codegen::emit_math_support(source);
         }
+
         for (std::size_t i = 0; i < expressions.size(); ++i) {
             emit_kernel(
                 source,
@@ -282,6 +293,7 @@ namespace ormi::backends::cpu::jit {
                 "ormi_kernel_" + std::to_string(i)
             );
         }
+
         return source.str();
     }
 

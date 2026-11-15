@@ -7,7 +7,15 @@ from typing import Any, ClassVar, overload
 
 from . import DType, Device, Tensor, Replay, Plan, Autocast
 
-__all__ = ['full', 'zeros', 'ones', 'zeros_like', 'ones_like', 'add', 'sub', 'mul', 'div', 'neg', 'exp', 'log', 'sin', 'cos', 'rsqrt', 'caputo', 'matmul', 'sum', 'mean', 'all_finite', 'reshape', 'transpose', 'expand', 'cast']
+__all__ = ['slice', 'concat', 'full', 'zeros', 'ones', 'zeros_like', 'ones_like', 'add', 'sub', 'mul', 'div', 'neg', 'exp', 'log', 'sin', 'cos', 'rsqrt', 'caputo', 'matmul', 'sum', 'mean', 'all_finite', 'reshape', 'transpose', 'expand', 'cast']
+
+###
+###
+###
+
+def slice(input: Tensor, axis: int, start: int, length: int, step: int = 1) -> Tensor: ...
+
+def concat(inputs: Sequence[Tensor], axis: int = 0) -> Tensor: ...
 
 def full(shape: Sequence[int], value: Any, dtype: DType = DType.float32, device: Device | str | None = 'cpu') -> Tensor: ...
 

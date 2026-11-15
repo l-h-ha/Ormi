@@ -48,6 +48,7 @@ namespace ormi::backends::cuda {
             "cudaStreamCreateWithFlags"
         );
         const auto cublas_status = cublasCreate(&cublas_);
+
         if (cublas_status != CUBLAS_STATUS_SUCCESS) {
             (void)cudaStreamDestroy(stream_);
             stream_ = nullptr;
@@ -55,6 +56,7 @@ namespace ormi::backends::cuda {
         }
 
         const auto stream_status = cublasSetStream(cublas_, stream_);
+
         if (stream_status != CUBLAS_STATUS_SUCCESS) {
             (void)cublasDestroy(cublas_);
             (void)cudaStreamDestroy(stream_);

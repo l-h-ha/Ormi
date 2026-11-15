@@ -47,6 +47,7 @@ namespace ormi::backends::cpu::jit::compatibility {
                 for (const auto& variable : compiler.environment) {
                     result += "\n" + variable;
                 }
+
                 return result;
             }
 
@@ -62,14 +63,17 @@ namespace ormi::backends::cpu::jit::compatibility {
                 "SDKROOT",
                 "MACOSX_DEPLOYMENT_TARGET"
             };
+
             for (const auto* name : inherited) {
                 result += "\n";
                 result += name;
                 result += "=";
+
                 if (const char* value = std::getenv(name)) {
                     result += value;
                 }
             }
+
             return result;
         }
 
@@ -79,6 +83,7 @@ namespace ormi::backends::cpu::jit::compatibility {
         ) {
             std::error_code error;
             const auto size = std::filesystem::file_size(marker, error);
+
             if (error || size != expected.size()) {
                 return false;
             }
@@ -95,6 +100,7 @@ namespace ormi::backends::cpu::jit::compatibility {
         ) {
             std::error_code error;
             const auto size = std::filesystem::file_size(marker, error);
+
             if (error || size <= expected.size()) {
                 return std::nullopt;
             }
@@ -103,6 +109,7 @@ namespace ormi::backends::cpu::jit::compatibility {
             std::string stored(static_cast<std::size_t>(size), '\0');
             file.read(stored.data(), static_cast<std::streamsize>(stored.size()));
             const auto separator = expected.size();
+
             if (
                 !file ||
                 stored.compare(0, separator, expected) != 0 ||
@@ -110,6 +117,7 @@ namespace ormi::backends::cpu::jit::compatibility {
             ) {
                 return std::nullopt;
             }
+
             return stored.substr(separator + 1);
         }
 
@@ -119,6 +127,7 @@ namespace ormi::backends::cpu::jit::compatibility {
         ) {
             std::ofstream file(marker, std::ios::binary | std::ios::trunc);
             file.write(value.data(), static_cast<std::streamsize>(value.size()));
+
             if (!file) {
                 ORMI_THROW(
                     jitError,
@@ -141,6 +150,7 @@ namespace ormi::backends::cpu::jit::compatibility {
         const auto probes = probe_directory();
         std::error_code error;
         std::filesystem::create_directories(probes, error);
+
         if (error) {
             ORMI_THROW(
                 jitError,
@@ -154,22 +164,27 @@ namespace ormi::backends::cpu::jit::compatibility {
         );
         const auto success_marker = probes / (fingerprint + ".ok");
         const auto failure_marker = probes / (fingerprint + ".fail");
+
         if (cached_success(success_marker, fingerprint)) {
             return std::nullopt;
         }
+
         if (auto reason = cached_failure(failure_marker, fingerprint)) {
             return reason;
         }
 
         platform::FileLock lock(probes / (fingerprint + ".lock"));
+
         if (cached_success(success_marker, fingerprint)) {
             return std::nullopt;
         }
+
         if (auto reason = cached_failure(failure_marker, fingerprint)) {
             return reason;
         }
 
         auto reason = probe(compiler, timeout);
+
         if (reason) {
             store_marker(failure_marker, fingerprint + "\n" + *reason);
             std::filesystem::remove(success_marker, error);
@@ -177,6 +192,7 @@ namespace ormi::backends::cpu::jit::compatibility {
             store_marker(success_marker, fingerprint);
             std::filesystem::remove(failure_marker, error);
         }
+
         return reason;
     }
 
@@ -184,18 +200,22 @@ namespace ormi::backends::cpu::jit::compatibility {
         const auto probes = probe_directory();
         std::error_code error;
         const auto status = std::filesystem::symlink_status(probes, error);
+
         if (error == std::errc::no_such_file_or_directory) {
             return;
         }
+
         if (error) {
             ORMI_THROW(
                 jitError,
                 "Cannot inspect the CPU JIT compiler cache: " + error.message()
             );
         }
+
         if (!std::filesystem::exists(status)) {
             return;
         }
+
         if (!std::filesystem::is_directory(status)) {
             ORMI_THROW(jitError, "CPU JIT compiler cache path is not a directory.");
         }
@@ -204,13 +224,17 @@ namespace ormi::backends::cpu::jit::compatibility {
         std::vector<std::filesystem::path> markers;
         std::filesystem::directory_iterator iterator(probes, error);
         const std::filesystem::directory_iterator end;
+
         while (!error && iterator != end) {
             const auto extension = iterator->path().extension();
+
             if (extension == ".ok" || extension == ".fail") {
                 markers.push_back(iterator->path());
             }
+
             iterator.increment(error);
         }
+
         if (error) {
             ORMI_THROW(
                 jitError,
@@ -220,6 +244,7 @@ namespace ormi::backends::cpu::jit::compatibility {
 
         for (const auto& marker : markers) {
             std::filesystem::remove(marker, error);
+
             if (error) {
                 ORMI_THROW(
                     jitError,

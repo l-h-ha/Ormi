@@ -24,6 +24,7 @@ namespace ormi::backends::cpu::jit::compatibility {
             ProbeSource() {
                 std::error_code error;
                 const auto temporary = std::filesystem::temp_directory_path(error);
+
                 if (error) {
                     ORMI_THROW(
                         jitError,
@@ -38,6 +39,7 @@ namespace ormi::backends::cpu::jit::compatibility {
                     std::to_string(source_index.fetch_add(1, std::memory_order_relaxed))
                 );
                 std::filesystem::create_directories(directory_, error);
+
                 if (error) {
                     ORMI_THROW(
                         jitError,
@@ -51,6 +53,7 @@ namespace ormi::backends::cpu::jit::compatibility {
                     source_text.data(),
                     static_cast<std::streamsize>(source_text.size())
                 );
+
                 if (!file) {
                     std::filesystem::remove_all(directory_, error);
                     ORMI_THROW(jitError, "Cannot write the CPU JIT compiler probe source.");
@@ -80,11 +83,13 @@ namespace ormi::backends::cpu::jit::compatibility {
             if (compiler.id == CXX::msvc || compiler.id == CXX::clang_cl) {
                 return {"/nologo", "/std:c++20", "/Zs", source.string()};
             }
+
             return {"-std=c++20", "-fsyntax-only", source.string()};
         }
 
         std::string failure_message(platform::Process result) {
             std::string reason;
+
             if (result.state == platform::Process::State::timed_out) {
                 reason = "probe timed out";
             } else if (result.state == platform::Process::State::crashed) {
@@ -94,13 +99,16 @@ namespace ormi::backends::cpu::jit::compatibility {
                 reason = "probe failed with exit code " +
                     std::to_string(result.code);
             }
+
             if (!result.output.empty()) {
                 if (result.output.size() > max_output) {
                     result.output.resize(max_output);
                     result.output += "\n[compiler output truncated]";
                 }
+
                 reason += "\n" + result.output;
             }
+
             return reason;
         }
     }
@@ -108,6 +116,7 @@ namespace ormi::backends::cpu::jit::compatibility {
     std::optional<std::string> probe(const Toolchain& compiler, std::chrono::milliseconds timeout) {
         ProbeSource source;
         platform::Process result;
+
         try {
             result = platform::run(
                 compiler.executable,
@@ -122,6 +131,7 @@ namespace ormi::backends::cpu::jit::compatibility {
         if (result.state == platform::Process::State::exited && result.code == 0) {
             return std::nullopt;
         }
+
         return failure_message(std::move(result));
     }
 }

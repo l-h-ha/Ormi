@@ -25,6 +25,7 @@ namespace ormi::platform {
         class Handle {
         public:
             Handle() = default;
+
             explicit Handle(HANDLE value) : value_(value) {}
 
             ~Handle() {
@@ -44,6 +45,7 @@ namespace ormi::platform {
                     value_ = other.value_;
                     other.value_ = nullptr;
                 }
+
                 return *this;
             }
 
@@ -55,6 +57,7 @@ namespace ormi::platform {
                 if (value_ && value_ != INVALID_HANDLE_VALUE) {
                     CloseHandle(value_);
                 }
+
                 value_ = value;
             }
 
@@ -69,6 +72,7 @@ namespace ormi::platform {
 
             std::wstring result(1, L'\"');
             std::size_t slashes = 0;
+
             for (const auto character : argument) {
                 if (character == L'\\') {
                     ++slashes;
@@ -82,6 +86,7 @@ namespace ormi::platform {
                     result.append(slashes, L'\\');
                     result.push_back(character);
                 }
+
                 slashes = 0;
             }
 
@@ -94,11 +99,13 @@ namespace ormi::platform {
             std::span<const std::string> environment
         ) {
             std::vector<wchar_t> result;
+
             for (const auto& variable : environment) {
                 const auto wide = windows::widen(variable);
                 result.insert(result.end(), wide.begin(), wide.end());
                 result.push_back(L'\0');
             }
+
             result.push_back(L'\0');
             return result;
         }
@@ -106,10 +113,12 @@ namespace ormi::platform {
 
     std::optional<std::filesystem::path> find(std::string_view executable) {
         const std::filesystem::path requested(windows::widen(executable));
+
         if (requested.has_parent_path() || requested.is_absolute()) {
             if (std::filesystem::is_regular_file(requested)) {
                 return std::filesystem::absolute(requested);
             }
+
             return std::nullopt;
         }
 
@@ -122,9 +131,11 @@ namespace ormi::platform {
             buffer.data(),
             nullptr
         );
+
         if (size == 0 || size >= buffer.size()) {
             return std::nullopt;
         }
+
         return std::filesystem::path(buffer.data());
     }
 
@@ -141,17 +152,20 @@ namespace ormi::platform {
         };
         HANDLE raw_read = nullptr;
         HANDLE raw_write = nullptr;
+
         if (!CreatePipe(&raw_read, &raw_write, &security, 0)) {
             ORMI_THROW(jitError, "Cannot create compiler output pipe.");
         }
 
         Handle read(raw_read);
         Handle write(raw_write);
+
         if (!SetHandleInformation(read.get(), HANDLE_FLAG_INHERIT, 0)) {
             ORMI_THROW(jitError, "Cannot configure compiler output pipe.");
         }
 
         std::wstring command = quote(executable.wstring());
+
         for (const auto& argument : arguments) {
             command.push_back(L' ');
             command += quote(windows::widen(argument));
@@ -171,12 +185,15 @@ namespace ormi::platform {
             (environment.empty() ? 0 : CREATE_UNICODE_ENVIRONMENT);
 
         Handle job(CreateJobObjectW(nullptr, nullptr));
+
         if (!job.get()) {
             ORMI_THROW(jitError, "Cannot create compiler process job.");
         }
+
         JOBOBJECT_EXTENDED_LIMIT_INFORMATION job_info{};
         job_info.BasicLimitInformation.LimitFlags =
             JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+
         if (!SetInformationJobObject(
             job.get(),
             JobObjectExtendedLimitInformation,
@@ -208,11 +225,13 @@ namespace ormi::platform {
 
         Handle process_handle(process.hProcess);
         Handle thread_handle(process.hThread);
+
         if (!AssignProcessToJobObject(job.get(), process_handle.get())) {
             TerminateProcess(process_handle.get(), ERROR_PROCESS_ABORTED);
             WaitForSingleObject(process_handle.get(), INFINITE);
             ORMI_THROW(jitError, "Cannot assign compiler process to its job.");
         }
+
         if (ResumeThread(thread_handle.get()) == static_cast<DWORD>(-1)) {
             TerminateJobObject(job.get(), ERROR_PROCESS_ABORTED);
             WaitForSingleObject(process_handle.get(), INFINITE);
@@ -230,6 +249,7 @@ namespace ormi::platform {
         const auto drain = [&]() {
             while (true) {
                 DWORD available = 0;
+
                 if (!PeekNamedPipe(
                     read.get(),
                     nullptr,
@@ -241,11 +261,13 @@ namespace ormi::platform {
                     if (GetLastError() == ERROR_BROKEN_PIPE) {
                         return;
                     }
+
                     ORMI_THROW(
                         jitError,
                         "Cannot inspect compiler process output."
                     );
                 }
+
                 if (available == 0) {
                     return;
                 }
@@ -254,6 +276,7 @@ namespace ormi::platform {
                 const auto requested = static_cast<DWORD>(
                     std::min<std::size_t>(bytes.size(), available)
                 );
+
                 if (!ReadFile(
                     read.get(),
                     bytes.data(),
@@ -264,8 +287,10 @@ namespace ormi::platform {
                     if (GetLastError() == ERROR_BROKEN_PIPE) {
                         return;
                     }
+
                     ORMI_THROW(jitError, "Cannot read compiler process output.");
                 }
+
                 output.append(bytes.data(), read_bytes);
             }
         };
@@ -273,9 +298,11 @@ namespace ormi::platform {
         while (true) {
             drain();
             const auto state = WaitForSingleObject(process_handle.get(), 0);
+
             if (state == WAIT_OBJECT_0) {
                 break;
             }
+
             if (state == WAIT_FAILED) {
                 ORMI_THROW(jitError, "Cannot wait for compiler process.");
             }
@@ -288,6 +315,7 @@ namespace ormi::platform {
             }
 
             DWORD wait = 10;
+
             if (bounded) {
                 const auto remaining = std::chrono::duration_cast<
                     std::chrono::milliseconds
@@ -298,11 +326,13 @@ namespace ormi::platform {
                     10
                 ));
             }
+
             WaitForSingleObject(process_handle.get(), wait);
         }
 
         drain();
         DWORD code = 0;
+
         if (!GetExitCodeProcess(process_handle.get(), &code)) {
             ORMI_THROW(jitError, "Cannot read compiler process exit code.");
         }

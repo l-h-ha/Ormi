@@ -19,6 +19,7 @@ namespace {
         if (history <= 1) {
             return 0.0;
         }
+
         return static_cast<double>(lines) *
             static_cast<double>(history) *
             static_cast<double>(history - 1) / 2.0;
@@ -28,6 +29,7 @@ namespace {
         if (history <= 1) {
             return 0.0;
         }
+
         const auto count = static_cast<double>(history);
         return static_cast<double>(lines) * (
             count * static_cast<double>(history - 1) / 2.0 +

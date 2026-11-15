@@ -22,17 +22,21 @@ namespace ormi::backends::cpu::jit::codegen {
                 if (axis.divisor == 1) {
                     continue;
                 }
+
                 if (!first) {
                     result << " + ";
                 }
+
                 first = false;
                 result
                     << "((base / " << axis.divisor << ") % "
                     << axis.extent << ")";
+
                 if (axis.stride != 1) {
                     result << " * " << axis.stride;
                 }
             }
+
             return first ? "0" : result.str();
         }
 
@@ -45,6 +49,7 @@ namespace ormi::backends::cpu::jit::codegen {
                     std::get_if<core::runtime::fusion::Input>(
                         &node.instruction
                     );
+
                 if (input && input->index == index) {
                     return *input;
                 }
@@ -81,6 +86,7 @@ namespace ormi::backends::cpu::jit::codegen {
             // Keep inner-loop addresses relative to one contiguous span.
             for (std::size_t i = 0; i < code.loop.inputs.size(); ++i) {
                 const auto access = code.loop.inputs[i];
+
                 if (access == Access::linear || access == Access::span) {
                     code.out
                         << indent << "const auto* input" << i << "_span = input"
@@ -97,6 +103,7 @@ namespace ormi::backends::cpu::jit::codegen {
                         << "];\n";
                 }
             }
+
             for (std::size_t output = 0; output < output_count(code.expr); ++output) {
                 const auto name = output_name(output);
                 code.out
@@ -118,6 +125,7 @@ namespace ormi::backends::cpu::jit::codegen {
                 const auto name = output_name(output) +
                     (code.loop.span != 0 ? "_span" : "");
                 const auto index_name = code.loop.span != 0 ? "j" : "i";
+
                 if (code.expr.nodes[index].dtype == core::DType::float16) {
                     code.out
                         << indent << "_mm_storeu_si128(\n"
@@ -196,6 +204,7 @@ namespace ormi::backends::cpu::jit::codegen {
             }
 
             code.out << "#else\n";
+
             if (code.loop.span == 0) {
                 code.out
                     << "    for (unsigned long long i = begin; "
@@ -218,6 +227,7 @@ namespace ormi::backends::cpu::jit::codegen {
                     << "        }\n"
                     << "    }\n";
             }
+
             code.out << "#endif\n";
         }
 
@@ -256,6 +266,7 @@ namespace ormi::backends::cpu::jit::codegen {
             }
 
             code.out << "\n    unsigned long long i = 0;\n";
+
             for (
                 std::size_t dimension = 0;
                 dimension < code.expr.shape.size();
@@ -287,6 +298,16 @@ namespace ormi::backends::cpu::jit::codegen {
         }
 
         void emit_regular_map(Code& code) {
+            if (code.expr.elements == 1) {
+                code.out
+                    << "\n    if (begin == 0 && end != 0) {\n"
+                    << "        constexpr unsigned long long i = 0;\n";
+                emit_nodes(code, "        ");
+                emit_stores(code, "        ");
+                code.out << "    }\n";
+                return;
+            }
+
             const bool nested =
                 code.loop.vectorized && code.loop.span != 0;
 
@@ -309,9 +330,11 @@ namespace ormi::backends::cpu::jit::codegen {
             }
 
             code.out << "\n";
+
             if (code.loop.vectorized) {
                 code.out << "    ORMI_VECTORIZE_LOOP\n";
             }
+
             code.out
                 << "    for (unsigned long long i = begin; "
                 << "i < end; ++i) {\n";

@@ -45,6 +45,7 @@ namespace ormi::core::ops::fractional {
                 );
             }
         }
+
         return result;
     }
 
@@ -63,16 +64,19 @@ namespace ormi::core::ops::fractional {
             for (std::size_t k = 1; k < weights.size(); ++k) {
                 result[k] = weights[k] - weights[k - 1];
             }
+
             return result;
         }
 
         if (weights.size() > 1) {
             result[1] = weights[1] - 2.0 * weights[0];
         }
+
         for (std::size_t k = 2; k < weights.size(); ++k) {
             result[k] =
                 weights[k] - 2.0 * weights[k - 1] + weights[k - 2];
         }
+
         return result;
     }
 }

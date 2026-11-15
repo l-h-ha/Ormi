@@ -41,6 +41,7 @@ namespace {
             : state.range(0) == 32 ? DType::float32 : DType::float64;
         auto input = tensor({65}, dtype);
         auto rhs = input;
+
         switch (layout) {
             case Layout::scalar:
                 input = tensor({7}, dtype);
@@ -76,11 +77,13 @@ namespace {
         const auto expression = runtime::fusion::build(*root).value();
         const auto loop = ormi::backends::cpu::jit::plan(expression);
         const auto bytes = ormi::backends::cpu::jit::emit(expression, loop).size();
+
         for (auto _ : state) {
             const auto source = ormi::backends::cpu::jit::emit(expression, loop);
             benchmark::DoNotOptimize(source.data());
             benchmark::DoNotOptimize(source.size());
         }
+
         state.counters["source_bytes"] = static_cast<double>(bytes);
         state.counters["nodes"] = static_cast<double>(expression.nodes.size());
     }

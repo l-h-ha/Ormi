@@ -40,6 +40,7 @@ namespace {
             ormi::core::ops::add(ormi::core::ops::mul(input, input), input)
         );
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto first = ormi::backends::cuda::fusion::emit(*expression);
@@ -71,6 +72,7 @@ namespace {
             auxiliaries,
             boundaries
         );
+
         ASSERT_TRUE(expression.has_value());
         ASSERT_EQ(expression->auxiliary_outputs.size(), 1u);
 
@@ -122,15 +124,18 @@ namespace {
                 const auto expression = layout == 1
                     ? ormi::core::runtime::fusion::build(*roots[layout], auxiliaries)
                     : ormi::core::runtime::fusion::build(*roots[layout]);
+
                 ASSERT_TRUE(expression.has_value());
                 ASSERT_EQ(expression->inputs.size(), 2u);
                 ASSERT_EQ(ormi::backends::cuda::fusion::tile(*expression).has_value(), layout == 3);
 
                 std::string expected = "extern \"C\" __global__ void ormi_kernel(\n    " +
                     (layout == 2 ? scalar : storage) + "* output";
+
                 if (layout == 1) {
                     expected += ",\n    " + storage + "* output1";
                 }
+
                 expected += ",\n    const " + storage + "* input0";
                 expected += ",\n    const " + storage + "* input1";
                 expected += layout >= 2
@@ -140,8 +145,10 @@ namespace {
 
                 const auto source = ormi::backends::cuda::fusion::emit(*expression);
                 const auto start = source.find("extern \"C\" __global__ void ormi_kernel(\n");
+
                 ASSERT_NE(start, std::string::npos);
                 const auto end = source.find(") {\n", start);
+
                 ASSERT_NE(end, std::string::npos);
                 EXPECT_EQ(source.substr(start, end + 4 - start), expected);
             }
@@ -157,6 +164,7 @@ namespace {
         );
         const auto output = ormi::core::ops::add(ormi::core::ops::mul(lhs, rhs), rhs);
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
         ASSERT_EQ(expression->inputs.size(), 2u);
         ASSERT_EQ(expression->inputs[0], lhs.get());
@@ -170,6 +178,7 @@ namespace {
             "    const double* input1,\n"
             "    unsigned long long elements\n"
             ") {\n";
+
         EXPECT_NE(source.find(expected), std::string::npos);
     }
 
@@ -222,6 +231,7 @@ namespace {
             ormi::core::ops::add(ormi::core::ops::mul(input, input), input)
         );
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cuda::fusion::emit(*expression);
@@ -263,10 +273,12 @@ namespace {
                 ormi::core::ops::add(ormi::core::ops::mul(matrix, matrix), matrix), {0}
             );
             const std::array roots{mapped, ormi::core::ops::sum(mapped), tiled};
+
             for (std::size_t layout = 0; layout < roots.size(); ++layout) {
                 SCOPED_TRACE(static_cast<int>(dtype));
                 SCOPED_TRACE(layout);
                 const auto expression = ormi::core::runtime::fusion::build(*roots[layout]);
+
                 ASSERT_TRUE(expression.has_value());
                 ASSERT_EQ(ormi::backends::cuda::fusion::tile(*expression).has_value(), layout == 2);
                 const auto source = ormi::backends::cuda::fusion::emit(*expression);
@@ -277,14 +289,19 @@ namespace {
                     "__device__ __forceinline__ float ormi_half_round(float value)"
                 }) {
                     const auto first = source.find(marker);
+
                     EXPECT_EQ(first != std::string::npos, dtype == ormi::core::DType::float16);
+
                     if (first != std::string::npos) {
                         EXPECT_EQ(source.find(marker, first + 1), std::string::npos);
                     }
                 }
+
                 const auto* marker = "__device__ T ormi_block_sum(T value)";
                 const auto first = source.find(marker);
+
                 EXPECT_EQ(first != std::string::npos, layout == 1);
+
                 if (first != std::string::npos) {
                     EXPECT_EQ(source.find(marker, first + 1), std::string::npos);
                 }
@@ -303,6 +320,7 @@ namespace {
         );
         const auto output = ormi::core::ops::sum(mapped);
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cuda::fusion::emit(*expression);
@@ -325,6 +343,7 @@ namespace {
         );
         const auto output = ormi::core::ops::sum(mapped, {1}, true);
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cuda::fusion::emit(*expression);
@@ -357,6 +376,7 @@ namespace {
         const auto output = ormi::core::ops::sum(mapped, {1});
         const auto expression =
             ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cuda::fusion::emit(*expression);
@@ -412,6 +432,7 @@ namespace {
         const auto output = ormi::core::ops::sum(mapped);
         const auto expression =
             ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cuda::fusion::emit(*expression);
@@ -442,6 +463,7 @@ namespace {
         const auto output = ormi::core::ops::sum(mapped);
         const auto expression =
             ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cuda::fusion::emit(*expression);
@@ -471,6 +493,7 @@ namespace {
         const auto output = ormi::core::ops::sum(mapped, {1});
         const auto expression =
             ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto result =
@@ -501,6 +524,7 @@ namespace {
         const auto output = ormi::core::ops::sum(mapped, {1});
         const auto expression =
             ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         EXPECT_FALSE(
@@ -521,6 +545,7 @@ namespace {
         const auto output = ormi::core::ops::sum(mapped, {0});
         const auto expression =
             ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         EXPECT_FALSE(
@@ -540,6 +565,7 @@ namespace {
         );
         const auto output = ormi::core::ops::mean(mapped, {0});
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cuda::fusion::emit(*expression);
@@ -563,6 +589,7 @@ namespace {
             const auto mapped = ormi::core::ops::add(
                 ormi::core::ops::mul(input, input), input
             );
+
             for (const bool mean : {false, true}) {
                 SCOPED_TRACE(static_cast<int>(dtype));
                 SCOPED_TRACE(mean);
@@ -570,6 +597,7 @@ namespace {
                     ? ormi::core::ops::mean(mapped, {0, 2}, true)
                     : ormi::core::ops::sum(mapped, {0, 2}, true);
                 const auto expression = ormi::core::runtime::fusion::build(*output);
+
                 ASSERT_TRUE(expression.has_value());
                 ASSERT_FALSE(ormi::backends::cuda::fusion::tile(*expression));
 
@@ -584,6 +612,7 @@ namespace {
                 std::string result = mean
                     ? "total / static_cast<" + scalar + ">(8ull)"
                     : "total";
+
                 if (dtype == ormi::core::DType::float16) {
                     result = "ormi_half_bits(" + result + ")";
                 }
@@ -608,6 +637,7 @@ namespace {
                     "    }\n"
                     "}\n";
                 const auto finish = source.find("extern \"C\" __global__ void ormi_finish");
+
                 ASSERT_NE(finish, std::string::npos);
                 EXPECT_EQ(source.substr(finish), expected);
                 EXPECT_NE(source.find("output[task] = block;"), std::string::npos);
@@ -663,6 +693,7 @@ namespace {
             output = ormi::core::ops::sum(ormi::core::ops::sin(input));
         }
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cuda::fusion::emit(*expression);
@@ -688,6 +719,7 @@ namespace {
             if (status != cudaSuccess) {
                 GTEST_SKIP() << "CUDA runtime is unavailable: " << cudaGetErrorString(status);
             }
+
             if (device_count == 0) {
                 GTEST_SKIP() << "No CUDA device is available.";
             }
@@ -752,8 +784,10 @@ namespace {
 
         for (std::size_t i = 0; i < values.size(); ++i) {
             const float x = static_cast<float>(i) * 0.5f - 0.5f;
+
             EXPECT_NEAR(values[i], std::sin(std::exp(x * x + x)), 1.0e-6f);
         }
+
         EXPECT_FALSE(square->realized());
         EXPECT_FALSE(sum->realized());
         EXPECT_FALSE(exponential->realized());
@@ -792,9 +826,11 @@ namespace {
             for (std::size_t column = 0; column < 3; ++column) {
                 const float left = row == 0 ? 2.0f : 4.0f;
                 const float right = static_cast<float>(column + 1);
+
                 EXPECT_FLOAT_EQ(values[row * 3 + column], std::sin((left + right) * left));
             }
         }
+
         EXPECT_FALSE(sum->realized());
     }
 
@@ -818,6 +854,7 @@ namespace {
                 std::sin(logical[i] * logical[i] + logical[i])
             );
         }
+
         EXPECT_FALSE(square->realized());
     }
 
@@ -952,9 +989,11 @@ namespace {
 
     TEST_F(CUDAFusionTest, fusesMultiAxisSumWithKeepdims) {
         std::vector<float> input_values(12);
+
         for (std::size_t i = 0; i < input_values.size(); ++i) {
             input_values[i] = static_cast<float>(i + 1);
         }
+
         const auto input = tensor<float>(
             ormi::core::DType::float32,
             input_values,
@@ -1000,6 +1039,7 @@ namespace {
         constexpr std::size_t middle = 5;
         constexpr std::size_t last = 9;
         std::vector<float> input_values(first * middle * last);
+
         for (std::size_t j = 0; j < middle; ++j) {
             for (std::size_t k = 0; k < last; ++k) {
                 for (std::size_t i = 0; i < first; ++i) {
@@ -1009,6 +1049,7 @@ namespace {
                 }
             }
         }
+
         const auto base = tensor<float>(
             ormi::core::DType::float32,
             input_values,
@@ -1028,9 +1069,11 @@ namespace {
                     static_cast<float>(k) * 0.01f;
                 const auto expected =
                     static_cast<float>(middle) * (value * value + value);
+
                 EXPECT_NEAR(values[i * last + k], expected, 1.0e-5f);
             }
         }
+
         EXPECT_FALSE(square->realized());
         EXPECT_FALSE(mapped->realized());
     }
@@ -1041,12 +1084,14 @@ namespace {
         constexpr std::size_t last = 9;
         std::vector<float> input_values(first * middle * last);
         float expected = 0.0f;
+
         for (std::size_t i = 0; i < input_values.size(); ++i) {
             const auto value =
                 static_cast<float>(i % 37) * 0.01f;
             input_values[i] = value;
             expected += (value * value + value) * value;
         }
+
         const auto base = tensor<float>(
             ormi::core::DType::float32,
             input_values,
@@ -1138,9 +1183,11 @@ namespace {
         const auto values = host_values<Float16>(*output);
 
         ASSERT_EQ(values.size(), columns);
+
         for (const auto value : values) {
             EXPECT_EQ(value.bits(), Float16{0.75f}.bits());
         }
+
         EXPECT_FALSE(square->realized());
         EXPECT_FALSE(mapped->realized());
     }

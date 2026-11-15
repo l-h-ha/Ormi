@@ -51,6 +51,7 @@ namespace ormi::backends::cpu {
             }
 
             std::size_t batches = 1;
+
             for (std::size_t axis = 0; axis < batch_rank; ++axis) {
                 batches *= static_cast<std::size_t>(out.shape()[axis]);
             }
@@ -89,6 +90,7 @@ namespace ormi::backends::cpu {
                 }
 
                 const auto tensor_axis = output_axis - rank_offset;
+
                 if (tensor.shape()[tensor_axis] == 1) {
                     continue;
                 }
@@ -144,14 +146,17 @@ namespace ormi::backends::cpu {
         if (out.dtype() == core::DType::boolean) {
             ORMI_THROW(DTypeError, "CPU matmul does not support Bool.");
         }
+
         if (!core::is_numeric(out.dtype())) {
             ORMI_THROW(DTypeError, "CPU matmul cannot handle an unknown dtype.");
         }
 
         const auto dims = dimensions(out, lhs, rhs);
+
         if (out.numel() == 0) {
             return;
         }
+
         if (dims.inner == 0) {
             core::memory::zero(out.data(), out.device(), out.bytes());
             return;

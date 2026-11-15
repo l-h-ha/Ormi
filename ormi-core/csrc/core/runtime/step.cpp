@@ -120,6 +120,7 @@ namespace ormi::core::runtime {
             // A failed batch may have installed a setup before direct fallback.
             setup_ = {};
         }
+
         preparation_pending_ = false;
     }
 
@@ -131,6 +132,7 @@ namespace ormi::core::runtime {
         };
 
         std::vector<Batch> batches;
+
         for (auto& step : steps) {
             if (!step.preparation_pending_ || !step.fusion_prepare_many_) {
                 step.prepare();
@@ -140,16 +142,19 @@ namespace ormi::core::runtime {
             auto batch = std::find_if(batches.begin(), batches.end(), [&step](const Batch& candidate) {
                 return candidate.prepare == step.fusion_prepare_many_;
             });
+
             if (batch == batches.end()) {
                 batches.push_back(Batch{step.fusion_prepare_many_, {}, {}});
                 batch = std::prev(batches.end());
             }
+
             batch->steps.push_back(&step);
             batch->jobs.push_back(step.job());
         }
 
         for (auto& batch : batches) {
             batch.prepare(batch.jobs);
+
             for (auto* step : batch.steps) {
                 step->preparation_pending_ = false;
             }
@@ -177,20 +182,24 @@ namespace ormi::core::runtime {
             if (output.buffer_) {
                 return;
             }
+
             output.buffer_ = std::make_shared<memory::Buffer>(output.device_, output.bytes());
             allocated.push_back(&output);
         };
 
         try {
             allocate(*output_);
+
             for (auto* output : auxiliary_outputs_) {
                 allocate(*output);
             }
+
             execute();
         } catch (...) {
             for (auto* output : allocated) {
                 output->buffer_.reset();
             }
+
             throw;
         }
     }
@@ -202,6 +211,7 @@ namespace ormi::core::runtime {
             if (compute_) {
                 compute_(*output_);
             }
+
             output_->buffer_ = output_->parents_[0]->buffer_;
             return;
         }
@@ -212,6 +222,7 @@ namespace ormi::core::runtime {
                 std::all_of(auxiliary_outputs_.begin(), auxiliary_outputs_.end(), [](const Tensor* output) {
                     return output->buffer_ != nullptr;
                 });
+
             if (outputs_ready) {
                 execute();
                 return;
@@ -222,6 +233,7 @@ namespace ormi::core::runtime {
         }
 
         const bool allocated = !output_->buffer_;
+
         if (allocated) {
             output_->buffer_ = std::make_shared<memory::Buffer>(output_->device_, output_->bytes());
         }
@@ -232,6 +244,7 @@ namespace ormi::core::runtime {
             if (allocated) {
                 output_->buffer_.reset();
             }
+
             throw;
         }
     }

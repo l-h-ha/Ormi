@@ -83,6 +83,5 @@ namespace ormi::backends::cuda {
             default:
                 ORMI_THROW(DTypeError, "CUDA cannot fill an unknown dtype.");
         }
-
     }
 }

@@ -36,12 +36,14 @@ namespace ormi::core::ops {
                 "Caputo differentiation requires a tensor."
             );
         }
+
         if (input->rank() == 0) {
             ORMI_THROW(
                 ShapeError,
                 "Caputo differentiation requires at least one axis."
             );
         }
+
         if (
             !std::isfinite(alpha) ||
             alpha <= 0.0 ||
@@ -53,12 +55,14 @@ namespace ormi::core::ops {
                 "Caputo alpha must be finite, between zero and two, and not one."
             );
         }
+
         if (!std::isfinite(spacing) || spacing <= 0.0) {
             ORMI_THROW(
                 OperationError,
                 "Caputo spacing must be finite and positive."
             );
         }
+
         if (
             input->dtype() != DType::float32 &&
             input->dtype() != DType::float64
@@ -72,17 +76,20 @@ namespace ormi::core::ops {
         if (axis < 0) {
             axis += static_cast<std::int64_t>(input->rank());
         }
+
         if (axis < 0 || axis >= static_cast<std::int64_t>(input->rank())) {
             ORMI_THROW(ShapeError, "Caputo axis is out of range.");
         }
 
         const auto high_order = alpha > 1.0;
+
         if (!high_order && initial_derivative) {
             ORMI_THROW(
                 OperationError,
                 "An initial derivative is only valid when Caputo alpha is above one."
             );
         }
+
         if (high_order && !initial_derivative) {
             ORMI_THROW(
                 OperationError,
@@ -91,6 +98,7 @@ namespace ormi::core::ops {
         }
 
         const auto axis_index = static_cast<std::size_t>(axis);
+
         if (initial_derivative) {
             if (initial_derivative->shape() != without_axis(input->shape(), axis_index)) {
                 ORMI_THROW(
@@ -98,12 +106,14 @@ namespace ormi::core::ops {
                     "The initial derivative shape must equal the input shape with the Caputo axis removed."
                 );
             }
+
             if (initial_derivative->dtype() != input->dtype()) {
                 ORMI_THROW(
                     DTypeError,
                     "The initial derivative dtype must match the input dtype."
                 );
             }
+
             if (initial_derivative->device() != input->device()) {
                 ORMI_THROW(
                     DeviceError,
@@ -135,6 +145,7 @@ namespace ormi::core::ops {
                 std::move(attrs)
             );
         }
+
         return fractional::l1(input, std::move(attrs));
     }
 

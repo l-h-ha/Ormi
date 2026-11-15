@@ -166,6 +166,7 @@ namespace {
             tensor<double>({2}, {1.5, 2.0}),
             tensor<double>({2}, {2.0, 4.0})
         );
+
         EXPECT_EQ(host_values<double>(*float64), (std::vector<double>{3.0, 8.0}));
 
         auto float16 = ormi::core::ops::add(
@@ -179,6 +180,7 @@ namespace {
             )
         );
         const auto float16_values = host_values<ormi::core::Float16>(*float16);
+
         EXPECT_FLOAT_EQ(static_cast<float>(float16_values[0]), 2.0f);
         EXPECT_FLOAT_EQ(static_cast<float>(float16_values[1]), 5.0f);
 
@@ -186,6 +188,7 @@ namespace {
             tensor<std::int32_t>({2}, {7, 4}),
             tensor<std::int32_t>({2}, {2, 6})
         );
+
         EXPECT_EQ(host_values<std::int32_t>(*int32), (std::vector<std::int32_t>{5, -2}));
     }
 
@@ -205,6 +208,7 @@ namespace {
 
         for (std::size_t i = 0; i < 3; ++i) {
             const auto value = std::vector<float>{0.5f, 1.0f, 2.0f}[i];
+
             EXPECT_FLOAT_EQ(neg_values[i], -value);
             EXPECT_NEAR(exp_values[i], std::exp(value), 1e-6f);
             EXPECT_NEAR(log_values[i], std::log(value), 1e-6f);
@@ -218,9 +222,11 @@ namespace {
             tensor<ormi::core::Float16>({1}, {ormi::core::Float16{1.0f}})
         );
         const auto float16_value = host_values<ormi::core::Float16>(*float16)[0];
+
         EXPECT_NEAR(static_cast<float>(float16_value), std::exp(1.0f), 0.002f);
 
         auto int32 = ormi::core::ops::neg(tensor<std::int32_t>({3}, {-2, 0, 7}));
+
         EXPECT_EQ(
             host_values<std::int32_t>(*int32),
             (std::vector<std::int32_t>{2, 0, -7})

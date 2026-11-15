@@ -27,32 +27,41 @@ namespace ormi::backends::cuda {
             bool contiguous
         ) {
             __shared__ Value partial[256];
+
             for (std::size_t output = blockIdx.x; output < outputs; output += gridDim.x) {
                 const auto base = contiguous ? output * count : reduction::input_base_offset(output, index);
                 Value value = -static_cast<Value>(CUDART_INF);
+
                 for (std::size_t i = threadIdx.x; i < count; i += blockDim.x) {
                     const auto offset = base + (contiguous ? i : reduction::reduced_offset(i, index));
                     Value candidate;
+
                     if constexpr (std::is_same_v<T, __half>) {
                         candidate = __half2float(input[offset]);
                     } else {
                         candidate = input[offset];
                     }
+
                     if (candidate > value || isnan(candidate)) {
                         value = candidate;
                     }
                 }
+
                 partial[threadIdx.x] = value;
                 __syncthreads();
+
                 for (unsigned width = blockDim.x / 2; width > 0; width /= 2) {
                     if (threadIdx.x < width) {
                         const auto candidate = partial[threadIdx.x + width];
+
                         if (candidate > partial[threadIdx.x] || isnan(candidate)) {
                             partial[threadIdx.x] = candidate;
                         }
                     }
+
                     __syncthreads();
                 }
+
                 if (threadIdx.x == 0) {
                     if constexpr (std::is_same_v<T, __half>) {
                         out[output] = __float2half_rn(partial[0]);
@@ -60,6 +69,7 @@ namespace ormi::backends::cuda {
                         out[output] = partial[0];
                     }
                 }
+
                 __syncthreads();
             }
         }
@@ -73,14 +83,18 @@ namespace ormi::backends::cuda {
         ) {
             const auto index = reduction::make_index(input, axes);
             std::size_t count = 1;
+
             for (const auto axis : axes) {
                 count *= static_cast<std::size_t>(input.shape()[static_cast<std::size_t>(axis)]);
             }
+
             bool contiguous = input.is_contiguous();
+
             for (std::size_t i = 0; i < axes.size(); ++i) {
                 contiguous =
                     contiguous && static_cast<std::size_t>(axes[i]) == input.rank() - axes.size() + i;
             }
+
             const auto blocks = static_cast<unsigned>(out.numel() < 65535 ? out.numel() : 65535);
             maximum_kernel<T, Value><<<blocks, 256, 0, stream>>>(
                 static_cast<T*>(out.data()),
@@ -98,8 +112,10 @@ namespace ormi::backends::cuda {
         if (out.numel() == 0) {
             return;
         }
+
         auto& device = state(out.device());
         check(cudaSetDevice(device.index()), "cudaSetDevice");
+
         switch (out.dtype()) {
             case core::DType::float64:
                 launch<double, double>(out, input, axes, device.stream());

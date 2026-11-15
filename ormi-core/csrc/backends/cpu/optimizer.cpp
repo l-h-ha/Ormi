@@ -39,6 +39,7 @@ namespace ormi::backends::cpu {
                 for (std::size_t i = 0; i < elements; ++i) {
                     out_data[i] = updated(parameter_data[i], gradient_data[i], step_size);
                 }
+
                 return;
             }
 

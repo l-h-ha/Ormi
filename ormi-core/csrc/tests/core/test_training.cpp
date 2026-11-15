@@ -44,15 +44,18 @@ namespace {
             ormi::core::grad(loss, parameters);
 
         loss->realize();
+
         for (const auto& gradient : gradients) {
             gradient->realize();
         }
 
         ASSERT_EQ(gradients.size(), parameters.size());
+
         for (std::size_t i = 0; i < gradients.size(); ++i) {
             EXPECT_EQ(gradients[i]->shape(), parameters[i]->shape());
             const auto finite =
                 ormi::core::ops::all_finite(gradients[i]);
+
             EXPECT_TRUE(*static_cast<const bool*>(finite->data()));
         }
     }

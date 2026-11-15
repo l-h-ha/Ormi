@@ -69,14 +69,17 @@ namespace ormi::backends::cuda::fusion {
             const core::runtime::fusion::Expr& expression
         ) {
             const auto found = cache.find(hash);
+
             if (found == cache.end()) {
                 return nullptr;
             }
+
             for (const auto& entry : found->second) {
                 if (entry.matches(device, major, minor, expression)) {
                     return &entry;
                 }
             }
+
             return nullptr;
         }
 
@@ -117,14 +120,16 @@ namespace ormi::backends::cuda::fusion {
         hash = combine(hash, static_cast<std::uint64_t>(minor));
 
         auto current = published.load(std::memory_order_acquire);
+
         if (const auto* entry = find_entry(*current, hash, device, major, minor, expression)) {
             return entry->compiled;
         }
 
-        // A second caller may have compiled this expression while we waited. Recheck before
-        // generating source or calling NVRTC. Shared cache tables are replaced, never modified.
+        // Recheck under the lock for a kernel published by another caller.
+        // Published cache snapshots are immutable.
         std::lock_guard lock(mutex);
         current = published.load(std::memory_order_acquire);
+
         if (const auto* entry = find_entry(*current, hash, device, major, minor, expression)) {
             return entry->compiled;
         }

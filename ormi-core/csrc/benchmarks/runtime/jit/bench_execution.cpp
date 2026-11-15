@@ -42,9 +42,11 @@ namespace {
             ormi::core::Device::cpu(), shape, ormi::core::DType::float32
         );
         auto* values = static_cast<float*>(result->data());
+
         for (std::size_t i = 0; i < result->numel(); ++i) {
             values[i] = offset + static_cast<float>(i % 31) * 0.0078125f;
         }
+
         return result;
     }
 
@@ -65,15 +67,19 @@ namespace {
         const auto compiled = cpu::jit::compile(expression);
         ormi::core::Plan plan({output});
         plan.run();
+
         if (plan.steps() != 2) {
             state.SkipWithError("Expected scalar creation followed by one fused pointwise step.");
             return;
         }
+
         auto setup = cpu::jit::execution::prepare({}, expression, compiled);
         std::vector<const void*> inputs(expression.inputs.size());
+
         for (std::size_t i = 0; i < inputs.size(); ++i) {
             inputs[i] = expression.inputs[i]->data();
         }
+
         void* outputs[]{output->data()};
         Invocation call{*compiled, outputs, inputs.data(), expression.elements};
 
@@ -83,17 +89,20 @@ namespace {
                     for (std::size_t i = 0; i < inputs.size(); ++i) {
                         inputs[i] = expression.inputs[i]->data();
                     }
+
                     outputs[0] = output->data();
                     benchmark::DoNotOptimize(inputs.data());
                     benchmark::DoNotOptimize(outputs[0]);
                     benchmark::ClobberMemory();
                 }
+
                 break;
             case Stage::kernel:
                 for (auto _ : state) {
                     invoke(&call, 0, 0, expression.elements);
                     benchmark::ClobberMemory();
                 }
+
                 break;
             case Stage::executor:
                 for (auto _ : state) {
@@ -102,24 +111,28 @@ namespace {
                     );
                     benchmark::ClobberMemory();
                 }
+
                 break;
             case Stage::direct:
                 for (auto _ : state) {
                     cpu::jit::execution::run(*output, {}, expression, *compiled);
                     benchmark::ClobberMemory();
                 }
+
                 break;
             case Stage::prepared:
                 for (auto _ : state) {
                     setup.run(*output);
                     benchmark::ClobberMemory();
                 }
+
                 break;
             case Stage::plan:
                 for (auto _ : state) {
                     plan.run();
                     benchmark::ClobberMemory();
                 }
+
                 break;
         }
 
@@ -127,14 +140,17 @@ namespace {
         const auto* s = static_cast<const float*>(scale->data());
         const auto* b = static_cast<const float*>(bias->data());
         const auto* actual = static_cast<const float*>(output->data());
+
         for (std::size_t i = 0; i < expression.elements; ++i) {
             const auto index = broadcast ? i % static_cast<std::size_t>(width) : i;
             const auto expected = (x[i] * s[index] + b[index]) * (x[i] - b[index]) + x[i] * 0.125f;
+
             if (!std::isfinite(actual[i]) || std::abs(actual[i] - expected) > 1e-6f) {
                 state.SkipWithError("Fused pointwise output differs from scalar reference.");
                 return;
             }
         }
+
         state.counters["participants"] = static_cast<double>(
             stage == Stage::kernel || stage == Stage::pointers
                 ? 1

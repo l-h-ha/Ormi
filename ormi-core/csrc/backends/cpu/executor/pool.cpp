@@ -22,11 +22,13 @@ namespace ormi::backends::cpu::executor {
         try {
             workers_.reserve(thread_count - 1);
             ready_.reserve(thread_count - 1);
+
             for (std::size_t i = 1; i < thread_count; ++i) {
                 ready_.push_back(
                     std::make_unique<std::condition_variable>()
                 );
             }
+
             for (std::size_t i = 1; i < thread_count; ++i) {
                 workers_.emplace_back([this, i] {
                     worker(i);
@@ -53,6 +55,7 @@ namespace ormi::backends::cpu::executor {
             function(context, 0, 0, range);
             return;
         }
+
         {
             std::lock_guard lock(state_mutex_);
             range_ = range;
@@ -63,6 +66,7 @@ namespace ormi::backends::cpu::executor {
             pending_ = active_workers_;
             ++generation_;
         }
+
         for (std::size_t i = 0; i < active_workers_; ++i) {
             ready_[i]->notify_one();
         }
@@ -100,9 +104,11 @@ namespace ormi::backends::cpu::executor {
             stopping_ = true;
             ++generation_;
         }
+
         for (const auto& ready : ready_) {
             ready->notify_one();
         }
+
         for (auto& worker : workers_) {
             worker.join();
         }
@@ -110,19 +116,23 @@ namespace ormi::backends::cpu::executor {
 
     void Pool::worker(std::size_t index) {
         std::size_t observed = 0;
+
         while (true) {
             std::unique_lock lock(state_mutex_);
             ready_[index - 1]->wait(lock, [this, observed] {
                 return stopping_ || generation_ != observed;
             });
+
             if (stopping_) {
                 return;
             }
 
             observed = generation_;
+
             if (index > active_workers_) {
                 continue;
             }
+
             const auto participants = active_workers_ + 1;
             const auto begin = std::min(
                 partition_begin(range_, participants, unit_, index),
@@ -144,6 +154,7 @@ namespace ormi::backends::cpu::executor {
 
             lock.lock();
             --pending_;
+
             if (pending_ == 0) {
                 finished_.notify_one();
             }

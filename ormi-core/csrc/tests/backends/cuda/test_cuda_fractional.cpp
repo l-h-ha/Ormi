@@ -48,6 +48,7 @@ namespace {
                     << "CUDA runtime is unavailable: "
                     << cudaGetErrorString(status);
             }
+
             if (devices == 0) {
                 GTEST_SKIP() << "No CUDA device is available.";
             }
@@ -92,6 +93,7 @@ namespace {
             if (host.bytes() != 0) {
                 std::memcpy(result.data(), host.data(), host.bytes());
             }
+
             return result;
         }
 
@@ -113,6 +115,7 @@ namespace {
                     values.size() * sizeof(T)
                 );
             }
+
             return result;
         }
 
@@ -155,11 +158,13 @@ namespace {
             const auto actual = host_values<T>(*cuda_result);
 
             ASSERT_EQ(actual.size(), expected.size());
+
             for (std::size_t i = 0; i < expected.size(); ++i) {
                 const auto scale = std::max(
                     1.0,
                     std::abs(static_cast<double>(expected[i]))
                 );
+
                 EXPECT_NEAR(
                     static_cast<double>(actual[i]),
                     static_cast<double>(expected[i]),
@@ -183,11 +188,13 @@ namespace {
             const auto actual_gradient = host_values<T>(*cuda_gradient);
 
             ASSERT_EQ(actual_gradient.size(), expected_gradient.size());
+
             for (std::size_t i = 0; i < expected_gradient.size(); ++i) {
                 const auto scale = std::max(
                     1.0,
                     std::abs(static_cast<double>(expected_gradient[i]))
                 );
+
                 EXPECT_NEAR(
                     static_cast<double>(actual_gradient[i]),
                     static_cast<double>(expected_gradient[i]),
@@ -232,12 +239,15 @@ namespace {
                 const std::vector<T>& actual
             ) {
                 SCOPED_TRACE(phase);
+
                 ASSERT_EQ(actual.size(), expected.size());
+
                 for (std::size_t i = 0; i < expected.size(); ++i) {
                     const auto scale = std::max(
                         1.0,
                         std::abs(static_cast<double>(expected[i]))
                     );
+
                     EXPECT_NEAR(
                         static_cast<double>(actual[i]),
                         static_cast<double>(expected[i]),
@@ -379,6 +389,7 @@ namespace {
                     result[n * count + column - 1] -= weight;
                 }
             }
+
             return result;
         }
 
@@ -395,6 +406,7 @@ namespace {
                         matrix[column * count + row] * values[column];
                 }
             }
+
             return result;
         }
 
@@ -411,6 +423,7 @@ namespace {
                         matrix[row * count + column] * values[column];
                 }
             }
+
             return result;
         }
     };
@@ -440,6 +453,7 @@ namespace {
                 const auto expected = n == 0
                     ? 0.0
                     : slope * std::pow(time, 1.0 - alpha) / gamma;
+
                 EXPECT_NEAR(actual[n * 2 + line], expected, 1e-12);
             }
         }
@@ -485,12 +499,14 @@ namespace {
             const auto expected = n == 0
                 ? 0.0
                 : std::sqrt(0.5 * static_cast<double>(n)) / gamma;
+
             EXPECT_NEAR(actual[n], expected, 1e-6);
         }
 
         const auto single = tensor<float>({2, 1}, {4.0f, -2.0f});
         const auto single_result =
             ormi::core::ops::caputo(single, 0.25, 0.1);
+
         EXPECT_EQ(
             host_values<float>(*single_result),
             (std::vector<float>{0.0f, 0.0f})
@@ -500,6 +516,7 @@ namespace {
         const auto empty_result =
             ormi::core::ops::caputo(empty, 0.25, 0.1, 1);
         empty_result->realize();
+
         EXPECT_TRUE(empty_result->realized());
         EXPECT_EQ(empty_result->numel(), 0);
 
@@ -512,6 +529,7 @@ namespace {
             -1,
             higher_single_initial
         );
+
         EXPECT_EQ(
             host_values<float>(*higher_single),
             (std::vector<float>{0.0f, 0.0f})
@@ -534,6 +552,7 @@ namespace {
             higher_empty_initial,
             empty_seed
         );
+
         EXPECT_EQ(
             host_values<float>(*empty_initial_gradient),
             std::vector<float>(6, 0.0f)
@@ -595,6 +614,7 @@ namespace {
 
         {
             ormi::core::Plan plan({result});
+
             EXPECT_EQ(plan.storage_buffers(), 2);
             EXPECT_EQ(
                 plan.storage_bytes(),
@@ -606,12 +626,14 @@ namespace {
 
         replay->run();
         const auto actual = host_values<float>(*result);
+
         EXPECT_NEAR(actual.back(), std::sqrt(0.75) / std::tgamma(1.5), 1e-6);
 
         constexpr std::size_t count = 64;
         constexpr double spacing = 0.01;
         constexpr double alpha = 1.5;
         std::vector<double> history(count);
+
         for (std::size_t i = 0; i < count; ++i) {
             const auto time = static_cast<double>(i) * spacing;
             history[i] = time * time;
@@ -633,6 +655,7 @@ namespace {
 
         {
             ormi::core::Plan plan({higher_result});
+
             EXPECT_EQ(plan.storage_buffers(), 3);
             EXPECT_EQ(
                 plan.storage_bytes(),
@@ -650,6 +673,7 @@ namespace {
         const auto expected =
             2.0 * std::pow(final_time, 2.0 - alpha) /
             std::tgamma(3.0 - alpha);
+
         EXPECT_NEAR(higher_actual.back(), expected, 1e-12);
     }
 }

@@ -77,6 +77,7 @@ namespace {
         EXPECT_EQ(full->dtype(), ormi::core::DType::float64);
 
         const double* full_data = static_cast<const double*>(full->data());
+
         EXPECT_TRUE(full->realized());
         EXPECT_EQ(full_data[0], 2.5);
         EXPECT_EQ(full_data[1], 2.5);
@@ -99,6 +100,7 @@ namespace {
         EXPECT_EQ(full->dtype(), ormi::core::DType::float32);
 
         const float* full_data = static_cast<const float*>(full->data());
+
         EXPECT_TRUE(full->realized());
         EXPECT_EQ(full_data[0], 2.5f);
         EXPECT_EQ(full_data[1], 2.5f);
@@ -122,6 +124,7 @@ namespace {
         EXPECT_EQ(full->dtype(), ormi::core::DType::float16);
 
         const auto* data = static_cast<const ormi::core::Float16*>(full->data());
+
         EXPECT_TRUE(full->realized());
         EXPECT_FLOAT_EQ(static_cast<float>(data[0]), 2.5f);
         EXPECT_FLOAT_EQ(static_cast<float>(data[1]), 2.5f);
@@ -144,6 +147,7 @@ namespace {
         EXPECT_EQ(full->dtype(), ormi::core::DType::int32);
 
         const auto* data = static_cast<const std::int32_t*>(full->data());
+
         EXPECT_TRUE(full->realized());
         EXPECT_EQ(data[0], 2);
         EXPECT_EQ(data[1], 2);
@@ -167,6 +171,7 @@ namespace {
             EXPECT_EQ(full->dtype(), ormi::core::DType::boolean);
 
             const bool* full_data = static_cast<const bool*>(full->data());
+
             EXPECT_TRUE(full->realized());
             EXPECT_EQ(full_data[0], a);
             EXPECT_EQ(full_data[1], a);

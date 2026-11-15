@@ -8,8 +8,8 @@ from typing import Any
 
 import yaml
 
-# The same YAML definitions produce C++ bindings, Python stubs, and submodule markers.
-# Read export names and defaults from the spec for every output, including stubs.
+# Generate C++ bindings, Python stubs, and submodule markers from the same
+# YAML export names and defaults.
 SECTIONS = {"includes", "exceptions", "enums", "classes", "functions"}
 
 ###
@@ -380,18 +380,22 @@ def emit_stub_class(lines: list[str], cls: dict[str, Any]) -> None:
 
         args = ", ".join(["self"] + [stub_arg(arg) for arg in ctor.get("args", [])])
         lines.append(f"    def __init__({args}) -> None: ...")
+        lines.append("")
         body = True
 
     for field in cls.get("fields_readwrite", []):
         lines.append(f"    {field['name']}: {field.get('py_type', 'Any')}")
         body = True
 
+    if cls.get("fields_readwrite"):
+        lines.append("")
+
     for field in cls.get("fields_readonly", []):
-        lines += ["    @property", f"    def {field['name']}(self) -> {field.get('py_type', 'Any')}: ..."]
+        lines += ["    @property", f"    def {field['name']}(self) -> {field.get('py_type', 'Any')}: ...", ""]
         body = True
 
     for prop in cls.get("properties_readonly", []):
-        lines += ["    @property", f"    def {prop['name']}(self) -> {prop.get('py_type', 'Any')}: ..."]
+        lines += ["    @property", f"    def {prop['name']}(self) -> {prop.get('py_type', 'Any')}: ...", ""]
         body = True
 
     for prop in cls.get("properties", []):
@@ -399,8 +403,10 @@ def emit_stub_class(lines: list[str], cls: dict[str, Any]) -> None:
         lines += [
             "    @property",
             f"    def {prop['name']}(self) -> {typ}: ...",
+            "",
             f"    @{prop['name']}.setter",
             f"    def {prop['name']}(self, value: {typ}) -> None: ...",
+            "",
         ]
         body = True
 
@@ -412,12 +418,14 @@ def emit_stub_class(lines: list[str], cls: dict[str, Any]) -> None:
                 lines.append("    @overload")
 
             lines.append("    " + stub_signature(method, method=True))
+            lines.append("")
             body = True
 
     if not body:
         lines.append("    pass")
 
-    lines.append("")
+    if lines[-1] != "":
+        lines.append("")
 
 def generate_stub(spec: dict[str, list[Any]], module: str) -> str:
     typing_imports = ["Any", "ClassVar", "overload"]
@@ -465,14 +473,12 @@ def generate_stub(spec: dict[str, list[Any]], module: str) -> str:
 
     names = list(dict.fromkeys(names))
     lines.append(f"__all__ = {names!r}")
-    lines.append("")
+    lines += ["", "###", "###", "###", ""]
 
     for item in spec["exceptions"]:
         if item.get("module", "") == module:
             lines.append(f"class {item['name']}({item.get('base', 'RuntimeError')}): ...")
-
-    if any(item.get("module", "") == module for item in spec["exceptions"]):
-        lines.append("")
+            lines.append("")
 
     for item in spec["enums"]:
         if item.get("module", "") != module:
@@ -507,8 +513,7 @@ def generate_stub(spec: dict[str, list[Any]], module: str) -> str:
                 lines.append("@overload")
 
             lines.append(stub_signature(item))
-
-        lines.append("")
+            lines.append("")
 
     source = "\n".join(lines)
     ast.parse(source)

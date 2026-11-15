@@ -63,8 +63,8 @@ namespace ormi::backends::cpu::jit {
 
         using Cache = std::unordered_map<std::uint64_t, std::vector<Entry>>;
 
-        // entries points into owner. Keep that snapshot alive while another thread publishes
-        // a replacement table. Replacing published does not invalidate these pointers.
+        // entries points into owner's snapshot. Keep owner alive while another thread
+        // replaces published.
         struct FrontCache {
             std::shared_ptr<const Cache> owner;
             std::array<const Entry*, 4> entries{};
@@ -82,14 +82,17 @@ namespace ormi::backends::cpu::jit {
             std::uint64_t hash
         ) {
             const auto found = cache.find(hash);
+
             if (found == cache.end()) {
                 return nullptr;
             }
+
             for (const auto& entry : found->second) {
                 if (entry.key.matches(expression)) {
                     return &entry;
                 }
             }
+
             return nullptr;
         }
 
@@ -101,9 +104,11 @@ namespace ormi::backends::cpu::jit {
                 front.owner = std::move(owner);
                 front.entries.fill(nullptr);
             }
+
             for (std::size_t i = front.entries.size() - 1; i > 0; --i) {
                 front.entries[i] = front.entries[i - 1];
             }
+
             front.entries[0] = &entry;
         }
 
@@ -111,8 +116,10 @@ namespace ormi::backends::cpu::jit {
             const core::runtime::fusion::Expr& expression
         ) {
             const auto hash = core::runtime::fusion::Key::hash(expression);
+
             for (std::size_t i = 0; i < front.entries.size(); ++i) {
                 const auto* entry = front.entries[i];
+
                 if (
                     entry &&
                     entry->key.hash() == hash &&
@@ -125,14 +132,16 @@ namespace ormi::backends::cpu::jit {
 
             auto current = published.load(std::memory_order_acquire);
             const auto* entry = find_entry(*current, expression, hash);
+
             if (!entry) {
                 return {};
             }
+
             remember(std::move(current), *entry);
             return entry->compiled;
         }
 
-        void compile_missing(std::span<Unit* const> units) {
+        void compile_batch(std::span<Unit* const> units) {
             if (units.size() == 1) {
                 const std::array kernels{units[0]->launch_plan};
                 units[0]->compiled = artifact::get(
@@ -148,6 +157,7 @@ namespace ormi::backends::cpu::jit {
             expressions.reserve(units.size());
             loops.reserve(units.size());
             kernels.reserve(units.size());
+
             for (const auto* unit : units) {
                 expressions.push_back(unit->expression);
                 loops.push_back(unit->loop);
@@ -155,8 +165,33 @@ namespace ormi::backends::cpu::jit {
             }
 
             auto compiled = artifact::get(emit(expressions, loops), kernels);
+
             for (std::size_t i = 0; i < units.size(); ++i) {
                 units[i]->compiled = std::move(compiled[i]);
+            }
+        }
+
+        void compile_missing(std::span<Unit* const> units) {
+            constexpr std::size_t max_source_bytes = 1024 * 1024;
+            std::size_t first = 0;
+
+            while (first < units.size()) {
+                auto end = first + 1;
+                auto bytes = units[first]->generated.size();
+
+                while (end < units.size() && bytes < max_source_bytes) {
+                    const auto next = units[end]->generated.size();
+
+                    if (next > max_source_bytes - bytes) {
+                        break;
+                    }
+
+                    bytes += next;
+                    ++end;
+                }
+
+                compile_batch(units.subspan(first, end - first));
+                first = end;
             }
         }
     }
@@ -169,22 +204,27 @@ namespace ormi::backends::cpu::jit {
         std::lock_guard lock(cache_mutex);
         auto current = published.load(std::memory_order_acquire);
         const core::runtime::fusion::Key key(expression);
+
         if (const auto* entry = find_entry(*current, expression, key.hash())) {
             remember(std::move(current), *entry);
             return true;
         }
-        // Only positive scans are remembered. Every artifact lookup still validates its files.
+
+        // Remember positive directory scans; validate files on every artifact lookup.
         static std::filesystem::path populated_directory;
         const auto directory = cache::directory();
+
         if (populated_directory != directory) {
             if (!cache::has_entries()) {
                 return false;
             }
+
             populated_directory = directory;
         }
 
         const auto loop = plan(expression);
         auto compiled = artifact::find(emit(expression, loop), launch(expression, loop));
+
         if (!compiled) {
             return false;
         }
@@ -209,13 +249,16 @@ namespace ormi::backends::cpu::jit {
     ) {
         std::vector<std::shared_ptr<Compiled>> result(expressions.size());
         bool complete = true;
+
         for (std::size_t i = 0; i < expressions.size(); ++i) {
             if (!expressions[i]) {
                 ORMI_THROW(OperationError, "Cannot compile a null fusion expression.");
             }
+
             result[i] = find_memory(*expressions[i]);
             complete = complete && static_cast<bool>(result[i]);
         }
+
         if (complete) {
             return result;
         }
@@ -227,12 +270,14 @@ namespace ormi::backends::cpu::jit {
         // Recheck the in-memory cache under the lock, then collect unique misses.
         for (std::size_t i = 0; i < expressions.size(); ++i) {
             const auto hash = core::runtime::fusion::Key::hash(*expressions[i]);
+
             if (const auto* entry = find_entry(*current, *expressions[i], hash)) {
                 result[i] = entry->compiled;
                 continue;
             }
 
             bool duplicate = false;
+
             for (const auto& unit : units) {
                 if (
                     unit.key.hash() == hash &&
@@ -242,6 +287,7 @@ namespace ormi::backends::cpu::jit {
                     break;
                 }
             }
+
             if (!duplicate) {
                 units.emplace_back(*expressions[i]);
             }
@@ -256,27 +302,32 @@ namespace ormi::backends::cpu::jit {
 
         // Load cached libraries from disk before compiling the remaining kernels.
         std::vector<Unit*> missing;
+
         for (auto& unit : units) {
             unit.compiled = artifact::find(
                 unit.generated,
                 unit.launch_plan
             );
+
             if (!unit.compiled) {
                 missing.push_back(&unit);
             }
         }
+
         if (!missing.empty()) {
             compile_missing(missing);
         }
 
         // Replace the shared cache table only after every requested kernel has loaded.
         auto next = std::make_shared<Cache>(*current);
+
         for (const auto& unit : units) {
             (*next)[unit.key.hash()].emplace_back(
                 *unit.expression,
                 unit.compiled
             );
         }
+
         published.store(next, std::memory_order_release);
 
         // Return kernels in request order, including duplicates and prior memory hits.
@@ -286,6 +337,7 @@ namespace ormi::backends::cpu::jit {
             result[i] = entry->compiled;
             remember(next, *entry);
         }
+
         return result;
     }
 }

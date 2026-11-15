@@ -22,7 +22,7 @@ namespace ormi::core::runtime {
 
 namespace ormi::core {
     // Stores shape, dtype, input tensors, and optional shared storage.
-    // Computing values keeps the operation and inputs, so gradients still reach them.
+    // Realization keeps the operation and inputs for differentiation.
     class Tensor {
     public:
         // Allocate a contiguous input tensor on device. Its values are uninitialized.
@@ -37,7 +37,7 @@ namespace ormi::core {
             std::vector<std::int64_t> strides = {},
             std::size_t offset_bytes = 0
         );
-        // Build a lazy operation that allocates output storage when run. Shape and dtype are known.
+        // Build a lazy operation that allocates output storage when run.
         Tensor(
             OpRef op,
             std::vector<std::shared_ptr<Tensor>> parents,
@@ -85,6 +85,8 @@ namespace ormi::core {
         const Op* op() const;
         const Attrs& attrs() const;
         const std::vector<std::shared_ptr<Tensor>>& parents() const;
+        // Longest parent chain. Leaves have depth zero.
+        std::size_t graph_depth() const;
         Device device() const;
         DType dtype() const;
         const Shape& shape() const;
@@ -104,6 +106,7 @@ namespace ormi::core {
         const Op* op_;
         Attrs attrs_;
         std::vector<std::shared_ptr<Tensor>> parents_;
+        std::size_t graph_depth_ = 0;
         std::shared_ptr<memory::Buffer> buffer_;
         Device device_;
         Shape shape_;

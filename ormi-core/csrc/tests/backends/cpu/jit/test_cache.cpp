@@ -122,6 +122,7 @@ namespace {
         EXPECT_FALSE(std::filesystem::exists(cache.path));
 
         std::filesystem::create_directories(cache.path);
+
         EXPECT_FALSE(ormi::backends::cpu::jit::cache::has_entries());
         EXPECT_TRUE(std::filesystem::is_empty(cache.path));
     }
@@ -172,9 +173,11 @@ namespace {
         std::filesystem::create_directories(cache.path);
         auto copied = library(cache, "copied");
         auto extension = std::string(ormi::platform::shared_extension());
+
         for (auto& character : extension) {
             character = static_cast<char>(std::toupper(static_cast<unsigned char>(character)));
         }
+
         copied.replace_extension(extension);
         std::ofstream(copied) << "library";
         std::ofstream(source(cache, "copied")) << "copied";
@@ -187,10 +190,12 @@ namespace {
         auto copied_lock = source(cache, "copied");
         copied_lock.replace_extension(".lock");
         std::filesystem::remove(copied_lock);
+
         EXPECT_FALSE(ormi::backends::cpu::jit::cache::has_entries());
         auto lock = source(cache, "publishing");
         lock.replace_extension(".LoCk");
         std::ofstream(lock) << "";
+
         EXPECT_TRUE(ormi::backends::cpu::jit::cache::has_entries());
     }
 
@@ -198,6 +203,7 @@ namespace {
         Directory cache;
         const auto other = cache.path / "other";
         environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+
         EXPECT_FALSE(ormi::backends::cpu::jit::cache::has_entries());
 
         {
@@ -205,9 +211,11 @@ namespace {
         }
         EXPECT_TRUE(ormi::backends::cpu::jit::cache::has_entries());
         environment("ORMI_CPU_JIT_CACHE_DIR", other.string().c_str());
+
         EXPECT_FALSE(ormi::backends::cpu::jit::cache::has_entries());
         EXPECT_FALSE(std::filesystem::exists(other));
         environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+
         EXPECT_TRUE(ormi::backends::cpu::jit::cache::has_entries());
     }
 
@@ -233,6 +241,7 @@ namespace {
         std::filesystem::permissions(cache.path, std::filesystem::perms::owner_exec);
         std::error_code error;
         const std::filesystem::directory_iterator iterator(cache.path, error);
+
         if (!error) {
             std::filesystem::permissions(cache.path, permissions);
             GTEST_SKIP() << "This user can list directories without read permission.";
@@ -240,11 +249,13 @@ namespace {
 
         bool possible = false;
         bool found = false;
+
         EXPECT_NO_THROW({
             possible = ormi::backends::cpu::jit::cache::has_entries();
             found = static_cast<bool>(ormi::backends::cpu::jit::cache::find("readable", {}));
         });
         std::filesystem::permissions(cache.path, permissions);
+
         EXPECT_TRUE(possible);
         EXPECT_TRUE(found);
     }
@@ -282,15 +293,19 @@ namespace {
         EXPECT_FALSE(std::filesystem::exists(cache.path));
 
         std::filesystem::create_directories(cache.path);
+
         for (int i = 0; i < 3; ++i) {
             EXPECT_FALSE(ormi::backends::cpu::jit::cache::find("missing", {}));
         }
+
         EXPECT_TRUE(std::filesystem::is_empty(cache.path));
 
         std::ofstream(source(cache, "orphan")) << "orphan";
+
         EXPECT_FALSE(ormi::backends::cpu::jit::cache::find("orphan", {}));
         auto lock = source(cache, "orphan");
         lock.replace_extension(".lock");
+
         EXPECT_FALSE(std::filesystem::exists(lock));
         EXPECT_EQ(read(source(cache, "orphan")), "orphan");
     }
@@ -300,16 +315,20 @@ namespace {
         const auto other = cache.path / "other";
         environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
         std::filesystem::create_directories(cache.path);
+
         EXPECT_FALSE(ormi::backends::cpu::jit::cache::find("later", {}));
 
         {
             const auto built = ormi::backends::cpu::jit::cache::get("later", build);
+
             EXPECT_TRUE(ormi::backends::cpu::jit::cache::find("later", {}));
         }
         environment("ORMI_CPU_JIT_CACHE_DIR", other.string().c_str());
+
         EXPECT_FALSE(ormi::backends::cpu::jit::cache::find("later", {}));
         EXPECT_FALSE(std::filesystem::exists(other));
         environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
+
         EXPECT_TRUE(ormi::backends::cpu::jit::cache::find("later", {}));
     }
 
@@ -318,14 +337,17 @@ namespace {
         environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
         std::filesystem::create_directories(cache.path);
         std::ofstream(library(cache, "missing source")) << "library";
+
         EXPECT_FALSE(ormi::backends::cpu::jit::cache::find("missing source", {}));
 
         std::ofstream(source(cache, "wrong source")) << "other source";
         std::ofstream(library(cache, "wrong source")) << "library";
+
         EXPECT_FALSE(ormi::backends::cpu::jit::cache::find("wrong source", {}));
 
         std::filesystem::create_directory(library(cache, "directory"));
         std::ofstream(source(cache, "directory")) << "directory";
+
         EXPECT_FALSE(ormi::backends::cpu::jit::cache::find("directory", {}));
     }
 
@@ -349,9 +371,11 @@ namespace {
         auto lookup = std::async(std::launch::async, [] {
             return ormi::backends::cpu::jit::cache::find("publishing", {});
         });
+
         EXPECT_EQ(lookup.wait_for(std::chrono::milliseconds(100)), std::future_status::timeout);
         publish.set_value();
         building.get();
+
         EXPECT_TRUE(lookup.get());
         EXPECT_TRUE(ormi::backends::cpu::jit::cache::find("publishing", {}));
     }
@@ -364,6 +388,7 @@ namespace {
         std::ofstream(library(cache, "copied")) << "library";
         auto lock = source(cache, "copied");
         lock.replace_extension(".lock");
+
         EXPECT_FALSE(std::filesystem::exists(lock));
 
         const auto found = ormi::backends::cpu::jit::cache::find("copied", {});
@@ -388,12 +413,15 @@ namespace {
             ormi::platform::FileLock lock(
                 missing, ormi::platform::Lock::shared, ormi::platform::FileLock::Open::existing
             );
+
             EXPECT_FALSE(lock.opened());
         }
+
         EXPECT_FALSE(std::filesystem::exists(cache.path));
 
         const auto blocked = cache.path / "blocked.lock";
         std::filesystem::create_directories(blocked);
+
         EXPECT_THROW(
             ormi::platform::FileLock(
                 blocked, ormi::platform::Lock::shared, ormi::platform::FileLock::Open::existing
@@ -409,6 +437,7 @@ namespace {
             const auto built = ormi::backends::cpu::jit::cache::get("leased find", build);
         }
         auto found = ormi::backends::cpu::jit::cache::find("leased find", {});
+
         ASSERT_TRUE(found.has_value());
         auto discarding = std::async(std::launch::async, [] {
             ormi::backends::cpu::jit::cache::discard("leased find");
@@ -417,6 +446,7 @@ namespace {
         EXPECT_EQ(discarding.wait_for(std::chrono::milliseconds(100)), std::future_status::timeout);
         found.reset();
         discarding.get();
+
         EXPECT_FALSE(ormi::backends::cpu::jit::cache::find("leased find", {}));
     }
 
@@ -432,6 +462,7 @@ namespace {
             ormi::platform::FileLock lease(lock);
             std::ofstream(library(cache, "writer")) << "library";
             std::ofstream(source(cache, "writer")) << "incomplete";
+
             lookup = std::async(std::launch::async, [] {
                 return ormi::backends::cpu::jit::cache::find("writer", {});
             });
@@ -439,6 +470,7 @@ namespace {
             EXPECT_EQ(lookup.wait_for(std::chrono::milliseconds(100)), std::future_status::timeout);
             std::ofstream(source(cache, "writer")) << "writer";
         }
+
         EXPECT_TRUE(lookup.get());
     }
 
@@ -449,6 +481,7 @@ namespace {
         const auto producer = [](const std::filesystem::path& staged_source,
             const std::filesystem::path& staged_library) {
             ++builds;
+
             EXPECT_TRUE(staged_source.filename().string().ends_with(".tmp.cpp"));
             EXPECT_EQ(staged_library.stem(), staged_source.stem());
             EXPECT_EQ(staged_library.extension().string(), ormi::platform::shared_extension());
@@ -466,6 +499,7 @@ namespace {
         EXPECT_EQ(read(source(cache, "publication source")), "publication source");
         EXPECT_EQ(read(artifact.library), "published library");
         expect_no_staging(cache);
+
         EXPECT_TRUE(ormi::backends::cpu::jit::cache::get("publication source", producer).cached);
         EXPECT_EQ(builds, 1);
     }
@@ -496,6 +530,7 @@ namespace {
         expect_no_staging(cache);
 
         const auto retried = ormi::backends::cpu::jit::cache::get("failed build", build);
+
         EXPECT_FALSE(retried.cached);
         EXPECT_EQ(builds, 2);
     }
@@ -517,6 +552,7 @@ namespace {
         EXPECT_FALSE(std::filesystem::exists(source(cache, "missing library")));
         EXPECT_FALSE(std::filesystem::exists(library(cache, "missing library")));
         expect_no_staging(cache);
+
         EXPECT_FALSE(ormi::backends::cpu::jit::cache::get("missing library", build).cached);
     }
 
@@ -538,6 +574,7 @@ namespace {
 
         std::filesystem::remove(blocker);
         std::filesystem::remove(blocked);
+
         EXPECT_FALSE(ormi::backends::cpu::jit::cache::get("blocked library", build).cached);
     }
 
@@ -561,6 +598,7 @@ namespace {
         std::filesystem::remove(blocker);
         std::filesystem::remove(blocked);
         const auto retried = ormi::backends::cpu::jit::cache::get("blocked source", build);
+
         EXPECT_FALSE(retried.cached);
         EXPECT_EQ(read(source(cache, "blocked source")), "blocked source");
         expect_no_staging(cache);
@@ -620,6 +658,7 @@ namespace {
 
         const auto first_result = first.get();
         const auto second_result = second.get();
+
         EXPECT_EQ(first_result.code, 0) << first_result.output;
         EXPECT_EQ(second_result.code, 0) << second_result.output;
     }
@@ -845,11 +884,13 @@ namespace {
         environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
         std::filesystem::create_directories(cache.path);
         const auto extension = std::string(ormi::platform::shared_extension());
+
         for (const auto& stem : {std::string(32, 'z'), std::string(31, 'a'),
             std::string("unrelated")}) {
             std::ofstream(cache.path / (stem + ".cpp")) << "source";
             std::ofstream(cache.path / (stem + extension)) << "library";
         }
+
         const auto key = ormi::backends::cpu::jit::cache::key("staged");
         std::ofstream(cache.path / (key + ".123.tmp.cpp")) << "staged source";
         std::ofstream(cache.path / (key + ".123.tmp" + extension)) << "staged library";
@@ -985,18 +1026,22 @@ namespace {
         const std::vector<std::string> load{cache.path.string(), "load"};
 
         const auto first = ormi::platform::run(helper, compile);
+
         ASSERT_EQ(first.code, 0) << first.output;
 
         const auto second = ormi::platform::run(helper, load);
+
         EXPECT_EQ(second.code, 0) << second.output;
 
         std::size_t sources = 0;
         std::size_t libraries = 0;
         std::size_t staged = 0;
         std::filesystem::path library;
+
         for (const auto& entry : std::filesystem::directory_iterator(cache.path)) {
             const auto name = entry.path().filename().string();
             sources += entry.path().extension() == ".cpp";
+
             if (
                 entry.path().extension().string() ==
                 ormi::platform::shared_extension()
@@ -1004,6 +1049,7 @@ namespace {
                 ++libraries;
                 library = entry.path();
             }
+
             staged += name.find(".tmp") != std::string::npos;
         }
 
@@ -1016,8 +1062,10 @@ namespace {
         corrupted.close();
 
         const auto repaired = ormi::platform::run(helper, compile);
+
         EXPECT_EQ(repaired.code, 0) << repaired.output;
         const auto reloaded = ormi::platform::run(helper, load);
+
         EXPECT_EQ(reloaded.code, 0) << reloaded.output;
     }
 }

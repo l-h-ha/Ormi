@@ -64,9 +64,11 @@ namespace {
         );
         auto* lhs_data = static_cast<float*>(lhs->data());
         auto* rhs_data = static_cast<float*>(rhs->data());
+
         for (std::size_t i = 0; i < 6; ++i) {
             lhs_data[i] = static_cast<float>(i + 1);
         }
+
         rhs_data[0] = 1.0f;
         rhs_data[1] = 2.0f;
         rhs_data[2] = 3.0f;
@@ -84,6 +86,7 @@ namespace {
             EXPECT_FLOAT_EQ(lhs_gradient[row * 3 + 1], 2.0f);
             EXPECT_FLOAT_EQ(lhs_gradient[row * 3 + 2], 3.0f);
         }
+
         EXPECT_FLOAT_EQ(rhs_gradient[0], 5.0f);
         EXPECT_FLOAT_EQ(rhs_gradient[1], 7.0f);
         EXPECT_FLOAT_EQ(rhs_gradient[2], 9.0f);
@@ -224,6 +227,7 @@ namespace {
             gradients[0]->data()
         );
         const auto* rhs_gradient = static_cast<const float*>(gradients[1]->data());
+
         EXPECT_FLOAT_EQ(static_cast<float>(lhs_gradient[0]), 3.0f);
         EXPECT_FLOAT_EQ(static_cast<float>(lhs_gradient[1]), 4.0f);
         EXPECT_FLOAT_EQ(rhs_gradient[0], 1.0f);
@@ -253,6 +257,7 @@ namespace {
         for (std::size_t i = 0; i < 8; ++i) {
             lhs_data[i] = lhs_values[i];
         }
+
         rhs_data[0] = 3.0f;
         rhs_data[1] = 4.0f;
 
@@ -270,6 +275,7 @@ namespace {
             EXPECT_FLOAT_EQ(lhs_gradient[batch * 4 + 2], 3.0f);
             EXPECT_FLOAT_EQ(lhs_gradient[batch * 4 + 3], 4.0f);
         }
+
         EXPECT_FLOAT_EQ(rhs_gradient[0], 3.0f);
         EXPECT_FLOAT_EQ(rhs_gradient[1], 3.0f);
     }

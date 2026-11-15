@@ -22,9 +22,11 @@ namespace ormi::platform {
                 value.data(),
                 static_cast<DWORD>(value.size())
             );
+
             if (size == 0 || size >= value.size()) {
                 return {};
             }
+
             return std::filesystem::path(value.data(), value.data() + size);
         }
     }
@@ -42,12 +44,15 @@ namespace ormi::platform {
             FILE_ATTRIBUTE_NORMAL,
             nullptr
         );
+
         if (handle == INVALID_HANDLE_VALUE) {
             const auto code = GetLastError();
+
             if (policy == Open::existing &&
                 (code == ERROR_FILE_NOT_FOUND || code == ERROR_PATH_NOT_FOUND)) {
                 return;
             }
+
             ORMI_THROW(
                 jitError,
                 "Cannot open cache lock: " + path.string() + "\n" +
@@ -60,6 +65,7 @@ namespace ormi::platform {
         const auto flags = mode == Lock::exclusive
             ? LOCKFILE_EXCLUSIVE_LOCK
             : 0;
+
         if (!LockFileEx(
             handle,
             flags,
@@ -74,6 +80,7 @@ namespace ormi::platform {
                 "Cannot lock cache entry: " + path.string()
             );
         }
+
         handle_ = reinterpret_cast<std::intptr_t>(handle);
     }
 

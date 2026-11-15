@@ -49,10 +49,12 @@ namespace ormi::backends::cpu::jit::cache {
 
         std::uint64_t hash(std::string_view value, std::uint64_t seed) {
             auto result = seed;
+
             for (const auto byte : value) {
                 result ^= static_cast<unsigned char>(byte);
                 result *= 1099511628211ull;
             }
+
             return result;
         }
 
@@ -87,6 +89,7 @@ namespace ormi::backends::cpu::jit::cache {
 
         std::uintmax_t configured_limit() {
             const char* configured = std::getenv("ORMI_CPU_JIT_CACHE_MAX_BYTES");
+
             if (!configured || !*configured) {
                 return default_limit;
             }
@@ -98,18 +101,21 @@ namespace ormi::backends::cpu::jit::cache {
                 value.data() + value.size(),
                 result
             );
+
             if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size()) {
                 ORMI_THROW(
                     jitError,
                     "ORMI_CPU_JIT_CACHE_MAX_BYTES must be an unsigned decimal byte count."
                 );
             }
+
             return result;
         }
 
         void create_directory() {
             std::error_code error;
             std::filesystem::create_directories(directory(), error);
+
             if (error) {
                 ORMI_THROW(
                     jitError,
@@ -122,26 +128,32 @@ namespace ormi::backends::cpu::jit::cache {
         bool directory_exists() {
             std::error_code error;
             const auto status = std::filesystem::symlink_status(directory(), error);
+
             if (error == std::errc::no_such_file_or_directory) {
                 return false;
             }
+
             if (error) {
                 ORMI_THROW(
                     jitError,
                     "Cannot inspect CPU JIT cache directory: " + error.message()
                 );
             }
+
             if (!std::filesystem::exists(status)) {
                 return false;
             }
+
             if (!std::filesystem::is_directory(status)) {
                 ORMI_THROW(jitError, "CPU JIT cache path is not a directory.");
             }
+
             return true;
         }
 
         bool valid(const Files& paths, std::string_view generated) {
             std::error_code error;
+
             if (
                 !std::filesystem::is_regular_file(paths.library, error) ||
                 error ||
@@ -152,6 +164,7 @@ namespace ormi::backends::cpu::jit::cache {
             }
 
             const auto size = std::filesystem::file_size(paths.source, error);
+
             if (error || size != generated.size()) {
                 return false;
             }
@@ -176,16 +189,19 @@ namespace ormi::backends::cpu::jit::cache {
             std::string_view generated
         ) {
             std::ofstream source(path, std::ios::binary | std::ios::trunc);
+
             if (!source) {
                 ORMI_THROW(
                     jitError,
                     "Cannot write generated CPU kernel source: " + path.string()
                 );
             }
+
             source.write(
                 generated.data(),
                 static_cast<std::streamsize>(generated.size())
             );
+
             if (!source) {
                 ORMI_THROW(
                     jitError,
@@ -200,6 +216,7 @@ namespace ormi::backends::cpu::jit::cache {
         ) {
             std::error_code error;
             std::filesystem::remove(destination, error);
+
             if (error) {
                 ORMI_THROW(
                     jitError,
@@ -208,6 +225,7 @@ namespace ormi::backends::cpu::jit::cache {
             }
 
             std::filesystem::rename(source, destination, error);
+
             if (error) {
                 ORMI_THROW(
                     jitError,
@@ -229,9 +247,11 @@ namespace ormi::backends::cpu::jit::cache {
 
             while (!error && iterator != end) {
                 const auto path = iterator->path();
+
                 if (path.filename().string().starts_with(prefix)) {
                     cleanup(path);
                 }
+
                 iterator.increment(error);
             }
         }
@@ -250,12 +270,14 @@ namespace ormi::backends::cpu::jit::cache {
             try {
                 write(staged_source, generated);
                 build(staged_source, staged_library);
+
                 if (!std::filesystem::is_regular_file(staged_library)) {
                     ORMI_THROW(
                         jitError,
                         "CPU JIT compiler did not produce a shared library."
                     );
                 }
+
                 replace(staged_library, paths.library);
                 replace(staged_source, paths.source);
                 cleanup_staged(staged_source);
@@ -272,56 +294,69 @@ namespace ormi::backends::cpu::jit::cache {
 
             for (; !error && iterator != end; iterator.increment(error)) {
                 const auto path = iterator->path();
+
                 if (path.extension() != ".cpp") {
                     continue;
                 }
 
                 const auto stem = path.stem().string();
+
                 if (!is_key(stem)) {
                     continue;
                 }
 
                 const auto paths = files_for(stem);
                 std::error_code entry_error;
+
                 if (!std::filesystem::is_regular_file(paths.source, entry_error) || entry_error) {
                     continue;
                 }
+
                 if (!std::filesystem::is_regular_file(paths.library, entry_error) || entry_error) {
                     continue;
                 }
 
                 const auto source_bytes = std::filesystem::file_size(paths.source, entry_error);
+
                 if (entry_error) {
                     continue;
                 }
+
                 const auto library_bytes = std::filesystem::file_size(paths.library, entry_error);
+
                 if (entry_error) {
                     continue;
                 }
+
                 const auto used = std::filesystem::last_write_time(paths.source, entry_error);
+
                 if (entry_error) {
                     continue;
                 }
 
                 result.push_back(Entry{stem, paths, source_bytes + library_bytes, used});
             }
+
             return result;
         }
 
         Info snapshot(std::uintmax_t limit) {
             std::error_code error;
             const auto exists = std::filesystem::is_directory(directory(), error);
+
             if (error) {
                 ORMI_THROW(
                     jitError,
                     "Cannot inspect CPU JIT cache directory: " + error.message()
                 );
             }
+
             if (!exists) {
                 return Info{directory(), 0, 0, limit};
             }
 
             const auto entries = scan(error);
+
             if (error) {
                 ORMI_THROW(
                     jitError,
@@ -330,33 +365,40 @@ namespace ormi::backends::cpu::jit::cache {
             }
 
             std::uintmax_t bytes = 0;
+
             for (const auto& entry : entries) {
                 bytes += entry.bytes;
             }
+
             return Info{directory(), entries.size(), bytes, limit};
         }
 
         std::uintmax_t erase(const Files& paths) {
             std::error_code error;
             const auto library_bytes = std::filesystem::file_size(paths.library, error);
+
             if (error) {
                 return 0;
             }
 
             const auto library_removed = std::filesystem::remove(paths.library, error);
+
             if (error || !library_removed) {
                 return 0;
             }
 
             const auto source_bytes = std::filesystem::file_size(paths.source, error);
+
             if (error) {
                 return library_bytes;
             }
 
             const auto source_removed = std::filesystem::remove(paths.source, error);
+
             if (error || !source_removed) {
                 return library_bytes;
             }
+
             return library_bytes + source_bytes;
         }
 
@@ -369,14 +411,17 @@ namespace ormi::backends::cpu::jit::cache {
                 platform::FileLock maintenance(directory() / ".maintenance.lock");
                 std::error_code error;
                 auto entries = scan(error);
+
                 if (error) {
                     return;
                 }
 
                 std::uintmax_t bytes = 0;
+
                 for (const auto& entry : entries) {
                     bytes += entry.bytes;
                 }
+
                 std::sort(
                     entries.begin(),
                     entries.end(),
@@ -389,6 +434,7 @@ namespace ormi::backends::cpu::jit::cache {
                     if (bytes <= limit) {
                         break;
                     }
+
                     if (entry.key == protected_key) {
                         continue;
                     }
@@ -398,6 +444,7 @@ namespace ormi::backends::cpu::jit::cache {
                         entry.files.source,
                         error
                     );
+
                     if (error || used != entry.used) {
                         error.clear();
                         continue;
@@ -418,6 +465,7 @@ namespace ormi::backends::cpu::jit::cache {
 
             while (!error && iterator != end) {
                 const auto name = iterator->path().filename().string();
+
                 if (
                     name.size() > 32 &&
                     name[32] == '.' &&
@@ -425,8 +473,10 @@ namespace ormi::backends::cpu::jit::cache {
                 ) {
                     result.insert(name.substr(0, 32));
                 }
+
                 iterator.increment(error);
             }
+
             return result;
         }
 
@@ -437,13 +487,16 @@ namespace ormi::backends::cpu::jit::cache {
             std::error_code error;
             const auto library_exists = std::filesystem::exists(paths.library, error);
             bool library_absent = false;
+
             if (!error && !library_exists) {
                 library_absent = true;
             }
+
             if (!error && library_exists) {
                 const auto library_removed = std::filesystem::remove(paths.library, error);
                 library_absent = library_removed && !error;
             }
+
             if (library_absent) {
                 cleanup(paths.source);
             }
@@ -452,9 +505,11 @@ namespace ormi::backends::cpu::jit::cache {
             std::filesystem::directory_iterator iterator(directory(), error);
             const std::filesystem::directory_iterator end;
             const auto prefix = std::string(stem) + ".";
+
             while (!error && iterator != end) {
                 const auto path = iterator->path();
                 const auto name = path.filename().string();
+
                 if (
                     name.starts_with(prefix) &&
                     path != paths.source &&
@@ -463,8 +518,10 @@ namespace ormi::backends::cpu::jit::cache {
                 ) {
                     cleanup(path);
                 }
+
                 iterator.increment(error);
             }
+
             if (error) {
                 ORMI_THROW(
                     jitError,
@@ -493,6 +550,7 @@ namespace ormi::backends::cpu::jit::cache {
                 return std::filesystem::path(configured);
             }
         }
+
         return platform::cache_directory() / "jit" / std::string(abi);
     }
 
@@ -504,18 +562,22 @@ namespace ormi::backends::cpu::jit::cache {
         std::error_code error;
         std::filesystem::directory_iterator iterator(directory(), error);
         const std::filesystem::directory_iterator end;
+
         while (!error && iterator != end) {
             const auto& path = iterator->path();
             auto extension = path.extension().string();
+
             for (auto& character : extension) {
                 character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
             }
+
             if (
                 (extension == platform::shared_extension() || extension == ".lock") &&
                 is_key(path.stem().string())
             ) {
                 return true;
             }
+
             iterator.increment(error);
         }
 
@@ -558,15 +620,18 @@ namespace ormi::backends::cpu::jit::cache {
                 paths.lock,
                 platform::Lock::shared
             );
+
             if (valid(paths, generated)) {
                 touch(paths);
                 return Artifact{paths.library, !built, std::move(lease)};
             }
+
             lease.reset();
 
             std::uintmax_t limit = 0;
             {
                 platform::FileLock lock(paths.lock);
+
                 if (valid(paths, generated)) {
                     continue;
                 }
@@ -594,14 +659,18 @@ namespace ormi::backends::cpu::jit::cache {
             platform::Lock::shared,
             platform::FileLock::Open::existing
         );
+
         if (!lease->opened()) {
-            // Copied libraries may have no lock file. Missing libraries need no new lock.
+            // Copied libraries may have no lock file.
             std::error_code error;
+
             if (!std::filesystem::is_regular_file(paths.library, error) || error) {
                 return std::nullopt;
             }
+
             lease = std::make_unique<platform::FileLock>(paths.lock, platform::Lock::shared);
         }
+
         if (!valid(paths, generated)) {
             return std::nullopt;
         }
@@ -623,6 +692,7 @@ namespace ormi::backends::cpu::jit::cache {
 
     Info info() {
         const auto limit = configured_limit();
+
         if (!directory_exists()) {
             return Info{directory(), 0, 0, limit};
         }
@@ -633,6 +703,7 @@ namespace ormi::backends::cpu::jit::cache {
 
     Info clear() {
         const auto limit = configured_limit();
+
         if (!directory_exists()) {
             return Info{directory(), 0, 0, limit};
         }
@@ -640,15 +711,18 @@ namespace ormi::backends::cpu::jit::cache {
         platform::FileLock maintenance(directory() / ".maintenance.lock");
         std::error_code error;
         const auto keys = cache_keys(error);
+
         if (error) {
             ORMI_THROW(
                 jitError,
                 "Cannot inspect CPU JIT cache for clearing: " + error.message()
             );
         }
+
         for (const auto& stem : keys) {
             clear_key(stem);
         }
+
         return snapshot(limit);
     }
 }

@@ -13,12 +13,14 @@
 #include <pybind11/stl.h>
 
 #include <ormi/core/attrs.h>
+#include <ormi/core/autograd.h>
 #include <ormi/core/device.h>
 #include <ormi/core/dtype.h>
 #include <ormi/core/error.h>
 #include <ormi/core/float16.h>
 #include <ormi/core/memory/ops.h>
 #include <ormi/core/ops/creation.h>
+#include <ormi/core/ops/index.h>
 #include <ormi/core/ops/pointwise.h>
 #include <ormi/core/ops/reduction.h>
 #include <ormi/core/ops/view.h>
@@ -69,12 +71,15 @@ namespace ormi::bindings {
             if (value.is_none()) {
                 return core::Device::cpu();
             }
+
             if (py::isinstance<core::Device>(value)) {
                 return value.cast<core::Device>();
             }
+
             if (py::isinstance<py::str>(value)) {
                 return core::Device::from(value.cast<std::string>());
             }
+
             throw py::type_error("device must be an ORMI Device, string, or None");
         }
 
@@ -82,6 +87,7 @@ namespace ormi::bindings {
             if (py::isinstance<py::int_>(value)) {
                 return core::Shape{value.cast<std::int64_t>()};
             }
+
             return core::Shape(value.cast<std::vector<std::int64_t>>());
         }
 
@@ -109,6 +115,7 @@ namespace ormi::bindings {
             if (!lhs) {
                 ORMI_THROW(OperationError, "A Python tensor operation received a null tensor.");
             }
+
             return function(lhs, as_tensor(rhs, lhs));
         }
 
@@ -121,15 +128,18 @@ namespace ormi::bindings {
             if (!rhs) {
                 ORMI_THROW(OperationError, "A Python tensor operation received a null tensor.");
             }
+
             return function(as_tensor(lhs, rhs), rhs);
         }
 
         std::vector<py::ssize_t> numpy_shape(const core::Shape& shape) {
             std::vector<py::ssize_t> result;
             result.reserve(shape.rank());
+
             for (const auto dim : shape.dims()) {
                 result.push_back(static_cast<py::ssize_t>(dim));
             }
+
             return result;
         }
 
@@ -201,9 +211,11 @@ namespace ormi::bindings {
     py::tuple layer_norm_shape(const nn::LayerNorm& layer) {
         const auto& shape = layer.normalized_shape();
         py::tuple result(shape.rank());
+
         for (std::size_t axis = 0; axis < shape.rank(); ++axis) {
             result[axis] = shape[axis];
         }
+
         return result;
     }
 
@@ -218,9 +230,11 @@ namespace ormi::bindings {
 
     std::string device_string(core::Device device) {
         std::string value(device.name());
+
         if (device.indexed()) {
             value += ":" + std::to_string(device.index());
         }
+
         return value;
     }
 
@@ -240,13 +254,16 @@ namespace ormi::bindings {
         const auto device = as_device(device_value);
         auto numpy = py::module_::import("numpy");
         auto array = numpy.attr("asarray")(data, numpy_dtype(dtype)).cast<py::array>();
+
         if ((array.flags() & py::array::c_style) == 0) {
             array = numpy.attr("ascontiguousarray")(array).cast<py::array>();
         }
+
         const auto info = array.request();
 
         std::vector<std::int64_t> dimensions;
         dimensions.reserve(static_cast<std::size_t>(info.ndim));
+
         for (const auto dim : info.shape) {
             dimensions.push_back(static_cast<std::int64_t>(dim));
         }
@@ -258,6 +275,7 @@ namespace ormi::bindings {
         );
 
         const auto bytes = result->bytes();
+
         if (bytes != static_cast<std::size_t>(info.size * info.itemsize)) {
             ORMI_THROW(BufferError, "NumPy input size does not match the requested ORMI dtype.");
         }
@@ -266,6 +284,7 @@ namespace ormi::bindings {
             py::gil_scoped_release release;
             core::memory::copy(result->data(), device, info.ptr, core::Device::cpu(), bytes);
         }
+
         return result;
     }
 
@@ -278,12 +297,14 @@ namespace ormi::bindings {
     ) {
         std::vector<core::Plan::Update> converted;
         converted.reserve(updates.size());
+
         for (auto& [destination, value] : updates) {
             converted.push_back(core::Plan::Update{
                 std::move(destination),
                 std::move(value)
             });
         }
+
         return std::make_unique<core::Plan>(
             std::move(outputs),
             std::move(converted)
@@ -297,22 +318,28 @@ namespace ormi::bindings {
             destination.copy_from(*tensor);
             return;
         }
+
         if (!py::isinstance<py::array>(source)) {
             throw py::type_error("copy_from expects an ORMI Tensor or NumPy array");
         }
 
         auto array = source.cast<py::array>();
+
         if (!array.dtype().equal(numpy_dtype(destination.dtype()))) {
             ORMI_THROW(DTypeError, "Copy source and destination dtypes must match.");
         }
+
         std::vector<std::int64_t> dimensions;
         dimensions.reserve(static_cast<std::size_t>(array.ndim()));
+
         for (py::ssize_t axis = 0; axis < array.ndim(); ++axis) {
             dimensions.push_back(static_cast<std::int64_t>(array.shape(axis)));
         }
+
         if (core::Shape(std::move(dimensions)) != destination.shape()) {
             ORMI_THROW(ShapeError, "Copy source and destination shapes must match.");
         }
+
         if ((array.flags() & py::array::c_style) == 0) {
             array = py::module_::import("numpy").attr("ascontiguousarray")(array).cast<py::array>();
         }
@@ -329,6 +356,7 @@ namespace ormi::bindings {
         }
 
         py::array result(numpy_dtype(tensor->dtype()), numpy_shape(tensor->shape()));
+
         if (tensor->numel() == 0) {
             return result;
         }
@@ -364,10 +392,94 @@ namespace ormi::bindings {
         return result;
     }
 
+    std::vector<std::shared_ptr<core::Tensor>> tensor_grad_many(
+        const std::shared_ptr<core::Tensor>& output, py::object inputs, std::shared_ptr<core::Tensor> seed
+    ) {
+        if (py::isinstance<core::Tensor>(inputs)) {
+            throw py::type_error("inputs must be a sequence of tensors");
+        }
+
+        return core::grad(output, inputs.cast<std::vector<std::shared_ptr<core::Tensor>>>(), std::move(seed));
+    }
+
+    std::shared_ptr<core::Tensor> tensor_getitem(const std::shared_ptr<core::Tensor>& tensor, py::object index) {
+        if (!tensor) {
+            ORMI_THROW(OperationError, "Indexing requires a tensor.");
+        }
+
+        const auto indices = py::isinstance<py::tuple>(index)
+            ? index.cast<py::tuple>() : py::make_tuple(index);
+        std::size_t consuming = 0;
+        std::size_t ellipses = 0;
+
+        for (const auto key : indices) {
+            if (key.is(py::ellipsis())) {
+                ++ellipses;
+            } else if (py::isinstance<py::slice>(key) || (PyIndex_Check(key.ptr()) && !py::isinstance<py::bool_>(key))) {
+                ++consuming;
+            } else {
+                throw py::type_error("Tensor indices must be integers, slices, or ellipsis.");
+            }
+        }
+
+        if (ellipses > 1) {
+            throw py::index_error("An index can contain only one ellipsis.");
+        }
+
+        if (consuming > tensor->rank()) {
+            throw py::index_error("Too many indices for tensor.");
+        }
+
+        auto result = tensor;
+        std::size_t axis = 0;
+
+        for (const auto key : indices) {
+            if (key.is(py::ellipsis())) {
+                axis += tensor->rank() - consuming;
+                continue;
+            }
+
+            const auto extent = result->shape()[axis];
+
+            if (py::isinstance<py::slice>(key)) {
+                py::ssize_t start, stop, step, length;
+
+                if (!py::reinterpret_borrow<py::slice>(key).compute(extent, &start, &stop, &step, &length)) {
+                    throw py::error_already_set();
+                }
+
+                result = core::ops::slice(result, static_cast<std::int64_t>(axis), length == 0 ? 0 : start, length, step);
+                ++axis;
+                continue;
+            }
+
+            auto value = py::reinterpret_steal<py::object>(PyNumber_Index(key.ptr()));
+
+            if (!value) {
+                throw py::error_already_set();
+            }
+
+            auto coordinate = value.cast<std::int64_t>();
+
+            if (coordinate < 0) {
+                coordinate += extent;
+            }
+
+            if (coordinate < 0 || coordinate >= extent) {
+                throw py::index_error("Tensor index is out of range.");
+            }
+
+            result = core::ops::select_axis(result, static_cast<std::int64_t>(axis), coordinate);
+        }
+
+        return result;
+    }
+
     py::object tensor_item(const std::shared_ptr<core::Tensor>& tensor) {
         if (!tensor || tensor->numel() != 1) {
             ORMI_THROW(OperationError, "Tensor.item() requires exactly one element.");
         }
+
         return tensor_numpy(tensor).attr("item")();
     }
 
@@ -375,6 +487,7 @@ namespace ormi::bindings {
         if (!tensor) {
             ORMI_THROW(OperationError, "Cannot realize a null tensor.");
         }
+
         py::gil_scoped_release release;
         tensor->realize();
         return tensor;
@@ -382,18 +495,22 @@ namespace ormi::bindings {
 
     py::tuple tensor_shape(const core::Tensor& tensor) {
         py::tuple result(tensor.rank());
+
         for (std::size_t axis = 0; axis < tensor.rank(); ++axis) {
             result[axis] = tensor.shape()[axis];
         }
+
         return result;
     }
 
     py::tuple tensor_strides(const core::Tensor& tensor) {
         const auto strides = tensor.strides();
         py::tuple result(strides.size());
+
         for (std::size_t axis = 0; axis < strides.size(); ++axis) {
             result[axis] = strides[axis];
         }
+
         return result;
     }
 
@@ -475,6 +592,7 @@ namespace ormi::bindings {
         if (axes.is_none()) {
             return core::ops::sum(input, keepdims);
         }
+
         return core::ops::sum(input, axes.cast<std::vector<std::int64_t>>(), keepdims);
     }
 
@@ -486,6 +604,7 @@ namespace ormi::bindings {
         if (axes.is_none()) {
             return core::ops::mean(input, keepdims);
         }
+
         return core::ops::mean(input, axes.cast<std::vector<std::int64_t>>(), keepdims);
     }
 
@@ -494,14 +613,17 @@ namespace ormi::bindings {
         py::object axes
     ) {
         std::vector<std::int64_t> permutation;
+
         if (axes.is_none()) {
             permutation.reserve(input->rank());
+
             for (std::size_t axis = input->rank(); axis-- > 0;) {
                 permutation.push_back(static_cast<std::int64_t>(axis));
             }
         } else {
             permutation = axes.cast<std::vector<std::int64_t>>();
         }
+
         return core::ops::transpose(input, std::move(permutation));
     }
 

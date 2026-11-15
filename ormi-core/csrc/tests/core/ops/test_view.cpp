@@ -35,6 +35,7 @@ namespace {
         EXPECT_EQ(result->strides()[1], 1);
 
         result->realize();
+
         EXPECT_EQ(result->buffer(), input->buffer());
     }
 
@@ -109,6 +110,7 @@ namespace {
 
         EXPECT_FALSE(parent->realized());
         view->realize();
+
         EXPECT_TRUE(parent->realized());
         EXPECT_EQ(view->buffer(), parent->buffer());
     }
@@ -130,6 +132,7 @@ namespace {
         );
 
         const auto transposed = ormi::core::ops::transpose(input, {1, 0});
+
         EXPECT_THROW(
             (void)ormi::core::ops::reshape(transposed, ormi::core::Shape{6}),
             ormi::ShapeError

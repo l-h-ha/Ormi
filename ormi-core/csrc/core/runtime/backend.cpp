@@ -53,6 +53,7 @@ namespace ormi::core::runtime {
             if (inputs.empty() || inputs.front() == nullptr) {
                 ORMI_THROW(OperationError, "The selected backend does not support finiteness queries.");
             }
+
             unsupported(inputs.front()->device(), "finiteness queries");
         }
 
@@ -81,6 +82,7 @@ namespace ormi::core::runtime {
                 backend.recording.record || backend.recording.replay || backend.recording.release;
             const bool recording_complete =
                 backend.recording.record && backend.recording.replay && backend.recording.release;
+
             if (records && !recording_complete) {
                 ORMI_THROW(
                     DeviceError,
@@ -116,31 +118,41 @@ namespace ormi::core::runtime {
         if (!backend.ops.binary) {
             backend.ops.binary = unsupported_binary;
         }
+
         if (!backend.ops.unary) {
             backend.ops.unary = unsupported_unary;
         }
+
         if (!backend.ops.cast) {
             backend.ops.cast = unsupported_cast;
         }
+
         if (!backend.ops.matmul) {
             backend.ops.matmul = unsupported_matmul;
         }
+
         if (!backend.ops.reduce) {
             backend.ops.reduce = unsupported_reduce;
         }
+
         if (!backend.ops.all_finite) {
             backend.ops.all_finite = unsupported_finite;
         }
+
         if (!backend.ops.sgd) {
             backend.ops.sgd = unsupported_sgd;
         }
+
         if (!backend.ops.pick)
             backend.ops.pick = unsupported_index;
+
         if (!backend.ops.unpick)
             backend.ops.unpick = unsupported_index;
+
         if (!backend.ops.bernoulli) {
             backend.ops.bernoulli = unsupported_bernoulli;
         }
+
         if (!backend.fractional.execute) {
             backend.fractional.execute = unsupported_fractional;
         }

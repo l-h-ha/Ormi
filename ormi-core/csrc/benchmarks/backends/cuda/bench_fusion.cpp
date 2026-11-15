@@ -39,14 +39,17 @@ namespace {
     bool require_cuda(benchmark::State& state) {
         int device_count = 0;
         const auto status = cudaGetDeviceCount(&device_count);
+
         if (status != cudaSuccess) {
             state.SkipWithError(cudaGetErrorString(status));
             return false;
         }
+
         if (device_count == 0) {
             state.SkipWithError("No CUDA device is available.");
             return false;
         }
+
         return true;
     }
 
@@ -113,9 +116,11 @@ namespace {
         ormi::core::Device device
     ) {
         auto result = ormi::core::ops::full({elements}, 0.5f, device);
+
         if (dtype != result->dtype()) {
             result = ormi::core::ops::cast(result, dtype);
         }
+
         result->realize();
         return result;
     }
@@ -160,17 +165,22 @@ namespace {
 
         for (auto _ : state) {
             std::shared_ptr<ormi::core::Tensor> output;
+
             if (timing == Timing::submit) {
                 state.PauseTiming();
             }
+
             output = chain(values);
+
             if (timing == Timing::submit) {
                 state.ResumeTiming();
             }
+
             measure_cuda(state, device, timing, [&] {
                 output->realize();
             });
             benchmark::DoNotOptimize(output);
+
             if (timing != Timing::submit) {
                 output.reset();
                 ormi::core::runtime::device::synchronize(device);
@@ -224,6 +234,7 @@ namespace {
         const auto graph = chain(values);
         const auto expression =
             ormi::core::runtime::fusion::build(*graph);
+
         if (!expression) {
             state.SkipWithError("Cannot build CUDA fusion expression.");
             return;
@@ -238,6 +249,7 @@ namespace {
         auto warmup = ormi::core::runtime::backend(
             device
         ).fusion.prepare(*output, {}, *expression);
+
         if (!warmup) {
             state.SkipWithError("Cannot prepare CUDA fusion execution.");
             return;
@@ -269,6 +281,7 @@ namespace {
         const auto graph = chain(values);
         const auto expression =
             ormi::core::runtime::fusion::build(*graph);
+
         if (!expression) {
             state.SkipWithError("Cannot build CUDA fusion expression.");
             return;
@@ -327,6 +340,7 @@ namespace {
         const auto graph = chain(values);
         const auto expression =
             ormi::core::runtime::fusion::build(*graph);
+
         if (!expression) {
             state.SkipWithError("Cannot build CUDA fusion expression.");
             return;
@@ -343,6 +357,7 @@ namespace {
             {},
             *expression
         );
+
         if (!setup) {
             state.SkipWithError("Cannot prepare CUDA fusion execution.");
             return;
@@ -381,6 +396,7 @@ namespace {
         const auto graph = chain(values);
         const auto expression =
             ormi::core::runtime::fusion::build(*graph);
+
         if (!expression) {
             state.SkipWithError("Cannot build CUDA fusion expression.");
             return;
@@ -396,6 +412,7 @@ namespace {
             {},
             *expression
         );
+
         if (!setup) {
             state.SkipWithError("Cannot prepare CUDA fusion execution.");
             return;
@@ -421,6 +438,7 @@ namespace {
                 setup.run(*output);
             });
             benchmark::DoNotOptimize(output);
+
             if (timing != Timing::submit) {
                 output.reset();
                 ormi::core::runtime::device::synchronize(device);
@@ -536,21 +554,25 @@ namespace {
         for (auto& plan : plans) {
             plan.run();
         }
+
         ormi::core::runtime::device::synchronize(device);
 
         for (auto _ : state) {
             for (auto& plan : plans) {
                 plan.run();
             }
+
             ormi::core::runtime::device::synchronize(device);
             benchmark::DoNotOptimize(negative);
             benchmark::DoNotOptimize(exponential);
         }
 
         std::size_t steps = 0;
+
         for (const auto& plan : plans) {
             steps += plan.steps();
         }
+
         state.counters["steps"] = static_cast<double>(steps);
         state.SetItemsProcessed(state.iterations() * elements * 2);
     }
@@ -573,6 +595,7 @@ namespace {
         const auto graph = ormi::core::ops::mean(chain(values));
         const auto expression =
             ormi::core::runtime::fusion::build(*graph);
+
         if (!expression) {
             state.SkipWithError("Cannot build CUDA mean fusion expression.");
             return;
@@ -585,6 +608,7 @@ namespace {
         );
         output->realize();
         std::optional<ormi::core::Plan> plan;
+
         if (prepared) {
             plan.emplace(std::vector<std::shared_ptr<ormi::core::Tensor>>{
                 graph
@@ -595,6 +619,7 @@ namespace {
                 device
             ).fusion.execute(*output, {}, *expression);
         }
+
         ormi::core::runtime::device::synchronize(device);
 
         for (auto _ : state) {
@@ -605,10 +630,12 @@ namespace {
                     device
                 ).fusion.execute(*output, {}, *expression);
             }
+
             benchmark::DoNotOptimize(output);
         }
 
         ormi::core::runtime::device::synchronize(device);
+
         if (plan) {
             state.counters["plan_buffers"] = static_cast<double>(
                 plan->storage_buffers()
@@ -617,6 +644,7 @@ namespace {
                 plan->storage_bytes()
             );
         }
+
         state.SetItemsProcessed(state.iterations() * elements);
     }
 
@@ -669,9 +697,11 @@ namespace {
         const auto values = input(elements, ormi::core::DType::float32, device);
         auto warmup_mapped = chain(values);
         auto warmup = reduce(warmup_mapped, reduction);
+
         if (force_materialized) {
             warmup_mapped->realize();
         }
+
         warmup->realize();
         ormi::core::runtime::device::synchronize(device);
 
@@ -684,6 +714,7 @@ namespace {
             if (force_materialized) {
                 mapped->realize();
             }
+
             output->realize();
             ormi::core::runtime::device::synchronize(device);
             benchmark::DoNotOptimize(output);
@@ -739,9 +770,11 @@ namespace {
 
         auto warmup_mapped = chain(values);
         auto warmup = ormi::core::ops::sum(warmup_mapped, {1});
+
         if (force_materialized) {
             warmup_mapped->realize();
         }
+
         warmup->realize();
         ormi::core::runtime::device::synchronize(device);
 
@@ -754,6 +787,7 @@ namespace {
             if (force_materialized) {
                 mapped->realize();
             }
+
             output->realize();
             ormi::core::runtime::device::synchronize(device);
             benchmark::DoNotOptimize(output);
@@ -791,12 +825,14 @@ namespace {
             )
             : nullptr;
         base->realize();
+
         if (contiguous) {
             contiguous->realize();
         }
 
         auto build = [&] {
             std::shared_ptr<ormi::core::Tensor> mapped;
+
             if (mixed) {
                 const auto square =
                     ormi::core::ops::mul(permuted, permuted);
@@ -807,6 +843,7 @@ namespace {
             } else {
                 mapped = arithmetic_chain(permuted);
             }
+
             return partial
                 ? ormi::core::ops::sum(mapped, {1})
                 : ormi::core::ops::sum(mapped);
@@ -882,9 +919,11 @@ namespace {
         };
 
         auto [warmup_mapped, warmup] = build();
+
         if (force_materialized) {
             warmup_mapped->realize();
         }
+
         warmup->realize();
         ormi::core::runtime::device::synchronize(device);
 
@@ -896,6 +935,7 @@ namespace {
             if (force_materialized) {
                 mapped->realize();
             }
+
             output->realize();
             ormi::core::runtime::device::synchronize(device);
             benchmark::DoNotOptimize(output);

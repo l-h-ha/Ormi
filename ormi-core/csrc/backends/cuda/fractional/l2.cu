@@ -32,6 +32,7 @@ namespace ormi::backends::cuda::l2 {
 
             for (; linear < elements; linear += stride) {
                 const auto coordinate = linear / axis_stride % count;
+
                 if (coordinate + 1 >= count) {
                     differences[linear] = T{};
                     continue;
@@ -39,11 +40,13 @@ namespace ormi::backends::cuda::l2 {
 
                 const auto input_offset =
                     elementwise::storage_offset(linear, input_index);
+
                 if (coordinate == 0) {
                     auto value = static_cast<T>(2) * (
                         input[input_offset + input_axis_stride] -
                         input[input_offset]
                     );
+
                     if (initial_derivative) {
                         const auto outer = linear / (count * axis_stride);
                         const auto inner = linear % axis_stride;
@@ -54,6 +57,7 @@ namespace ormi::backends::cuda::l2 {
                         value -= static_cast<T>(2.0 * spacing) *
                             initial_derivative[initial_offset];
                     }
+
                     differences[linear] = value;
                     continue;
                 }
@@ -88,6 +92,7 @@ namespace ormi::backends::cuda::l2 {
                         base + (coordinate - 1 - k) * axis_stride
                     ];
                 }
+
                 out[linear] = value;
             }
         }

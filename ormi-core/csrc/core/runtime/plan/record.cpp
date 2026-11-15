@@ -56,6 +56,7 @@ namespace ormi::core {
     Plan::Replay Plan::Impl::record(std::shared_ptr<Impl> owner) {
         const auto device = recording_device();
         const auto& backend = runtime::backend(device);
+
         if (!backend.recording.record) {
             ORMI_THROW(
                 OperationError,
@@ -63,6 +64,7 @@ namespace ormi::core {
                     "' does not support recording."
             );
         }
+
         if (!ran_) {
             ORMI_THROW(
                 OperationError,
@@ -77,6 +79,7 @@ namespace ormi::core {
             },
             this
         );
+
         if (!recording) {
             ORMI_THROW(
                 OperationError,
@@ -106,6 +109,7 @@ namespace ormi::core {
                 device = candidate;
                 return;
             }
+
             if (*device != candidate) {
                 ORMI_THROW(
                     OperationError,
@@ -117,6 +121,7 @@ namespace ormi::core {
         for (const auto& step : steps_) {
             include(step.output().device());
         }
+
         for (const auto& copy : copies_) {
             include(copy.destination->device_);
         }
@@ -127,6 +132,7 @@ namespace ormi::core {
                 "Cannot record a plan with no executable steps."
             );
         }
+
         return *device;
     }
 }

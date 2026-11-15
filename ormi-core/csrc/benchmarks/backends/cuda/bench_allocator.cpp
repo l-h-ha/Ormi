@@ -42,6 +42,7 @@ namespace {
 
         const auto device = ormi::core::Device::from("cuda");
         cudaError_t status = cudaSetDevice(device.index());
+
         if (status != cudaSuccess) {
             state.SkipWithError(cudaGetErrorString(status));
             return;
@@ -60,6 +61,7 @@ namespace {
 
         const auto device = ormi::core::Device::from("cuda");
         cudaError_t status = cudaSetDevice(device.index());
+
         if (status != cudaSuccess) {
             state.SkipWithError(cudaGetErrorString(status));
             return;
@@ -79,6 +81,7 @@ namespace {
         }
 
         const auto device = ormi::core::Device::from("cuda");
+
         for (auto _ : state) {
             auto* allocator =
                 ormi::core::runtime::device::allocator(device);

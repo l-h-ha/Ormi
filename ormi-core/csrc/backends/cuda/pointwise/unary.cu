@@ -233,6 +233,7 @@ namespace ormi::backends::cuda {
                 if (op != core::ops::UnaryOp::neg) {
                     ORMI_THROW(DTypeError, "This CUDA operation requires floating-point tensors.");
                 }
+
                 launch_unary<std::int32_t, core::ops::UnaryOp::neg>(out, input, cuda_state.stream());
                 return;
             case core::DType::boolean:

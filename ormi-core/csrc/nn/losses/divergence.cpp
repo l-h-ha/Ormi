@@ -19,11 +19,13 @@ namespace ormi::nn {
 
         const auto [log_values, targets] = detail::loss_inputs(log_probabilities, target);
         double smallest_probability = std::numeric_limits<float>::min();
+
         if (log_values->dtype() == core::DType::float64) {
             smallest_probability = std::numeric_limits<double>::min();
         }
 
         std::shared_ptr<core::Tensor> loss;
+
         if (log_target) {
             const auto lower_bound = detail::constant(targets, std::log(smallest_probability));
             const auto log_targets = maximum(targets, lower_bound);
@@ -40,6 +42,7 @@ namespace ormi::nn {
         if (reduction != "batchmean") {
             return detail::reduce(loss, reduction);
         }
+
         if (log_values->rank() == 0) {
             ORMI_THROW(ShapeError, "KL batchmean requires a batch axis.");
         }

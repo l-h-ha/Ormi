@@ -34,20 +34,24 @@ namespace ormi::backends::cpu::avx2 {
 
         for (; column + 8 <= columns; column += 8) {
             auto sum = _mm256_setzero_ps();
+
             for (std::size_t row = 0; row < rows; ++row) {
                 sum = _mm256_add_ps(
                     sum,
                     _mm256_loadu_ps(input + row * columns + column)
                 );
             }
+
             _mm256_storeu_ps(sums + column, sum);
         }
 
         for (; column < columns; ++column) {
             float sum = 0.0f;
+
             for (std::size_t row = 0; row < rows; ++row) {
                 sum += input[row * columns + column];
             }
+
             sums[column] = sum;
         }
     }

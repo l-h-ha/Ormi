@@ -14,12 +14,15 @@ namespace ormi::core::ops {
     namespace {
         std::shared_ptr<Tensor> scalar(const std::shared_ptr<Tensor>& input, double value) {
             Scalar scalar_value = value;
+
             if (input->dtype() == DType::float32) {
                 scalar_value = static_cast<float>(value);
             }
+
             if (input->dtype() == DType::float16) {
                 scalar_value = Float16(static_cast<float>(value));
             }
+
             return full(Shape{}, scalar_value, input->device());
         }
 
@@ -245,10 +248,13 @@ namespace ormi::core::ops {
             if (!input) {
                 ORMI_THROW(OperationError, "Unary operations require a tensor.");
             }
+
             if (!is_floating(input->dtype())) {
                 ORMI_THROW(DTypeError, "This unary operation requires a floating-point tensor.");
             }
+
             auto dtype = input->dtype();
+
             if (precision::state.enabled) {
                 dtype = precision::apply(op.get()->precision, dtype);
             }

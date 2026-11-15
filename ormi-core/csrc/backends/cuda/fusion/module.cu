@@ -65,9 +65,11 @@ namespace ormi::backends::cuda::fusion {
                     static_cast<int>(result->tiled->width);
             } else {
                 int power_of_two = 1;
+
                 while (power_of_two <= result->threads / 2) {
                     power_of_two *= 2;
                 }
+
                 result->threads = power_of_two;
             }
 

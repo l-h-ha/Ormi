@@ -23,16 +23,21 @@ namespace ormi::core {
                     std::string("Partial requires an explicit ") + name + " when its dimension is not one."
                 );
             }
+
             auto index = value.value_or(0);
+
             if (index < 0) {
                 index += size;
             }
+
             if (index < 0 || index >= size) {
                 ORMI_THROW(ShapeError, std::string("Partial ") + name + " is out of range.");
             }
+
             if (index > std::numeric_limits<std::int32_t>::max()) {
                 ORMI_THROW(ShapeError, std::string("Partial ") + name + " exceeds the Int32 indexing limit.");
             }
+
             return static_cast<std::int32_t>(index);
         }
     }
@@ -47,15 +52,19 @@ namespace ormi::core {
         if (!output || !input) {
             ORMI_THROW(OperationError, "Partial differentiation requires output and input tensors.");
         }
+
         if (order == 0) {
             ORMI_THROW(OperationError, "Partial differentiation order must be positive.");
         }
+
         if (!is_floating(output->dtype()) || !is_floating(input->dtype())) {
             ORMI_THROW(DTypeError, "Partial differentiation supports floating-point tensors only.");
         }
+
         if (output->device() != input->device()) {
             ORMI_THROW(DeviceError, "Partial output and input must use the same device.");
         }
+
         if (output->rank() == 0 || input->rank() == 0) {
             ORMI_THROW(
                 ShapeError,
@@ -69,11 +78,14 @@ namespace ormi::core {
         auto output_points = output->shape().dims();
         const auto components = output_points.back();
         output_points.pop_back();
+
         if (points != output_points) {
             ORMI_THROW(ShapeError, "Partial output and input must have matching point dimensions.");
         }
+
         const auto input_channel = selector(coordinate, coordinates, "coordinate");
         const auto output_channel = selector(component, components, "component");
+
         for (const auto size : points) {
             if (size - 1 > std::numeric_limits<std::int32_t>::max()) {
                 ORMI_THROW(ShapeError, "Partial point dimensions exceed the Int32 indexing limit.");
@@ -89,24 +101,28 @@ namespace ormi::core {
             const auto output_index = current * static_cast<std::size_t>(components) + output_channel;
             const auto input_index = current * static_cast<std::size_t>(coordinates) + input_channel;
             auto value = ops::select(output, output_index);
-            // Every reverse pass starts from one scalar. No output sums or point-independence assumptions.
+
+            // Every reverse pass starts from one scalar.
             for (std::size_t derivative = 0; derivative < order; ++derivative) {
                 value = ops::select(grad(value, input), input_index);
             }
 
             std::vector<std::int64_t> dimensions;
+
             for (std::size_t axis = 0; axis < points.size(); ++axis) {
                 const auto position =
                     ops::full(value->shape(), static_cast<std::int32_t>(point[axis]), input->device());
                 dimensions.push_back(points[axis]);
                 value = ops::unpick(value, position, Shape(dimensions));
             }
+
             result = ops::add(result, value);
 
             for (std::size_t axis = points.size(); axis > 0; --axis) {
                 if (++point[axis - 1] < points[axis - 1]) {
                     break;
                 }
+
                 point[axis - 1] = 0;
             }
         }

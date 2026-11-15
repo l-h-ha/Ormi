@@ -15,6 +15,26 @@
 #include <ormi/core/tensor.h>
 
 namespace {
+    std::size_t identity_adjoints = 0;
+
+    void identity_adjoint(
+        const std::shared_ptr<ormi::core::Tensor>& output,
+        const std::shared_ptr<ormi::core::Tensor>& upstream,
+        ormi::core::Grads& gradients
+    ) {
+        ++identity_adjoints;
+        gradients.add(output->parents()[0], upstream);
+    }
+
+    const ormi::core::Op identity_op{
+        .name = "counted_identity",
+        .output = ormi::core::Output::alias,
+        .parents = 1,
+        .compute = nullptr,
+        .adjoint = identity_adjoint,
+        .scalar = std::monostate{}
+    };
+
     std::shared_ptr<ormi::core::Tensor> floatTensor(ormi::core::Shape shape) {
         return std::make_shared<ormi::core::Tensor>(
             ormi::core::Device::cpu(),
@@ -39,6 +59,69 @@ namespace {
 
         EXPECT_FALSE(dx->realized());
         EXPECT_FLOAT_EQ(*static_cast<const float*>(dx->data()), 6.0f);
+    }
+
+    TEST(AutogradTest, skipsHistoryBelowRequestedInputsAndKeepsHigherDerivatives) {
+        const auto x = doubleTensor({});
+        *static_cast<double*>(x->data()) = 3.0;
+        auto state = std::make_shared<ormi::core::Tensor>(
+            ormi::core::op_ref<identity_op>(),
+            std::vector{x}
+        );
+        const auto one = ormi::core::ops::ones_like(x);
+
+        for (std::size_t i = 0; i < 128; ++i) {
+            state = ormi::core::ops::add(state, one);
+        }
+
+        const auto output = ormi::core::ops::mul(state, state);
+        identity_adjoints = 0;
+        const auto first = ormi::core::grad(output, state);
+
+        EXPECT_EQ(identity_adjoints, 0);
+        EXPECT_FALSE(first->realized());
+        EXPECT_FALSE(output->realized());
+        const auto second = ormi::core::grad(first, x);
+
+        EXPECT_EQ(identity_adjoints, 1);
+        EXPECT_DOUBLE_EQ(*static_cast<const double*>(first->data()), 262.0);
+        EXPECT_DOUBLE_EQ(*static_cast<const double*>(second->data()), 2.0);
+    }
+
+    TEST(AutogradTest, collectsAncestorAndIntermediateInputsTogether) {
+        const auto x = doubleTensor({});
+        *static_cast<double*>(x->data()) = 3.0;
+        const auto square = ormi::core::ops::mul(x, x);
+        const auto output = ormi::core::ops::mul(square, x);
+        const auto values = ormi::core::grad(output, std::vector{square, x, square, output});
+
+        ASSERT_EQ(values.size(), 4);
+        EXPECT_DOUBLE_EQ(*static_cast<const double*>(values[0]->data()), 3.0);
+        EXPECT_DOUBLE_EQ(*static_cast<const double*>(values[1]->data()), 27.0);
+        EXPECT_EQ(values[0], values[2]);
+        EXPECT_DOUBLE_EQ(*static_cast<const double*>(values[3]->data()), 1.0);
+    }
+
+    TEST(AutogradTest, handlesDisconnectedDeeperInputs) {
+        const auto x = doubleTensor({});
+        const auto output = ormi::core::ops::mul(x, x);
+        const auto other = doubleTensor({});
+        const auto square = ormi::core::ops::mul(other, other);
+        const auto cube = ormi::core::ops::mul(square, other);
+        const auto gradient = ormi::core::grad(output, cube);
+
+        EXPECT_FALSE(output->realized());
+        EXPECT_DOUBLE_EQ(*static_cast<const double*>(gradient->data()), 0.0);
+    }
+
+    TEST(AutogradTest, validatesSeedBeforeReturningEmptyInputs) {
+        const auto x = doubleTensor({2});
+        const auto output = ormi::core::ops::mul(x, x);
+        const std::vector<std::shared_ptr<ormi::core::Tensor>> inputs;
+
+        EXPECT_THROW((void)ormi::core::grad(output, inputs), ormi::ShapeError);
+        EXPECT_TRUE(ormi::core::grad(output, inputs, ormi::core::ops::ones_like(output)).empty());
+        EXPECT_FALSE(output->realized());
     }
 
     TEST(CPUAutogradTest, differentiatesFloat16SquareTwiceLazily) {

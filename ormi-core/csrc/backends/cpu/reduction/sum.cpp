@@ -57,12 +57,15 @@ namespace ormi::backends::cpu {
             for (std::size_t i = 0; i < first; ++i) {
                 slice.outer *= static_cast<std::size_t>(input.shape()[i]);
             }
+
             for (std::size_t i = first; i <= last; ++i) {
                 slice.reduced *= static_cast<std::size_t>(input.shape()[i]);
             }
+
             for (std::size_t i = last + 1; i < input.rank(); ++i) {
                 slice.inner *= static_cast<std::size_t>(input.shape()[i]);
             }
+
             return slice;
         }
 
@@ -76,6 +79,7 @@ namespace ormi::backends::cpu {
                 for (std::size_t outer = 0; outer < slice.outer; ++outer) {
                     Sum total{};
                     const auto* values = input + outer * slice.reduced;
+
                     for (
                         std::size_t reduced = 0;
                         reduced < slice.reduced;
@@ -83,12 +87,15 @@ namespace ormi::backends::cpu {
                     ) {
                         total += static_cast<Sum>(values[reduced]);
                     }
+
                     sums[outer] = total;
                 }
+
                 return;
             }
 
             std::fill_n(sums, slice.outer * slice.inner, Sum{});
+
             for (std::size_t outer = 0; outer < slice.outer; ++outer) {
                 auto* totals = sums + outer * slice.inner;
                 const auto* values =
@@ -100,6 +107,7 @@ namespace ormi::backends::cpu {
                     ++reduced
                 ) {
                     const auto* row = values + reduced * slice.inner;
+
                     for (std::size_t inner = 0; inner < slice.inner; ++inner) {
                         totals[inner] += static_cast<Sum>(row[inner]);
                     }
@@ -138,6 +146,7 @@ namespace ormi::backends::cpu {
                     if (keepdims) {
                         --out_axis;
                     }
+
                     continue;
                 }
 
@@ -171,6 +180,7 @@ namespace ormi::backends::cpu {
         ) {
             const auto output_elements = out.numel();
             const auto input_elements = input.numel();
+
             if (const auto slice = contiguous_slice(out, input, axes)) {
                 auto* out_data = static_cast<T*>(out.data());
                 bool summed = false;
@@ -185,9 +195,11 @@ namespace ormi::backends::cpu {
                         )
                     ) {
                         static const bool has_avx2 = platform::supports_avx2();
+
                         if (has_avx2) {
                             const auto* input_data =
                                 static_cast<const float*>(input.data());
+
                             for (
                                 std::size_t outer = 0;
                                 outer < slice->outer;
@@ -201,6 +213,7 @@ namespace ormi::backends::cpu {
                                     slice->inner
                                 );
                             }
+
                             summed = true;
                         }
                     }
@@ -220,6 +233,7 @@ namespace ormi::backends::cpu {
                         out_data[i] *= scale;
                     }
                 }
+
                 return;
             }
 
@@ -258,9 +272,11 @@ namespace ormi::backends::cpu {
 
             if (const auto slice = contiguous_slice(out, input, axes)) {
                 contiguous_sum(sums.data(), input_data, *slice);
+
                 for (std::size_t i = 0; i < output_elements; ++i) {
                     out_data[i] = core::Float16(sums[i] * scale);
                 }
+
                 return;
             }
 
@@ -287,6 +303,7 @@ namespace ormi::backends::cpu {
                     input.shape()[static_cast<std::size_t>(axis)]
                 );
             }
+
             return result;
         }
     }

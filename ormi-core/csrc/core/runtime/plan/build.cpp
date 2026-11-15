@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <limits>
 #include <memory>
 #include <unordered_set>
@@ -45,18 +46,21 @@ namespace ormi::core {
                     "A plan cannot contain a null output."
                 );
             }
+
             if (output->buffer_) {
                 ORMI_THROW(
                     OperationError,
                     "A plan output must be lazy."
                 );
             }
+
             root_tensors.push_back(output.get());
         }
 
         copies_.reserve(updates_.size());
         std::unordered_set<const Tensor*> destinations;
         destinations.reserve(updates_.size());
+
         for (const auto& update : updates_) {
             if (
                 update.destination &&
@@ -67,13 +71,25 @@ namespace ormi::core {
                     "A plan cannot update one destination twice."
                 );
             }
+
             append_update(update);
             root_tensors.push_back(update.value.get());
         }
 
-        const auto candidates = runtime::fusion::find_candidates(root_tensors);
+        const bool scalar_outputs = std::all_of(root_tensors.begin(), root_tensors.end(), [](const Tensor* tensor) {
+            return tensor->numel() == 1 && tensor->device().is_host();
+        });
+        std::unordered_set<const Tensor*> shared_scalars;
+        const auto minimum_nodes = scalar_outputs
+            ? runtime::backend(root_tensors.front()->device()).fusion.max_operations
+            : 0;
+        const auto candidates = runtime::fusion::find_candidates(
+            root_tensors, scalar_outputs ? &shared_scalars : nullptr, minimum_nodes
+        );
+        auto* boundaries = shared_scalars.empty() ? nullptr : &shared_scalars;
+
         for (auto* root : root_tensors) {
-            runtime::schedule::append(*root, planned, steps_, candidates);
+            runtime::schedule::append(*root, planned, steps_, candidates, boundaries);
         }
 
         runtime::prepare(steps_);
@@ -109,6 +125,7 @@ namespace ormi::core {
                     ++output
                 ) {
                     const auto bytes = step.output(output).bytes();
+
                     if (bytes != 0) {
                         add_storage(1, bytes);
                     }
@@ -126,30 +143,35 @@ namespace ormi::core {
                 "A plan update requires a destination and value."
             );
         }
+
         if (!update.destination->buffer_) {
             ORMI_THROW(
                 BufferError,
                 "A plan update destination must be realized."
             );
         }
+
         if (update.destination->device_ != update.value->device_) {
             ORMI_THROW(
                 DeviceError,
                 "A plan update requires one device."
             );
         }
+
         if (update.destination->dtype_ != update.value->dtype_) {
             ORMI_THROW(
                 DTypeError,
                 "A plan update requires matching dtypes."
             );
         }
+
         if (update.destination->shape_ != update.value->shape_) {
             ORMI_THROW(
                 ShapeError,
                 "A plan update requires matching shapes."
             );
         }
+
         if (
             !update.destination->is_contiguous() ||
             !update.value->is_contiguous()

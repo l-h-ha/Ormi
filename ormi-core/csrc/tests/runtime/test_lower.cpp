@@ -86,6 +86,7 @@ namespace {
 
         current.run();
         expect_values();
+
         EXPECT_FALSE(mapped->realized());
     }
 
@@ -96,6 +97,7 @@ namespace {
         ASSERT_EQ(current.input_count(), 1u);
         EXPECT_EQ(&current.input(0), input.get());
         current.run();
+
         EXPECT_FLOAT_EQ(*static_cast<const float*>(negative->data()), -4.0f);
         EXPECT_FALSE(exponential->realized());
     }
@@ -108,10 +110,24 @@ namespace {
         EXPECT_EQ(&current.input(0), input.get());
         current.prepare();
         current.prepare();
+
         EXPECT_FALSE(negative->realized());
         current.run();
+
         EXPECT_FLOAT_EQ(*static_cast<const float*>(negative->data()), -4.0f);
         EXPECT_FALSE(mapped->realized());
+    }
+
+    TEST_P(LowerTest, expandsRequestedOutputAtSharedBoundary) {
+        const Candidates candidates;
+        boundaries.insert(negative.get());
+        auto current = core::runtime::lower(*negative, candidates, boundaries, preparation());
+
+        ASSERT_EQ(current.input_count(), 1u);
+        EXPECT_EQ(&current.input(0), input.get());
+        current.run();
+
+        EXPECT_FLOAT_EQ(*static_cast<const float*>(negative->data()), -4.0f);
     }
 
     TEST_P(LowerTest, preparesGroupedFusionWithoutRealizingOutputs) {
@@ -122,6 +138,7 @@ namespace {
         ASSERT_EQ(current.front().output_count(), 3u);
         core::runtime::prepare(current);
         core::runtime::prepare(current);
+
         EXPECT_FALSE(negative->realized());
         EXPECT_FALSE(exponential->realized());
         EXPECT_FALSE(sine->realized());
@@ -131,6 +148,7 @@ namespace {
         expect_values();
         *static_cast<float*>(input->data()) = 3.0f;
         current.front().run();
+
         EXPECT_FLOAT_EQ(*static_cast<const float*>(negative->data()), -6.0f);
         EXPECT_NEAR(*static_cast<const float*>(exponential->data()), std::exp(6.0f), 1e-4f);
         EXPECT_NEAR(*static_cast<const float*>(sine->data()), std::sin(6.0f), 1e-6f);
@@ -143,6 +161,7 @@ namespace {
 
         EXPECT_EQ(current.output_count(), 1u);
         current.run();
+
         EXPECT_FLOAT_EQ(*static_cast<const float*>(negative->data()), -4.0f);
     }
 
@@ -152,6 +171,7 @@ namespace {
 
         EXPECT_EQ(current.output_count(), 1u);
         current.run();
+
         EXPECT_FLOAT_EQ(*static_cast<const float*>(negative->data()), -4.0f);
         EXPECT_FALSE(exponential->realized());
         EXPECT_FALSE(sine->realized());
@@ -166,6 +186,7 @@ namespace {
         ASSERT_EQ(current.input_count(), 1u);
         EXPECT_EQ(&current.input(0), input.get());
         current.run();
+
         EXPECT_FLOAT_EQ(*static_cast<const float*>(negative->data()), -4.0f);
         EXPECT_FALSE(converted->realized());
         EXPECT_FALSE(mapped->realized());
@@ -176,6 +197,7 @@ namespace {
         const auto second = core::ops::reshape(mapped, {1});
         const std::array<core::Tensor*, 2> outputs{first.get(), second.get()};
         const auto candidates = core::runtime::fusion::find_candidates(outputs);
+
         ASSERT_EQ(candidates.size(), 1u);
         auto current = select(*first, candidates);
 
@@ -185,6 +207,7 @@ namespace {
         EXPECT_EQ(&current.input(0), mapped.get());
         mapped->realize();
         current.run();
+
         EXPECT_EQ(first->buffer(), mapped->buffer());
         EXPECT_FALSE(second->realized());
     }
@@ -204,6 +227,7 @@ namespace {
         EXPECT_EQ(&current.input(0), mapped.get());
         mapped->realize();
         current.run();
+
         EXPECT_FLOAT_EQ(*static_cast<const float*>(output->data()), 4.0f);
         EXPECT_FALSE(exponential->realized());
     }
@@ -216,11 +240,14 @@ namespace {
         ASSERT_EQ(current.output_count(), 3u);
         ASSERT_EQ(current.input_count(), 1u);
         EXPECT_EQ(&current.input(0), bounded() ? mapped.get() : input.get());
+
         if (bounded()) {
             mapped->realize();
         }
+
         current.run();
         expect_values();
+
         EXPECT_EQ(mapped->realized(), bounded());
     }
 

@@ -48,15 +48,19 @@ namespace {
         );
         require(cuStreamBeginCapture(stream, CU_STREAM_CAPTURE_MODE_THREAD_LOCAL));
         CUgraph graph = nullptr;
+
         try {
             setup.run(output);
         } catch (...) {
             (void)cuStreamEndCapture(stream, &graph);
+
             if (graph) {
                 (void)cuGraphDestroy(graph);
             }
+
             throw;
         }
+
         const auto status = cuStreamEndCapture(stream, &graph);
         Graph result(graph, cuGraphDestroy);
         require(status);
@@ -69,24 +73,30 @@ namespace {
         std::vector<CUgraphNode> nodes(count);
         require(cuGraphGetNodes(graph.get(), nodes.data(), &count));
         std::vector<CUDA_KERNEL_NODE_PARAMS> result;
+
         for (const auto node : nodes) {
             CUgraphNodeType type;
             require(cuGraphNodeGetType(node, &type));
+
             if (type != CU_GRAPH_NODE_TYPE_KERNEL) {
                 throw std::runtime_error("Fusion capture contains a non-kernel node.");
             }
+
             CUDA_KERNEL_NODE_PARAMS parameters{};
             require(cuGraphKernelNodeGetParams(node, &parameters));
             result.push_back(parameters);
         }
+
         return result;
     }
 
     unsigned int rounded_threads(std::size_t values) {
         unsigned int threads = 1;
+
         while (threads < 256 && threads < values) {
             threads *= 2;
         }
+
         return threads;
     }
 
@@ -97,9 +107,11 @@ namespace {
             &minimum_blocks, &threads, function, nullptr, 0, 0
         ));
         unsigned int result = 1;
+
         while (result <= static_cast<unsigned int>(threads) / 2) {
             result *= 2;
         }
+
         return result;
     }
 
@@ -134,9 +146,11 @@ namespace {
         void SetUp() override {
             int devices = 0;
             const auto status = cudaGetDeviceCount(&devices);
+
             if (status != cudaSuccess) {
                 GTEST_SKIP() << cudaGetErrorString(status);
             }
+
             if (devices == 0) {
                 GTEST_SKIP() << "No CUDA device is available.";
             }
@@ -144,12 +158,14 @@ namespace {
 
         TensorPtr tensor(Shape shape, double value = 0.5, Device device = Device::from("cuda")) const {
             Scalar scalar;
+
             switch (GetParam()) {
                 case DType::float16: scalar = Float16(static_cast<float>(value)); break;
                 case DType::float32: scalar = static_cast<float>(value); break;
                 case DType::float64: scalar = value; break;
                 default: throw std::runtime_error("Expected a floating-point dtype.");
             }
+
             auto result = ops::full(std::move(shape), scalar, device);
             result->realize();
             return result;
@@ -161,9 +177,11 @@ namespace {
 
         static ormi::core::Setup prepare(const TensorPtr& graph, Tensor& output) {
             const auto expression = runtime::fusion::build(*graph);
+
             if (!expression) {
                 throw std::runtime_error("Cannot build fusion expression.");
             }
+
             return runtime::backend(output.device()).fusion.prepare(
                 output, {}, *expression
             );
@@ -202,13 +220,16 @@ namespace {
             const auto output = tensor({elements}, 0.0);
             const auto graph = ops::add(ops::mul(lhs, lhs), rhs);
             auto setup = prepare(graph, *output);
+
             EXPECT_EQ(setup.buffers(), 0);
             EXPECT_EQ(setup.bytes(), 0);
             const auto captured = capture(setup, *output);
             const auto nodes = kernels(captured);
+
             ASSERT_EQ(nodes.size(), 1);
             const auto& main = nodes[0];
             expect_dimensions(main);
+
             EXPECT_EQ(main.blockDimX, available_threads(main.func));
             EXPECT_EQ(main.sharedMemBytes, 0u);
             int active_blocks = 0;
@@ -216,10 +237,12 @@ namespace {
                 &active_blocks, main.func, main.blockDimX, 0
             ));
             int multiprocessors = 0;
+
             ASSERT_EQ(cudaDeviceGetAttribute(
                 &multiprocessors, cudaDevAttrMultiProcessorCount, output->device().index()
             ), cudaSuccess);
             const auto required = (elements + main.blockDimX - 1) / main.blockDimX;
+
             EXPECT_EQ(main.gridDimX, std::min(required,
                 static_cast<unsigned int>(std::max(1, multiprocessors * active_blocks))
             ));
@@ -229,6 +252,7 @@ namespace {
             EXPECT_EQ(*static_cast<unsigned long long*>(main.kernelParams[3]), elements);
             record_launch("main_" + std::to_string(elements), main, 3);
             setup.run(*output);
+
             EXPECT_EQ(read(*output), 0.5);
         }
     }
@@ -244,6 +268,7 @@ namespace {
         const auto second_graph = capture(second, *second_output);
         const auto first_nodes = kernels(first_graph);
         const auto second_nodes = kernels(second_graph);
+
         ASSERT_EQ(first_nodes.size(), 1u);
         ASSERT_EQ(second_nodes.size(), 1u);
         EXPECT_EQ(first_nodes[0].func, second_nodes[0].func);
@@ -251,6 +276,7 @@ namespace {
 
         first.run(*first_output);
         second.run(*second_output);
+
         EXPECT_DOUBLE_EQ(read(*first_output), 0.75);
         EXPECT_DOUBLE_EQ(read(*second_output), 0.3125);
     }
@@ -269,6 +295,7 @@ namespace {
         const auto first_nodes = kernels(first_graph);
         const auto second_nodes = kernels(second_graph);
         const auto repeated_nodes = kernels(repeated_graph);
+
         ASSERT_EQ(first_nodes.size(), 1u);
         ASSERT_EQ(second_nodes.size(), 1u);
         ASSERT_EQ(repeated_nodes.size(), 1u);
@@ -276,8 +303,10 @@ namespace {
         EXPECT_EQ(first_nodes[0].func, repeated_nodes[0].func);
 
         second.run(*output);
+
         EXPECT_DOUBLE_EQ(read(*output), -0.25);
         repeated.run(*output);
+
         EXPECT_DOUBLE_EQ(read(*output), 0.75);
     }
 
@@ -286,18 +315,22 @@ namespace {
         std::vector<TensorPtr> inputs;
         std::vector<TensorPtr> outputs;
         std::vector<TensorPtr> graphs;
+
         for (std::size_t worker = 0; worker < workers; ++worker) {
             inputs.push_back(tensor({269}, 0.5 + static_cast<double>(worker) * 0.125));
             outputs.push_back(tensor({269}, 0.0));
             graphs.push_back(mapped(inputs.back()));
         }
+
         std::vector<ormi::core::Setup> setups(workers);
         std::vector<std::exception_ptr> errors(workers);
         std::vector<std::thread> threads;
         std::latch start(1);
+
         for (std::size_t worker = 0; worker < workers; ++worker) {
             threads.emplace_back([&, worker] {
                 start.wait();
+
                 try {
                     setups[worker] = prepare(graphs[worker], *outputs[worker]);
                 } catch (...) {
@@ -305,10 +338,13 @@ namespace {
                 }
             });
         }
+
         start.count_down();
+
         for (auto& thread : threads) {
             thread.join();
         }
+
         for (const auto& error : errors) {
             if (error) {
                 std::rethrow_exception(error);
@@ -316,26 +352,34 @@ namespace {
         }
 
         CUfunction shared = nullptr;
+
         for (std::size_t worker = 0; worker < workers; ++worker) {
             const auto graph = capture(setups[worker], *outputs[worker]);
             const auto nodes = kernels(graph);
+
             ASSERT_EQ(nodes.size(), 1u);
+
             if (!shared) {
                 shared = nodes[0].func;
             }
+
             EXPECT_EQ(nodes[0].func, shared);
             setups[worker].run(*outputs[worker]);
             const auto value = 0.5 + static_cast<double>(worker) * 0.125;
+
             EXPECT_DOUBLE_EQ(read(*outputs[worker]), value * value + value);
         }
     }
 
     TEST_P(CUDAFusionExecutionTest, keepsCompiledFunctionsOnTheirCUDADevice) {
         int devices = 0;
+
         ASSERT_EQ(cudaGetDeviceCount(&devices), cudaSuccess);
+
         if (devices < 2) {
             GTEST_SKIP() << "At least two CUDA devices are required.";
         }
+
         const auto first_device = Device::from("cuda:0");
         const auto second_device = Device::from("cuda:1");
         const auto first_input = tensor({271}, 0.5, first_device);
@@ -348,12 +392,14 @@ namespace {
         const auto second_graph = capture(second, *second_output);
         const auto first_nodes = kernels(first_graph);
         const auto second_nodes = kernels(second_graph);
+
         ASSERT_EQ(first_nodes.size(), 1u);
         ASSERT_EQ(second_nodes.size(), 1u);
         EXPECT_NE(first_nodes[0].func, second_nodes[0].func);
 
         first.run(*first_output);
         second.run(*second_output);
+
         EXPECT_DOUBLE_EQ(read(*first_output), 0.75);
         EXPECT_DOUBLE_EQ(read(*second_output), 0.3125);
     }
@@ -365,12 +411,16 @@ namespace {
         const auto captured = capture(setup, *output);
         const auto nodes = kernels(captured);
         const bool partial = GetParam() == DType::float16;
+
         ASSERT_EQ(nodes.size(), partial ? 2 : 1);
         EXPECT_EQ(setup.buffers(), partial ? 1 : 0);
         EXPECT_EQ(setup.bytes(), partial ? accumulator_bytes() : 0);
+
         for (const auto& node : nodes) {
             expect_dimensions(node);
+
             EXPECT_EQ(node.gridDimX, 1u);
+
             if (partial && *static_cast<void**>(node.kernelParams[0]) == output->data()) {
                 EXPECT_EQ(node.blockDimX, 1u);
                 EXPECT_EQ(node.sharedMemBytes, accumulator_bytes());
@@ -383,7 +433,9 @@ namespace {
                 record_launch("main", node, 2);
             }
         }
+
         setup.run(*output);
+
         EXPECT_EQ(read(*output), 27.75);
     }
 
@@ -393,13 +445,17 @@ namespace {
         auto setup = prepare(ops::mean(mapped(input)), *output);
         const auto captured = capture(setup, *output);
         const auto nodes = kernels(captured);
+
         ASSERT_EQ(nodes.size(), 2);
         EXPECT_EQ(setup.buffers(), 1);
         EXPECT_EQ(setup.bytes(), accumulator_bytes());
+
         for (const auto& node : nodes) {
             expect_dimensions(node);
+
             EXPECT_EQ(node.gridDimX, 1u);
             EXPECT_EQ(*static_cast<unsigned long long*>(node.kernelParams[2]), 1ull);
+
             if (*static_cast<void**>(node.kernelParams[0]) == output->data()) {
                 EXPECT_EQ(node.blockDimX, 1u);
                 EXPECT_EQ(node.sharedMemBytes, accumulator_bytes());
@@ -411,7 +467,9 @@ namespace {
                 record_launch("main", node, 2);
             }
         }
+
         setup.run(*output);
+
         EXPECT_NEAR(read(*output), 0.75, 1.0e-6);
     }
 
@@ -422,6 +480,7 @@ namespace {
         const auto graph = ops::add(square, rhs);
         Tensor* graph_outputs[]{square.get()};
         const auto expression = runtime::fusion::build(*graph, graph_outputs);
+
         ASSERT_TRUE(expression);
         const auto output = tensor({257}, 0.0);
         const auto auxiliary = tensor({257}, 0.0);
@@ -431,9 +490,11 @@ namespace {
         );
         const auto captured = capture(setup, *output);
         const auto nodes = kernels(captured);
+
         ASSERT_EQ(nodes.size(), 1);
         const auto& main = nodes[0];
         expect_dimensions(main);
+
         EXPECT_EQ(setup.buffers(), 0);
         EXPECT_EQ(setup.bytes(), 0);
         EXPECT_EQ(*static_cast<void**>(main.kernelParams[0]), output->data());
@@ -443,6 +504,7 @@ namespace {
         EXPECT_EQ(*static_cast<unsigned long long*>(main.kernelParams[4]), 257ull);
         record_launch("main", main, 4);
         setup.run(*output);
+
         EXPECT_EQ(read(*output), 0.5);
         EXPECT_EQ(read(*auxiliary), 0.25);
     }
@@ -454,15 +516,18 @@ namespace {
             auto setup = prepare(ops::mean(mapped(input)), *output);
             const auto captured = capture(setup, *output);
             const auto nodes = kernels(captured);
+
             ASSERT_EQ(nodes.size(), 2);
             const auto main = std::find_if(nodes.begin(), nodes.end(), [&](const auto& node) {
                 return *static_cast<void**>(node.kernelParams[0]) != output->data();
             });
+
             ASSERT_NE(main, nodes.end());
             const auto finish = main == nodes.begin() ? nodes.begin() + 1 : nodes.begin();
             const auto parts = (elements + main->blockDimX * 8 - 1) / (main->blockDimX * 8);
             expect_dimensions(*main);
             expect_dimensions(*finish);
+
             EXPECT_EQ(main->blockDimX, std::min(available_threads(main->func), 256u));
             EXPECT_EQ(main->gridDimX, parts);
             EXPECT_EQ(main->sharedMemBytes, main->blockDimX * accumulator_bytes());
@@ -480,6 +545,7 @@ namespace {
             record_launch("main_" + std::to_string(elements), *main, 2);
             record_launch("finish_" + std::to_string(elements), *finish, 2);
             setup.run(*output);
+
             EXPECT_NEAR(read(*output), 0.75, 1.0e-6);
         }
     }
@@ -488,16 +554,20 @@ namespace {
         const auto input = tensor({17, 1024});
         const auto graph = ops::mean(mapped(input), {0});
         const auto expression = runtime::fusion::build(*graph);
+
         ASSERT_TRUE(expression);
         const auto tile = ormi::backends::cuda::fusion::tile(*expression);
+
         ASSERT_TRUE(tile);
         const auto output = tensor({1024}, 0.0);
         auto setup = prepare(graph, *output);
         const auto captured = capture(setup, *output);
         const auto nodes = kernels(captured);
+
         ASSERT_EQ(nodes.size(), 1);
         const auto& main = nodes[0];
         expect_dimensions(main);
+
         EXPECT_EQ(main.gridDimX, std::min(tile->tasks, std::size_t{65535}));
         EXPECT_EQ(main.blockDimX, tile->width);
         EXPECT_EQ(main.sharedMemBytes, 0u);
@@ -508,6 +578,7 @@ namespace {
         EXPECT_EQ(*static_cast<unsigned long long*>(main.kernelParams[2]), 1ull);
         record_launch("main", main, 2);
         setup.run(*output);
+
         EXPECT_NEAR(read(*output), 0.75, 1.0e-6);
     }
 
@@ -519,14 +590,18 @@ namespace {
         setups.push_back(prepare(ops::mean(mapped(input)), *original));
         setups.reserve(32);
         ormi::core::Setup moved = std::move(setups[0]);
+
         EXPECT_FALSE(setups[0]);
         EXPECT_EQ(moved.buffers(), 1);
         moved.run(*replacement);
+
         EXPECT_NEAR(read(*replacement), 0.75, 1.0e-6);
         EXPECT_EQ(read(*original), 0.0);
         const auto captured = capture(moved, *original);
+
         EXPECT_EQ(kernels(captured).size(), 2);
         moved.run(*original);
+
         EXPECT_NEAR(read(*original), 0.75, 1.0e-6);
     }
 
@@ -539,12 +614,16 @@ namespace {
         auto replacement = prepare(ops::mean(mapped(second)), *output);
         const auto bytes = replacement.bytes();
         setup = std::move(replacement);
+
         EXPECT_FALSE(replacement);
         EXPECT_EQ(setup.bytes(), bytes);
+
         for (int repetition = 0; repetition < 8; ++repetition) {
             setup.run(*output);
         }
+
         setup = {};
+
         EXPECT_NEAR(read(*output), 0.3125, 1.0e-6);
     }
 

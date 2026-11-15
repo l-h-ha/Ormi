@@ -7,7 +7,7 @@
 #include <ormi/core/tensor.h>
 
 namespace ormi::core::ops {
-    // Views share the input's storage. These calls build metadata nodes without moving data.
+    // Build view nodes that share the input's storage.
     std::shared_ptr<Tensor> reshape(const std::shared_ptr<Tensor>& input, Shape shape);
     // axes lists every input axis exactly once, in the desired output order.
     std::shared_ptr<Tensor> transpose(

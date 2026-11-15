@@ -222,6 +222,7 @@ namespace {
         };
 
         run();
+
         for (auto _ : state) {
             run();
             benchmark::ClobberMemory();

@@ -26,7 +26,7 @@ namespace ormi::core {
         const Shape& shape
     );
 
-    // Build gradients without computing output values. Results can be differentiated again.
+    // Build gradients without evaluating outputs. Results can be differentiated again.
     // A scalar output defaults to seed 1. Other outputs need a seed with matching
     // shape, dtype, and device. Inputs with no contribution receive a lazy zero tensor.
     std::vector<std::shared_ptr<Tensor>> grad(

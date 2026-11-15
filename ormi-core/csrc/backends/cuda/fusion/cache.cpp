@@ -38,10 +38,12 @@ namespace ormi::backends::cuda::fusion::cache {
 
         std::uint64_t hash(std::string_view value, std::uint64_t seed) {
             auto result = seed;
+
             for (const auto byte : value) {
                 result ^= static_cast<unsigned char>(byte);
                 result *= 1099511628211ull;
             }
+
             return result;
         }
 
@@ -74,6 +76,7 @@ namespace ormi::backends::cuda::fusion::cache {
         std::uintmax_t configured_limit() {
             const char* configured =
                 std::getenv("ORMI_CUDA_JIT_CACHE_MAX_BYTES");
+
             if (!configured || !*configured) {
                 return default_limit;
             }
@@ -85,6 +88,7 @@ namespace ormi::backends::cuda::fusion::cache {
                 value.data() + value.size(),
                 result
             );
+
             if (
                 parsed.ec != std::errc{} ||
                 parsed.ptr != value.data() + value.size()
@@ -95,12 +99,14 @@ namespace ormi::backends::cuda::fusion::cache {
                     "decimal byte count."
                 );
             }
+
             return result;
         }
 
         void create_directory() {
             std::error_code error;
             std::filesystem::create_directories(directory(), error);
+
             if (error) {
                 ORMI_THROW(
                     jitError,
@@ -114,9 +120,11 @@ namespace ormi::backends::cuda::fusion::cache {
             std::error_code error;
             const auto status =
                 std::filesystem::symlink_status(directory(), error);
+
             if (error == std::errc::no_such_file_or_directory) {
                 return false;
             }
+
             if (error) {
                 ORMI_THROW(
                     jitError,
@@ -124,15 +132,18 @@ namespace ormi::backends::cuda::fusion::cache {
                         error.message()
                 );
             }
+
             if (!std::filesystem::exists(status)) {
                 return false;
             }
+
             if (!std::filesystem::is_directory(status)) {
                 ORMI_THROW(
                     jitError,
                     "CUDA JIT cache path is not a directory."
                 );
             }
+
             return true;
         }
 
@@ -142,6 +153,7 @@ namespace ormi::backends::cuda::fusion::cache {
             std::string_view description
         ) {
             std::ofstream output(path, std::ios::binary | std::ios::trunc);
+
             if (!output) {
                 ORMI_THROW(
                     jitError,
@@ -149,10 +161,12 @@ namespace ormi::backends::cuda::fusion::cache {
                         ": " + path.string()
                 );
             }
+
             output.write(
                 value.data(),
                 static_cast<std::streamsize>(value.size())
             );
+
             if (!output) {
                 ORMI_THROW(
                     jitError,
@@ -164,9 +178,11 @@ namespace ormi::backends::cuda::fusion::cache {
 
         std::string read(const std::filesystem::path& path) {
             std::ifstream input(path, std::ios::binary);
+
             if (!input) {
                 return {};
             }
+
             return std::string(
                 std::istreambuf_iterator<char>(input),
                 std::istreambuf_iterator<char>()
@@ -175,6 +191,7 @@ namespace ormi::backends::cuda::fusion::cache {
 
         bool valid(const Files& paths, std::string_view source) {
             std::error_code error;
+
             if (
                 !std::filesystem::is_regular_file(paths.source, error) ||
                 error ||
@@ -186,6 +203,7 @@ namespace ormi::backends::cuda::fusion::cache {
             ) {
                 return false;
             }
+
             return read(paths.source) == source &&
                 std::filesystem::file_size(paths.ptx, error) != 0 &&
                 !error;
@@ -213,9 +231,11 @@ namespace ormi::backends::cuda::fusion::cache {
                 error
             );
             const std::filesystem::directory_iterator end;
+
             while (!error && iterator != end) {
                 const auto path = iterator->path();
                 const auto name = path.filename().string();
+
                 if (
                     name.starts_with(prefix) &&
                     (
@@ -225,6 +245,7 @@ namespace ormi::backends::cuda::fusion::cache {
                 ) {
                     cleanup(path);
                 }
+
                 iterator.increment(error);
             }
         }
@@ -235,6 +256,7 @@ namespace ormi::backends::cuda::fusion::cache {
         ) {
             std::error_code error;
             std::filesystem::remove(published, error);
+
             if (error) {
                 ORMI_THROW(
                     jitError,
@@ -242,7 +264,9 @@ namespace ormi::backends::cuda::fusion::cache {
                         published.string()
                 );
             }
+
             std::filesystem::rename(staged, published, error);
+
             if (error) {
                 ORMI_THROW(
                     jitError,
@@ -265,12 +289,14 @@ namespace ormi::backends::cuda::fusion::cache {
 
             try {
                 auto ptx = build();
+
                 if (ptx.empty()) {
                     ORMI_THROW(
                         jitError,
                         "CUDA JIT compiler produced empty PTX."
                     );
                 }
+
                 write(staged_source, source, "source");
                 write(staged_ptx, ptx, "PTX");
                 replace(staged_ptx, files.ptx);
@@ -287,9 +313,11 @@ namespace ormi::backends::cuda::fusion::cache {
             std::vector<Entry> result;
             std::filesystem::directory_iterator iterator(directory(), error);
             const std::filesystem::directory_iterator end;
+
             for (; !error && iterator != end; iterator.increment(error)) {
                 const auto path = iterator->path();
                 const auto stem = path.stem().string();
+
                 if (path.extension() != ".cu" || !is_key(stem)) {
                     continue;
                 }
@@ -298,27 +326,35 @@ namespace ormi::backends::cuda::fusion::cache {
                 std::error_code entry_error;
                 const auto source_regular =
                     std::filesystem::is_regular_file(files.source, entry_error);
+
                 if (entry_error || !source_regular) {
                     continue;
                 }
+
                 const auto ptx_regular =
                     std::filesystem::is_regular_file(files.ptx, entry_error);
+
                 if (entry_error || !ptx_regular) {
                     continue;
                 }
 
                 const auto source_bytes =
                     std::filesystem::file_size(files.source, entry_error);
+
                 if (entry_error) {
                     continue;
                 }
+
                 const auto ptx_bytes =
                     std::filesystem::file_size(files.ptx, entry_error);
+
                 if (entry_error) {
                     continue;
                 }
+
                 const auto used =
                     std::filesystem::last_write_time(files.source, entry_error);
+
                 if (entry_error) {
                     continue;
                 }
@@ -330,6 +366,7 @@ namespace ormi::backends::cuda::fusion::cache {
                     used
                 });
             }
+
             return result;
         }
 
@@ -337,8 +374,10 @@ namespace ormi::backends::cuda::fusion::cache {
             std::uintmax_t removed = 0;
             std::error_code error;
             const auto source_bytes = std::filesystem::file_size(files.source, error);
+
             if (!error) {
                 const auto source_removed = std::filesystem::remove(files.source, error);
+
                 if (!error && source_removed) {
                     removed += source_bytes;
                 }
@@ -346,13 +385,17 @@ namespace ormi::backends::cuda::fusion::cache {
 
             error.clear();
             const auto ptx_bytes = std::filesystem::file_size(files.ptx, error);
+
             if (error) {
                 return removed;
             }
+
             const auto ptx_removed = std::filesystem::remove(files.ptx, error);
+
             if (error || !ptx_removed) {
                 return removed;
             }
+
             return removed + ptx_bytes;
         }
 
@@ -367,14 +410,17 @@ namespace ormi::backends::cuda::fusion::cache {
                 );
                 std::error_code error;
                 auto entries = scan(error);
+
                 if (error) {
                     return;
                 }
 
                 std::uintmax_t bytes = 0;
+
                 for (const auto& entry : entries) {
                     bytes += entry.bytes;
                 }
+
                 std::sort(
                     entries.begin(),
                     entries.end(),
@@ -382,10 +428,12 @@ namespace ormi::backends::cuda::fusion::cache {
                         return lhs.used < rhs.used;
                     }
                 );
+
                 for (const auto& entry : entries) {
                     if (bytes <= limit) {
                         break;
                     }
+
                     if (entry.key == protected_key) {
                         continue;
                     }
@@ -396,6 +444,7 @@ namespace ormi::backends::cuda::fusion::cache {
                             entry.files.source,
                             error
                         );
+
                     if (error || used != entry.used) {
                         error.clear();
                         continue;
@@ -413,9 +462,11 @@ namespace ormi::backends::cuda::fusion::cache {
             std::error_code error;
             const auto status =
                 std::filesystem::symlink_status(directory(), error);
+
             if (error == std::errc::no_such_file_or_directory) {
                 return Info{directory(), 0, 0, limit};
             }
+
             if (error) {
                 ORMI_THROW(
                     jitError,
@@ -423,16 +474,20 @@ namespace ormi::backends::cuda::fusion::cache {
                         error.message()
                 );
             }
+
             if (!std::filesystem::exists(status)) {
                 return Info{directory(), 0, 0, limit};
             }
+
             if (!std::filesystem::is_directory(status)) {
                 ORMI_THROW(
                     jitError,
                     "CUDA JIT cache path is not a directory."
                 );
             }
+
             const auto entries = scan(error);
+
             if (error) {
                 ORMI_THROW(
                     jitError,
@@ -441,9 +496,11 @@ namespace ormi::backends::cuda::fusion::cache {
             }
 
             std::uintmax_t bytes = 0;
+
             for (const auto& entry : entries) {
                 bytes += entry.bytes;
             }
+
             return Info{directory(), entries.size(), bytes, limit};
         }
     }
@@ -455,6 +512,7 @@ namespace ormi::backends::cuda::fusion::cache {
                 return std::filesystem::path(configured);
             }
         }
+
         return platform::cache_directory() / "jit" / std::string(abi);
     }
 
@@ -484,8 +542,10 @@ namespace ormi::backends::cuda::fusion::cache {
 
         {
             platform::FileLock lock(files.lock);
+
             if (valid(files, source)) {
                 ptx = read(files.ptx);
+
                 if (!ptx.empty()) {
                     touch(files);
                     return Artifact{std::move(ptx), true};
@@ -502,9 +562,11 @@ namespace ormi::backends::cuda::fusion::cache {
 
     Info info() {
         const auto limit = configured_limit();
+
         if (!directory_exists()) {
             return Info{directory(), 0, 0, limit};
         }
+
         platform::FileLock maintenance(
             directory() / ".maintenance.lock"
         );
@@ -513,6 +575,7 @@ namespace ormi::backends::cuda::fusion::cache {
 
     Info clear() {
         const auto limit = configured_limit();
+
         if (!directory_exists()) {
             return Info{directory(), 0, 0, limit};
         }
@@ -522,6 +585,7 @@ namespace ormi::backends::cuda::fusion::cache {
         );
         std::error_code error;
         const auto entries = scan(error);
+
         if (error) {
             ORMI_THROW(
                 jitError,
@@ -529,11 +593,13 @@ namespace ormi::backends::cuda::fusion::cache {
                     error.message()
             );
         }
+
         for (const auto& entry : entries) {
             platform::FileLock lock(entry.files.lock);
             cleanup(entry.files.source);
             cleanup(entry.files.ptx);
         }
+
         return snapshot(limit);
     }
 }

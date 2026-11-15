@@ -47,9 +47,11 @@ namespace {
         EXPECT_TRUE(*static_cast<const bool*>(ormi::core::ops::all_finite(input)->data()));
 
         data[2] = std::numeric_limits<float>::quiet_NaN();
+
         EXPECT_FALSE(*static_cast<const bool*>(ormi::core::ops::all_finite(input)->data()));
 
         data[2] = std::numeric_limits<float>::infinity();
+
         EXPECT_FALSE(*static_cast<const bool*>(ormi::core::ops::all_finite(input)->data()));
     }
 
@@ -71,6 +73,7 @@ namespace {
         EXPECT_TRUE(*static_cast<const bool*>(ormi::core::ops::all_finite(input16)->data()));
 
         data16[1] = ormi::core::Float16(std::numeric_limits<float>::infinity());
+
         EXPECT_FALSE(*static_cast<const bool*>(ormi::core::ops::all_finite(input16)->data()));
     }
 

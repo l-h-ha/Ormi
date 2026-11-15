@@ -37,6 +37,11 @@ namespace ormi::core {
             const auto unsigned_dim = static_cast<std::size_t>(dim);
 
             if (unsigned_dim != 0 && result > std::numeric_limits<std::size_t>::max() / unsigned_dim) {
+                // A later zero dimension still makes the shape empty.
+                if (std::find(dims_.begin(), dims_.end(), 0) != dims_.end()) {
+                    return 0;
+                }
+
                 ORMI_THROW(ShapeError, "Shape element count overflow.");
             }
 
@@ -72,8 +77,13 @@ namespace ormi::core {
         for (std::size_t i = shape.rank(); i > 1; --i) {
             const auto current = i - 2;
             const auto next = i - 1;
+            const auto dim = shape[next];
 
-            strides[current] = strides[next] * shape[next];
+            if (dim != 0 && strides[next] > std::numeric_limits<std::int64_t>::max() / dim) {
+                ORMI_THROW(ShapeError, "Contiguous stride exceeds the int64_t range.");
+            }
+
+            strides[current] = strides[next] * dim;
         }
 
         return strides;
@@ -93,7 +103,17 @@ namespace ormi::core {
                 return false;
             }
 
-            expected *= shape[index];
+            if (index == 0) {
+                return true;
+            }
+
+            const auto dim = shape[index];
+
+            if (dim != 0 && expected > std::numeric_limits<std::int64_t>::max() / dim) {
+                return false;
+            }
+
+            expected *= dim;
         }
 
         return true;

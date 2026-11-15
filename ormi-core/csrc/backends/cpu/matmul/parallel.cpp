@@ -85,6 +85,7 @@ namespace ormi::backends::cpu::avx2 {
         std::size_t work
     ) {
         constexpr auto row_tile = row_gemm_tile;
+
         if (
             rows < row_tile ||
             executor::slots(rows, row_tile, work) == 1
@@ -130,6 +131,7 @@ namespace ormi::backends::cpu::avx2 {
         std::size_t work
     ) {
         constexpr auto row_tile = column_lhs_tile;
+
         if (
             rows < row_tile ||
             executor::slots(rows, row_tile, work) == 1

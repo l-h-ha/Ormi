@@ -252,6 +252,7 @@ namespace ormi::core::ops {
         if ((lhs && !is_floating(lhs->dtype())) || (rhs && !is_floating(rhs->dtype()))) {
             ORMI_THROW(DTypeError, "Minimum requires floating-point tensors.");
         }
+
         return binary(op_ref<minimum_op>(), lhs, rhs);
     }
 
@@ -259,6 +260,7 @@ namespace ormi::core::ops {
         if ((lhs && !is_floating(lhs->dtype())) || (rhs && !is_floating(rhs->dtype()))) {
             ORMI_THROW(DTypeError, "Maximum requires floating-point tensors.");
         }
+
         return binary(op_ref<maximum_op>(), lhs, rhs);
     }
 

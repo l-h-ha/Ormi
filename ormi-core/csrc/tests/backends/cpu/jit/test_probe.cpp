@@ -86,6 +86,7 @@ namespace {
             for (const auto& source : call.sources) {
                 EXPECT_FALSE(std::filesystem::exists(source.parent_path())) << source;
             }
+
             std::error_code ignored;
             std::filesystem::remove_all(root_, ignored);
         }
@@ -104,6 +105,7 @@ namespace {
 
     TEST_P(CPUJITProbeArgumentsTest, preservesSourceArgumentsEnvironmentAndTimeout) {
         compiler_.id = GetParam();
+
         EXPECT_FALSE(probe());
 
         ASSERT_EQ(call.sources.size(), 1);
@@ -113,6 +115,7 @@ namespace {
         const std::vector<std::string> expected = msvc
             ? std::vector<std::string>{"/nologo", "/std:c++20", "/Zs", source.string()}
             : std::vector<std::string>{"-std=c++20", "-fsyntax-only", source.string()};
+
         EXPECT_EQ(call.executable, compiler_.executable);
         EXPECT_EQ(call.arguments, expected);
         EXPECT_EQ(call.environment, compiler_.environment);
@@ -138,31 +141,37 @@ namespace {
                 case jit::CXX::clang_cl: return "clang_cl";
                 case jit::CXX::msvc: return "msvc";
             }
+
             return "unknown";
         });
 
     TEST_F(CPUJITProbeTest, successfulProbeIgnoresCompilerOutput) {
         call.result.output = std::string(6000, 'x');
+
         EXPECT_FALSE(probe());
     }
 
     TEST_F(CPUJITProbeTest, preservesNonzeroExitDiagnostic) {
         call.result = {-3, "compiler output", Process::State::exited};
+
         EXPECT_EQ(probe(), "probe failed with exit code -3\ncompiler output");
     }
 
     TEST_F(CPUJITProbeTest, preservesTimeoutDiagnosticRegardlessOfExitCode) {
         call.result = {0, "before timeout", Process::State::timed_out};
+
         EXPECT_EQ(probe(), "probe timed out\nbefore timeout");
     }
 
     TEST_F(CPUJITProbeTest, preservesTimeoutBeforeCompilerProducesOutput) {
         call.result = {0, "", Process::State::timed_out};
+
         EXPECT_EQ(probe(), "probe timed out");
     }
 
     TEST_F(CPUJITProbeTest, preservesCrashDiagnostic) {
         call.result = {-7, "before crash", Process::State::crashed};
+
         EXPECT_EQ(probe(), "probe terminated abnormally with status -7\nbefore crash");
     }
 
@@ -171,23 +180,28 @@ namespace {
             SCOPED_TRACE(size);
             call.result = {23, std::string(size, 'x'), Process::State::exited};
             std::string expected = "probe failed with exit code 23";
+
             if (size != 0) {
                 expected += "\n" + std::string(size > 4096 ? 4096 : size, 'x');
+
                 if (size > 4096) {
                     expected += "\n[compiler output truncated]";
                 }
             }
+
             EXPECT_EQ(probe(), expected);
         }
     }
 
     TEST_F(CPUJITProbeTest, returnsLaunchErrorAsRejectionAndRemovesSource) {
         call.failure = Failure::launch;
+
         EXPECT_EQ(probe(), "cannot launch fixture compiler");
     }
 
     TEST_F(CPUJITProbeTest, propagatesOtherProcessErrorsAndRemovesSource) {
         call.failure = Failure::unexpected;
+
         EXPECT_THROW((void)probe(), std::logic_error);
     }
 
@@ -197,6 +211,7 @@ namespace {
         const EnvironmentGuard tmpdir("TMPDIR");
         const EnvironmentGuard tmp("TMP");
         const EnvironmentGuard temp("TEMP");
+
         for (const auto* name : {"TMPDIR", "TMP", "TEMP"}) {
             environment(name, blocked.string().c_str());
         }
@@ -220,6 +235,7 @@ namespace {
     TEST_F(CPUJITProbeTest, independentCallsRunAgainWithDistinctTemporarySources) {
         EXPECT_FALSE(probe());
         call.result = {23, "", Process::State::exited};
+
         EXPECT_TRUE(probe());
 
         ASSERT_EQ(call.sources.size(), 2);
@@ -241,17 +257,22 @@ namespace ormi::platform {
         const std::filesystem::path source(arguments.back());
         call.sources.push_back(source);
         std::ifstream file(source, std::ios::binary);
+
         if (!file) {
             throw std::logic_error("probe source is not alive during launch");
         }
+
         call.source_text.assign(std::istreambuf_iterator<char>(file),
             std::istreambuf_iterator<char>());
+
         if (call.failure == Failure::launch) {
             throw jitError("cannot launch fixture compiler");
         }
+
         if (call.failure == Failure::unexpected) {
             throw std::logic_error("unexpected fixture failure");
         }
+
         return call.result;
     }
 }
