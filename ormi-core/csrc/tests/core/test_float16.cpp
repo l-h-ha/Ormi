@@ -43,6 +43,7 @@ namespace {
 
     TEST(Float16Test, preservesSpecialValues) {
         const auto quiet_nan = Float16(std::numeric_limits<float>::quiet_NaN());
+
         EXPECT_EQ(quiet_nan.bits() & 0x7c00u, 0x7c00u);
         EXPECT_NE(quiet_nan.bits() & 0x03ffu, 0u);
         EXPECT_TRUE(std::isnan(static_cast<float>(quiet_nan)));

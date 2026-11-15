@@ -4,11 +4,31 @@ includes:
   - ormi/core/ops/creation.h
   - ormi/core/ops/fractional.h
   - ormi/core/ops/linalg.h
+  - ormi/core/ops/index.h
   - ormi/core/ops/pointwise.h
   - ormi/core/ops/reduction.h
   - ormi/core/tensor.h
 
 functions:
+  - python: slice
+    module: ops
+    namespace: ormi::core::ops
+    cpp: slice
+    args:
+      - {name: input, py_type: Tensor}
+      - {name: axis, py_type: int}
+      - {name: start, py_type: int}
+      - {name: length, py_type: int}
+      - {name: step, py_type: int, default: 1}
+    returns: Tensor
+  - python: concat
+    module: ops
+    namespace: ormi::core::ops
+    cpp: concat
+    args:
+      - {name: inputs, py_type: "Sequence[Tensor]"}
+      - {name: axis, py_type: int, default: 0}
+    returns: Tensor
   - python: full
     module: ops
     binding: ormi::bindings::full

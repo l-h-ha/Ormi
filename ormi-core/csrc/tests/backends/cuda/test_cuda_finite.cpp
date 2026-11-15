@@ -208,6 +208,7 @@ namespace {
         ormi::core::optim::GradScaler scaler(8.0);
 
         const auto finite = scaler.step(parameters, finite_gradients, 0.1);
+
         ASSERT_TRUE(finite.has_value());
         EXPECT_FALSE((*finite)[0]->realized());
         EXPECT_FALSE((*finite)[1]->realized());

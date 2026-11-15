@@ -12,12 +12,16 @@ namespace ormi::backends::cpu::jit::codegen::reduction {
         ) {
             std::string result;
             auto stride = code.expr.reduction->output.size;
+
             for (const auto dimension : code.loop.output_dimensions) {
                 stride /= code.expr.shape[dimension];
+
                 if (!result.empty()) {
                     result += " + ";
                 }
+
                 const auto tiled = dimension == tile_axis;
+
                 if (tiled && stride != 1) {
                     result += "(tile + lane)";
                 } else {
@@ -25,10 +29,12 @@ namespace ormi::backends::cpu::jit::codegen::reduction {
                         ? "tile + lane"
                         : "index" + std::to_string(dimension);
                 }
+
                 if (stride != 1) {
                     result += " * " + std::to_string(stride);
                 }
             }
+
             return result;
         }
     }
@@ -62,10 +68,12 @@ namespace ormi::backends::cpu::jit::codegen::reduction {
             << " : " << tile_end << " - tile;\n";
 
         std::size_t output_level = 0;
+
         for (const auto dimension : code.loop.output_dimensions) {
             if (dimension == tile_axis) {
                 continue;
             }
+
             code.out
                 << std::string((output_level + 2) * 4, ' ')
                 << "for (unsigned long long index" << dimension
@@ -156,6 +164,7 @@ namespace ormi::backends::cpu::jit::codegen::reduction {
         for (std::size_t level = output_level; level > 0; --level) {
             code.out << std::string((level + 1) * 4, ' ') << "}\n";
         }
+
         code.out << "    }\n";
     }
 
@@ -164,6 +173,7 @@ namespace ormi::backends::cpu::jit::codegen::reduction {
         const auto inner = *code.loop.tile_axis;
         const auto scalar = value_type(code.expr.dtype);
         std::vector<std::size_t> fixed;
+
         for (const auto dimension : code.loop.reduced_dimensions) {
             if (dimension != outer && dimension != inner) {
                 fixed.push_back(dimension);
@@ -225,6 +235,7 @@ namespace ormi::backends::cpu::jit::codegen::reduction {
         for (std::size_t level = fixed.size(); level > 0; --level) {
             code.out << std::string(level * 4, ' ') << "}\n";
         }
+
         code.out
             << "    output[0] = "
             << reduction_result(code, scalar) << ";\n";

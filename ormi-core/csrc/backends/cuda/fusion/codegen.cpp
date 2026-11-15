@@ -111,6 +111,7 @@ namespace ormi::backends::cuda::fusion {
                     return true;
                 }
             }
+
             return false;
         }
 
@@ -218,6 +219,7 @@ namespace {
             emit_pointwise_stores(source, expression);
             source << "    }\n}\n";
         }
+
         return source.str();
     }
 }

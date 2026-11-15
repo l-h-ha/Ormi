@@ -41,8 +41,7 @@ namespace ormi::nn {
             core::runtime::backend(output.device()).ops.bernoulli(output, attrs);
         }
 
-        // The random choice is not differentiated. The multiply below supplies input gradients
-        // using this same mask node, so backward must not request another draw.
+        // Treat the mask as constant so input gradients reuse the forward draw.
         void mask_adjoint(
             const std::shared_ptr<core::Tensor>&,
             const std::shared_ptr<core::Tensor>&,
@@ -73,6 +72,7 @@ namespace ormi::nn {
                 value->shape(),
                 value->dtype()
             );
+
             return core::ops::cast(core::ops::mul(value, draws), input->dtype());
         }
     }
@@ -85,12 +85,15 @@ namespace ormi::nn {
     ) {
         check_probability(p);
         detail::floating(input);
+
         if (!training || p == 0) {
             return input;
         }
+
         if (p == 1) {
             return core::ops::zeros_like(input);
         }
+
         return apply_dropout(input, p, seed ? *seed : random_seed(), make_counter(input->device()));
     }
 
@@ -102,17 +105,21 @@ namespace ormi::nn {
 
     std::shared_ptr<core::Tensor> Dropout::forward(const std::shared_ptr<core::Tensor>& input) const {
         detail::floating(input);
+
         if (!training() || p_ == 0) {
             return input;
         }
+
         if (p_ == 1) {
             return core::ops::zeros_like(input);
         }
+
         for (const auto& counter : counters_) {
             if (counter->device() == input->device()) {
                 return apply_dropout(input, p_, seed_, counter);
             }
         }
+
         auto counter = make_counter(input->device());
         counters_.push_back(counter);
         return apply_dropout(input, p_, seed_, counter);

@@ -25,6 +25,7 @@ namespace ormi::platform::windows {
             nullptr,
             0
         );
+
         if (size <= 0) {
             ORMI_THROW(jitError, "Cannot convert UTF-8 text to UTF-16.");
         }

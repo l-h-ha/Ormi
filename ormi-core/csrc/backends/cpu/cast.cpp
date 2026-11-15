@@ -17,6 +17,7 @@ namespace ormi::backends::cpu {
         To convert(From value) {
             if constexpr (std::is_same_v<To, std::int32_t>) {
                 double number;
+
                 if constexpr (std::is_same_v<From, core::Float16>) {
                     number = static_cast<double>(static_cast<float>(value));
                 } else {
@@ -52,6 +53,7 @@ namespace ormi::backends::cpu {
                 for (std::size_t i = 0; i < elements; ++i) {
                     out_data[i] = convert<To>(input_data[i]);
                 }
+
                 return;
             }
 

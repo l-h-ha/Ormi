@@ -49,6 +49,7 @@ namespace ormi::backends::cpu::jit::codegen::reduction {
         if (code.loop.partial) {
             return total;
         }
+
         return output_value(
             code.expr.dtype,
             reduced_value(

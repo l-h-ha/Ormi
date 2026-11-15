@@ -81,24 +81,28 @@ namespace {
         for (std::size_t i = 0; i < 6; ++i) {
             matrix_data[i] = static_cast<float>(i + 1);
         }
+
         vector_data[0] = 1.0f;
         vector_data[1] = 2.0f;
         vector_data[2] = 3.0f;
 
         const auto matrix_vector = ormi::core::ops::matmul(matrix, vector);
         const auto* matrix_vector_data = static_cast<const float*>(matrix_vector->data());
+
         EXPECT_EQ(matrix_vector->shape(), (ormi::core::Shape{2}));
         EXPECT_FLOAT_EQ(matrix_vector_data[0], 14.0f);
         EXPECT_FLOAT_EQ(matrix_vector_data[1], 32.0f);
 
         const auto rhs = floatTensor({3, 2});
         auto* rhs_data = static_cast<float*>(rhs->data());
+
         for (std::size_t i = 0; i < 6; ++i) {
             rhs_data[i] = static_cast<float>(i + 1);
         }
 
         const auto vector_matrix = ormi::core::ops::matmul(vector, rhs);
         const auto* vector_matrix_data = static_cast<const float*>(vector_matrix->data());
+
         EXPECT_EQ(vector_matrix->shape(), (ormi::core::Shape{2}));
         EXPECT_FLOAT_EQ(vector_matrix_data[0], 22.0f);
         EXPECT_FLOAT_EQ(vector_matrix_data[1], 28.0f);
@@ -113,6 +117,7 @@ namespace {
         for (std::size_t i = 0; i < 12; ++i) {
             lhs_data[i] = static_cast<float>(i + 1);
         }
+
         vector_data[0] = 1.0f;
         vector_data[1] = 0.0f;
         vector_data[2] = -1.0f;
@@ -187,11 +192,13 @@ namespace {
         const auto* data = static_cast<const float*>(result->data());
 
         EXPECT_EQ(result->shape(), (ormi::core::Shape{2, 3}));
+
         for (std::size_t i = 0; i < result->numel(); ++i) {
             EXPECT_FLOAT_EQ(data[i], 0.0f);
         }
 
         const auto empty = ormi::core::ops::matmul(floatTensor({0, 3}), floatTensor({3, 2}));
+
         EXPECT_NO_THROW(empty->realize());
         EXPECT_EQ(empty->numel(), 0u);
         EXPECT_EQ(empty->data(), nullptr);
@@ -308,6 +315,7 @@ namespace {
         for (std::size_t i = 0; i < 8; ++i) {
             lhs_data[i] = lhs_values[i];
         }
+
         rhs_data[0] = 3.0f;
         rhs_data[1] = 4.0f;
 
@@ -353,9 +361,11 @@ namespace {
         const auto rhs = floatTensor({1, 5, 4});
         auto* lhs_data = static_cast<float*>(lhs_storage->data());
         auto* rhs_data = static_cast<float*>(rhs->data());
+
         for (std::size_t i = 0; i < lhs_storage->numel(); ++i) {
             lhs_data[i] = static_cast<float>(i % 7 + 1);
         }
+
         for (std::size_t i = 0; i < rhs->numel(); ++i) {
             rhs_data[i] = static_cast<float>(i % 5 + 1);
         }
@@ -364,14 +374,17 @@ namespace {
         const auto* data = static_cast<const float*>(result->data());
 
         EXPECT_EQ(result->shape(), (ormi::core::Shape{2, 4, 4}));
+
         for (std::size_t batch = 0; batch < 2; ++batch) {
             for (std::size_t row = 0; row < 4; ++row) {
                 for (std::size_t column = 0; column < 4; ++column) {
                     float expected = 0.0f;
+
                     for (std::size_t k = 0; k < 5; ++k) {
                         expected += lhs_data[batch * 20 + k * 4 + row] *
                             rhs_data[k * 4 + column];
                     }
+
                     EXPECT_FLOAT_EQ(
                         data[batch * 16 + row * 4 + column],
                         expected
@@ -400,10 +413,12 @@ namespace {
         for (std::size_t i = 0; i < lhs->numel(); ++i) {
             lhs_data[i] = static_cast<float>(static_cast<int>(i % 13) - 6) * 0.125f;
         }
+
         for (std::size_t i = 0; i < lhs_storage->numel(); ++i) {
             lhs_storage_data[i] =
                 static_cast<float>(static_cast<int>(i % 17) - 8) * 0.0625f;
         }
+
         for (std::size_t i = 0; i < rhs->numel(); ++i) {
             rhs_data[i] = static_cast<float>(static_cast<int>(i % 11) - 5) * 0.25f;
         }
@@ -417,6 +432,7 @@ namespace {
             for (std::size_t column = 0; column < columns; ++column) {
                 float contiguous_expected = 0.0f;
                 float transposed_expected = 0.0f;
+
                 for (std::size_t k = 0; k < inner; ++k) {
                     contiguous_expected +=
                         lhs_data[row * inner + k] * rhs_data[k * columns + column];
@@ -425,6 +441,7 @@ namespace {
                 }
 
                 const auto index = row * columns + column;
+
                 EXPECT_FLOAT_EQ(contiguous_data[index], contiguous_expected);
                 EXPECT_FLOAT_EQ(transposed_data[index], transposed_expected);
             }
@@ -480,6 +497,7 @@ namespace {
         for (std::size_t i = 0; i < contiguous->numel(); ++i) {
             EXPECT_FLOAT_EQ(contiguous_data[i], 2.0f);
         }
+
         for (std::size_t i = 0; i < transposed->numel(); ++i) {
             EXPECT_FLOAT_EQ(transposed_data[i], 32.0f);
         }
@@ -494,6 +512,7 @@ namespace {
         const auto* data = static_cast<const float*>(result->data());
 
         EXPECT_EQ(result->shape(), (ormi::core::Shape{7, 5}));
+
         for (std::size_t i = 0; i < result->numel(); ++i) {
             EXPECT_FLOAT_EQ(data[i], 0.0f);
         }
@@ -511,6 +530,7 @@ namespace {
             lhs_data[i] =
                 static_cast<float>(static_cast<int>(i % 13) - 6) * 0.125f;
         }
+
         for (std::size_t i = 0; i < rhs->numel(); ++i) {
             rhs_data[i] =
                 static_cast<float>(static_cast<int>(i % 11) - 5) * 0.25f;
@@ -518,11 +538,14 @@ namespace {
 
         const auto result = ormi::core::ops::matmul(lhs, rhs);
         const auto* data = static_cast<const float*>(result->data());
+
         for (std::size_t row = 0; row < rows; ++row) {
             float expected = 0.0f;
+
             for (std::size_t k = 0; k < inner; ++k) {
                 expected += lhs_data[row * inner + k] * rhs_data[k];
             }
+
             EXPECT_FLOAT_EQ(data[row], expected);
         }
     }

@@ -52,6 +52,7 @@ namespace {
                 FAIL() << "An integer transcendental operation must throw.";
             } catch (const ormi::DTypeError& error) {
                 const std::string_view message(error.what());
+
                 EXPECT_NE(message.find("requires a floating-point tensor"), std::string_view::npos);
             }
         }
@@ -94,6 +95,7 @@ namespace {
         EXPECT_FLOAT_EQ(data[2], 9.0f);
 
         result->realize();
+
         EXPECT_EQ(result->buffer(), first_buffer);
     }
 
@@ -180,6 +182,7 @@ namespace {
         EXPECT_EQ(result->parents()[0], input);
 
         const auto* result_data = static_cast<const float*>(result->data());
+
         EXPECT_FLOAT_EQ(result_data[0], 2.0f);
         EXPECT_FLOAT_EQ(result_data[1], 0.0f);
         EXPECT_FLOAT_EQ(result_data[2], -3.5f);
@@ -238,6 +241,7 @@ namespace {
         EXPECT_EQ(result->op()->name, "exp");
 
         const auto* result_data = static_cast<const float*>(result->data());
+
         EXPECT_FLOAT_EQ(result_data[0], std::exp(-1.0f));
         EXPECT_FLOAT_EQ(result_data[1], 1.0f);
         EXPECT_FLOAT_EQ(result_data[2], std::exp(1.0f));
@@ -362,6 +366,7 @@ namespace {
         EXPECT_EQ(result->parents()[0]->parents()[0], lhs);
         EXPECT_EQ(result->parents()[1], rhs);
         const auto* data = static_cast<const float*>(result->data());
+
         EXPECT_FLOAT_EQ(data[0], 2.0f);
         EXPECT_FLOAT_EQ(data[1], 5.0f);
     }

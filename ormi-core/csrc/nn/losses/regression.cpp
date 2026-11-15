@@ -57,6 +57,7 @@ namespace ormi::nn {
         if (!std::isfinite(beta) || beta < 0) {
             ORMI_THROW(OperationError, "Smooth L1 beta must be finite and nonnegative.");
         }
+
         if (beta == 0) {
             return l1_loss(prediction, target, reduction);
         }

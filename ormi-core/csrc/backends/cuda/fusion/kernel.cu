@@ -19,6 +19,7 @@ namespace ormi::backends::cuda::fusion {
         if (!expression.auxiliary_outputs.empty()) {
             return !expression.reduction;
         }
+
         if (!expression.reduction) {
             return true;
         }

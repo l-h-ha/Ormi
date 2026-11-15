@@ -65,6 +65,7 @@ namespace ormi::backends::cpu::gemm {
                 const bool column_lhs =
                     problem.lhs_row_stride == 1 &&
                     problem.out_row_stride == 1;
+
                 if (column_lhs) {
                     portable::column_lhs_gemv(
                         out,
@@ -81,6 +82,7 @@ namespace ormi::backends::cpu::gemm {
                 const bool enough_work =
                     problem.rows > avx2_multiplications / problem.inner ||
                     problem.rows * problem.inner >= avx2_multiplications;
+
                 if constexpr (float32) {
                     if (
                         use_avx2 &&
@@ -143,6 +145,7 @@ namespace ormi::backends::cpu::gemm {
                 if constexpr (float32) {
                     const auto multiplications =
                         problem.rows * problem.inner * problem.columns;
+
                     if (
                         use_avx2 &&
                         problem.columns >= 8 &&
@@ -175,6 +178,7 @@ namespace ormi::backends::cpu::gemm {
                                 multiplications
                             );
                         }
+
                         return;
                     }
                 }
@@ -225,6 +229,7 @@ namespace ormi::backends::cpu::gemm {
                     problem.rhs_row_stride,
                     problem.rhs_column_stride
                 };
+
                 if (blas::gemm(
                     out,
                     lhs,

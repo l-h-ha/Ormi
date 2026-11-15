@@ -20,9 +20,11 @@ namespace {
             ormi::core::DType::float32
         );
         auto output = input;
+
         for (std::int64_t operation = 0; operation < operations; ++operation) {
             output = ormi::core::ops::add(output, input);
         }
+
         return output;
     }
 

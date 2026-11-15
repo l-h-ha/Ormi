@@ -9,6 +9,7 @@ namespace {
         unsigned long long begin, unsigned long long end, float increment) {
         auto* output = static_cast<float*>(outputs[0]);
         const auto* input = static_cast<const float*>(inputs[0]);
+
         for (auto i = begin; i < end; ++i) {
             output[i] = input[i] + increment;
         }

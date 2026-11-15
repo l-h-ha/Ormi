@@ -77,6 +77,7 @@ namespace {
             ormi::core::DType::float32
         );
         auto* values = static_cast<float*>(input->data());
+
         for (std::size_t i = 0; i < elements; ++i) {
             values[i] = 1.0f;
         }
@@ -87,9 +88,11 @@ namespace {
                 input
             )
         );
+
         for (std::size_t i = 0; i < extra_additions; ++i) {
             result = ormi::core::ops::add(result, input);
         }
+
         return ormi::core::ops::sin(result);
     }
 
@@ -107,9 +110,11 @@ namespace {
             ormi::core::ops::mul(input, input),
             input
         );
+
         for (std::size_t i = 0; i < extra_additions; ++i) {
             result = ormi::core::ops::add(result, input);
         }
+
         return result;
     }
 
@@ -156,6 +161,7 @@ namespace {
             contents.data(),
             static_cast<std::streamsize>(contents.size())
         );
+
         if (!file) {
             throw std::runtime_error("Cannot write CPU JIT benchmark artifact.");
         }
@@ -368,9 +374,11 @@ namespace {
                 ormi::core::runtime::fusion::build(*roots.back()).value()
             );
         }
+
         for (const auto& expression : expressions) {
             pointers.push_back(&expression);
         }
+
         benchmark::DoNotOptimize(
             ormi::backends::cpu::jit::compile(pointers).data()
         );
@@ -379,6 +387,7 @@ namespace {
             const auto compiled = ormi::backends::cpu::jit::compile(pointers);
             benchmark::DoNotOptimize(compiled.data());
         }
+
         state.SetItemsProcessed(
             state.iterations() * static_cast<std::int64_t>(count)
         );
@@ -425,6 +434,7 @@ namespace {
         for (auto _ : state) {
             const auto found = ormi::backends::cpu::jit::cache::find(requested, context);
             benchmark::DoNotOptimize(found.has_value());
+
             if (found.has_value() != hit) {
                 state.SkipWithError("CPU JIT disk lookup returned an unexpected result.");
                 break;

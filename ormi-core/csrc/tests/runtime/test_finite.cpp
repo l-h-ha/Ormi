@@ -35,6 +35,7 @@ namespace {
         EXPECT_TRUE(ormi::core::runtime::finite::all(inputs));
 
         second_data[1] = std::numeric_limits<double>::quiet_NaN();
+
         EXPECT_FALSE(ormi::core::runtime::finite::all(inputs));
     }
 

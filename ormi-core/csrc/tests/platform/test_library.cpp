@@ -32,11 +32,13 @@ namespace {
 
     TEST(PlatformLibraryTest, loadsAndCallsSymbol) {
         const ormi::platform::Library library(fixture);
+
         EXPECT_EQ(value(library), 42);
     }
 
     TEST(PlatformLibraryTest, reportsMissingLibrary) {
         const auto missing = fixture / "not-a-library";
+
         try {
             const ormi::platform::Library library(missing);
             FAIL() << "Loading a missing library should fail.";
@@ -49,6 +51,7 @@ namespace {
 
     TEST(PlatformLibraryTest, reportsMissingSymbolAndRecovers) {
         const ormi::platform::Library library(fixture);
+
         try {
             library.symbol("ormi_library_missing");
             FAIL() << "Looking up a missing symbol should fail.";
@@ -57,6 +60,7 @@ namespace {
                 "Shared library does not export symbol: ormi_library_missing"
             ), 0);
         }
+
         EXPECT_EQ(value(library), 42);
     }
 
@@ -66,6 +70,7 @@ namespace {
         const auto function = reinterpret_cast<int (*)()>(
             library.symbol(text.substr(0, text.find(':')))
         );
+
         EXPECT_EQ(function(), 42);
     }
 
@@ -73,8 +78,10 @@ namespace {
         {
             const ormi::platform::Library library(fixture);
             watch_unload(library);
+
             EXPECT_EQ(unloaded, 0);
         }
+
         EXPECT_EQ(unloaded, 1);
     }
 
@@ -85,9 +92,12 @@ namespace {
             watch_unload(source);
             destination.emplace(std::move(source));
         }
+
         ASSERT_EQ(unloaded, 0);
+
         EXPECT_EQ(value(*destination), 42);
         destination.reset();
+
         EXPECT_EQ(unloaded, 1);
     }
 
@@ -99,9 +109,12 @@ namespace {
                 ormi::platform::Library source(fixture);
                 destination = std::move(source);
             }
+
             ASSERT_EQ(unloaded, 0);
+
             EXPECT_EQ(value(destination), 42);
         }
+
         EXPECT_EQ(unloaded, 1);
     }
 
@@ -111,15 +124,18 @@ namespace {
             watch_unload(library);
             auto& same = library;
             library = std::move(same);
+
             ASSERT_EQ(unloaded, 0);
             EXPECT_EQ(value(library), 42);
         }
+
         EXPECT_EQ(unloaded, 1);
     }
 
     TEST(PlatformLibraryTest, locatesModuleFromSymbol) {
         const ormi::platform::Library library(fixture);
         const auto* symbol = library.symbol("ormi_library_value");
+
         EXPECT_EQ(
             ormi::platform::library_path(symbol, "ormi_library_fixture"), fixture
         );

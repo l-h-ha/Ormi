@@ -21,6 +21,7 @@ namespace ormi::core {
             }
 
             const auto half_exponent = static_cast<std::int32_t>(exponent) - 112;
+
             if (half_exponent >= 31) {
                 return static_cast<std::uint16_t>(sign | 0x7c00u);
             }
@@ -66,6 +67,7 @@ namespace ormi::core {
                     bits = sign;
                 } else {
                     std::int32_t normalized_exponent = -14;
+
                     while ((mantissa & 0x0400u) == 0) {
                         mantissa <<= 1;
                         --normalized_exponent;
@@ -89,6 +91,7 @@ namespace ormi::core {
     class Float16 {
     public:
         constexpr Float16() noexcept = default;
+
         explicit Float16(float value) noexcept : bits_(detail::float16_bits(value)) {}
 
         static constexpr Float16 from_bits(std::uint16_t bits) noexcept {

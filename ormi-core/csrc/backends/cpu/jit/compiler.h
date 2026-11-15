@@ -36,7 +36,6 @@ namespace ormi::backends::cpu::jit {
     // Cache the first selected compiler. Set compiler environment variables before this call.
     const Toolchain& toolchain();
     // Return false when no compatible compiler is available. Invalid settings throw.
-    // Cached kernels can still run without a compiler.
     bool compiler_available();
 
     std::chrono::milliseconds compiler_timeout();

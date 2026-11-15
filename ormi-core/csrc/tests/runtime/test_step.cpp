@@ -27,7 +27,9 @@ namespace {
         if (value < 0.0f) {
             ORMI_THROW(ormi::OperationError, "Grouped execution failed.");
         }
+
         *static_cast<float*>(output.data()) = value;
+
         for (std::size_t index = 0; index < auxiliary.size(); ++index) {
             *static_cast<float*>(auxiliary[index]->data()) =
                 value + static_cast<float>(index + 1);
@@ -106,12 +108,14 @@ namespace {
             expression.dtype = core::DType::float32;
             expression.elements = 1;
             expression.inputs.push_back(input.get());
+
             if (GetParam()) {
                 return Step::deferred_fusion(
                     *first, prepare_group, nullptr, unexpected_fallback,
                     std::move(expression), {second.get(), third.get()}
                 );
             }
+
             return Step::fusion(
                 *first, run_group, std::move(expression),
                 {second.get(), third.get()}
@@ -137,6 +141,7 @@ namespace {
         value(5.0f);
         current.run();
         expect_values(5.0f);
+
         EXPECT_EQ(first->buffer(), first_buffer);
         EXPECT_EQ(second->buffer(), second_buffer);
         EXPECT_EQ(third->buffer(), third_buffer);
@@ -145,6 +150,7 @@ namespace {
     TEST_P(StepTest, releasesNewGroupedBuffersAfterFailureAndRetries) {
         value(-1.0f);
         auto current = step();
+
         EXPECT_THROW(current.run(), ormi::OperationError);
         EXPECT_FALSE(first->realized());
         EXPECT_FALSE(second->realized());
@@ -168,6 +174,7 @@ namespace {
 
         value(-1.0f);
         auto current = step();
+
         EXPECT_THROW(current.run(), ormi::OperationError);
         EXPECT_FALSE(second->realized());
         EXPECT_EQ(first->buffer(), first_buffer);
@@ -178,6 +185,7 @@ namespace {
         value(4.0f);
         current.run();
         expect_values(4.0f);
+
         EXPECT_EQ(first->buffer(), first_buffer);
         EXPECT_EQ(third->buffer(), third_buffer);
     }
@@ -191,6 +199,7 @@ namespace {
         const auto third_buffer = third->buffer();
 
         value(-1.0f);
+
         EXPECT_THROW(current.run(), ormi::OperationError);
         EXPECT_EQ(first->buffer(), first_buffer);
         EXPECT_EQ(second->buffer(), second_buffer);
@@ -271,11 +280,13 @@ namespace {
             if (++calls == fail_on_call) {
                 ORMI_THROW(ormi::OperationError, "Step preparation failed.");
             }
+
             return fallback ? core::Setup{} : prepare_group(output, auxiliary, expression, &drops);
         }
 
         static void prepare_batch(std::span<core::runtime::FusionJob> jobs) {
             ++batches;
+
             for (const auto& job : jobs) {
                 *job.setup = prepare_one(
                     *job.output, {job.auxiliary_outputs, job.auxiliary_count}, *job.expression
@@ -311,21 +322,27 @@ namespace {
     TEST_P(StepPreparationTest, preparesOnceWithoutAllocatingOutputs) {
         auto current = steps();
         core::runtime::prepare(current);
+
         EXPECT_FALSE(first->realized());
         EXPECT_FALSE(second->realized());
         EXPECT_EQ(calls, 2);
 
         core::runtime::prepare(current);
+
         for (auto& item : current) {
             item.run();
         }
+
         expect_values(2.0f);
 
         value(5.0f);
+
         for (auto& item : current) {
             item.run();
         }
+
         expect_values(5.0f);
+
         EXPECT_EQ(calls, 2);
         EXPECT_EQ(batches, GetParam() ? 1 : 0);
     }
@@ -335,16 +352,21 @@ namespace {
         auto current = steps();
         core::runtime::prepare(current);
         core::runtime::prepare(current);
+
         for (auto& item : current) {
             item.run();
         }
+
         expect_values(2.0f);
 
         value(4.0f);
+
         for (auto& item : current) {
             item.run();
         }
+
         expect_values(4.0f);
+
         EXPECT_EQ(calls, 2);
         EXPECT_EQ(batches, GetParam() ? 1 : 0);
     }
@@ -352,16 +374,20 @@ namespace {
     TEST_P(StepPreparationTest, retriesPartiallyPreparedSteps) {
         fail_on_call = 2;
         auto current = steps();
+
         EXPECT_THROW(core::runtime::prepare(current), ormi::OperationError);
         EXPECT_EQ(calls, 2);
         EXPECT_FALSE(first->realized());
         EXPECT_FALSE(second->realized());
 
         core::runtime::prepare(current);
+
         for (auto& item : current) {
             item.run();
         }
+
         expect_values(2.0f);
+
         EXPECT_EQ(calls, GetParam() ? 4 : 3);
         EXPECT_EQ(batches, GetParam() ? 2 : 0);
     }
@@ -369,10 +395,12 @@ namespace {
     TEST_P(StepPreparationTest, retriesPreparationFailureDuringRun) {
         fail_on_call = 1;
         auto current = step(*first);
+
         EXPECT_THROW(current.run(), ormi::OperationError);
         EXPECT_FALSE(first->realized());
 
         current.run();
+
         EXPECT_FLOAT_EQ(*static_cast<const float*>(first->data()), 2.0f);
         EXPECT_EQ(calls, 2);
         EXPECT_EQ(batches, 0);
@@ -381,38 +409,48 @@ namespace {
     TEST_P(StepPreparationTest, releasesPartiallyPreparedStateWhenAbandoned) {
         fail_on_call = 2;
         auto current = steps();
+
         EXPECT_THROW(core::runtime::prepare(current), ormi::OperationError);
         EXPECT_EQ(drops, 0);
 
         current.clear();
+
         EXPECT_EQ(drops, 1);
     }
 
     TEST_P(StepPreparationTest, releasesReplacedStateWhenFailedPreparationIsRetried) {
         fail_on_call = 2;
         auto current = steps();
+
         EXPECT_THROW(core::runtime::prepare(current), ormi::OperationError);
         EXPECT_EQ(drops, 0);
 
         core::runtime::prepare(current);
+
         EXPECT_EQ(drops, GetParam() ? 1 : 0);
         current.clear();
+
         EXPECT_EQ(drops, GetParam() ? 3 : 2);
     }
 
     TEST_P(StepPreparationTest, retriesFailedPreparationWithDirectFallback) {
         fail_on_call = 2;
         auto current = steps();
+
         EXPECT_THROW(core::runtime::prepare(current), ormi::OperationError);
         fallback = true;
 
         core::runtime::prepare(current);
+
         EXPECT_EQ(drops, GetParam() ? 1 : 0);
+
         for (auto& item : current) {
             item.run();
         }
+
         expect_values(2.0f);
         current.clear();
+
         EXPECT_EQ(drops, 1);
     }
 
@@ -420,14 +458,18 @@ namespace {
         auto current = steps();
         core::runtime::prepare(current);
         value(-1.0f);
+
         EXPECT_THROW(current[0].run(), ormi::OperationError);
         EXPECT_FALSE(first->realized());
 
         value(3.0f);
+
         for (auto& item : current) {
             item.run();
         }
+
         expect_values(3.0f);
+
         EXPECT_EQ(calls, 2);
         EXPECT_EQ(batches, GetParam() ? 1 : 0);
     }
@@ -456,9 +498,11 @@ namespace {
 
         *static_cast<float*>(input->data()) = 7.0f;
         current.run();
+
         EXPECT_FLOAT_EQ(*static_cast<const float*>(output->data()), 7.0f);
         *static_cast<float*>(input->data()) = 9.0f;
         current.run();
+
         EXPECT_FLOAT_EQ(*static_cast<const float*>(output->data()), 9.0f);
     }
 
@@ -476,9 +520,11 @@ namespace {
         current.prepare();
         *static_cast<float*>(input->data()) = 6.0f;
         current.run();
+
         EXPECT_FLOAT_EQ(*static_cast<const float*>(output->data()), 6.0f);
         *static_cast<float*>(input->data()) = 8.0f;
         current.run();
+
         EXPECT_FLOAT_EQ(*static_cast<const float*>(output->data()), 8.0f);
     }
 
@@ -512,6 +558,7 @@ namespace {
         EXPECT_EQ(drops, 1);
         EXPECT_FALSE(output->realized());
         current.clear();
+
         EXPECT_EQ(drops, 1);
     }
 }

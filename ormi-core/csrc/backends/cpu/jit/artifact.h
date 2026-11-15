@@ -23,8 +23,8 @@ namespace ormi::backends::cpu::jit::artifact {
         std::string_view source,
         Kernel kernel
     );
-    // Try disk first, then compile if needed. A cached library that fails to load is discarded
-    // and rebuilt once. A load failure in a fresh build is reported to the caller.
+    // Load from disk or compile; rebuild a cached library once if loading fails.
+    // Report load failures from fresh builds.
     std::vector<std::shared_ptr<Compiled>> get(
         std::string_view source,
         std::span<const Kernel> kernels

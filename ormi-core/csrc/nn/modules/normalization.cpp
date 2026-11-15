@@ -20,9 +20,11 @@ namespace ormi::nn {
         : normalized_shape_(std::move(normalized_shape)),
           eps_(eps) {
         detail::check_normalization(normalized_shape_, eps_);
+
         if (!core::is_floating(dtype)) {
             ORMI_THROW(DTypeError, "LayerNorm parameters require a floating-point dtype.");
         }
+
         if (!elementwise_affine) {
             return;
         }
@@ -41,6 +43,7 @@ namespace ormi::nn {
         weight_ = std::make_shared<core::Tensor>(device, normalized_shape_, dtype);
         core::memory::fill_scalar(weight_->data(), device, one, weight_->numel(), dtype);
         register_parameter(weight_, "weight");
+
         if (!bias) {
             return;
         }

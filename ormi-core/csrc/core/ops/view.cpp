@@ -155,6 +155,7 @@ namespace ormi::core::ops {
         }
 
         auto strides = reshape_strides(*input, shape);
+
         if (!strides) {
             ORMI_THROW(ShapeError, "Reshape is incompatible with the tensor's storage layout.");
         }

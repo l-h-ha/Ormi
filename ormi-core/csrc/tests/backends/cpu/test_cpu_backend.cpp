@@ -33,9 +33,11 @@ namespace {
     TEST(CPUBackendTest, staticBackendsInstallsCPUBackend) {
         auto& backends = ormi::core::runtime::Backends::instance();
         const auto cpu = backends.find("cpu");
+
         ASSERT_NE(cpu, ormi::core::runtime::backend_invalid);
 
         const auto& backend = backends.require(cpu);
+
         EXPECT_EQ(backend.abi, ormi::core::runtime::backend_abi);
     }
 }

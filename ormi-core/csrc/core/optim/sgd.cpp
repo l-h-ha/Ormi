@@ -79,6 +79,7 @@ namespace ormi::core::optim {
             }
 
             const auto step_size = learning_rate / gradient_scale;
+
             if (!std::isfinite(step_size) || step_size <= 0.0) {
                 ORMI_THROW(OperationError, "SGD effective step size must be finite and positive.");
             }

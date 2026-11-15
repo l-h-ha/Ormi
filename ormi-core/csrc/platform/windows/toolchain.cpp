@@ -28,6 +28,7 @@ namespace ormi::platform {
             ) {
                 value.pop_back();
             }
+
             const auto first = std::find_if_not(
                 value.begin(),
                 value.end(),
@@ -46,9 +47,11 @@ namespace ormi::platform {
                 value.data(),
                 static_cast<DWORD>(value.size())
             );
+
             if (size == 0 || size >= value.size()) {
                 return {};
             }
+
             return std::filesystem::path(value.data(), value.data() + size);
         }
 
@@ -59,24 +62,30 @@ namespace ormi::platform {
                 value.data(),
                 static_cast<DWORD>(value.size())
             );
+
             if (size == 0 || size >= value.size()) {
                 return {};
             }
+
             return std::filesystem::path(value.data(), value.data() + size);
         }
 
         std::vector<std::string> parse_environment(std::string_view output) {
             std::vector<std::string> result;
             std::unordered_set<std::string> keys;
+
             while (!output.empty()) {
                 const auto newline = output.find('\n');
                 auto line = output.substr(0, newline);
+
                 if (!line.empty() && line.back() == '\r') {
                     line.remove_suffix(1);
                 }
+
                 const auto separator = line.empty()
                     ? std::string_view::npos
                     : line.find('=', line.front() == '=' ? 1 : 0);
+
                 if (separator != std::string_view::npos) {
                     std::string key(line.substr(0, separator));
                     std::transform(
@@ -87,6 +96,7 @@ namespace ormi::platform {
                             return static_cast<char>(std::tolower(character));
                         }
                     );
+
                     if (keys.insert(std::move(key)).second) {
                         result.emplace_back(line);
                     }
@@ -95,8 +105,10 @@ namespace ormi::platform {
                 if (newline == std::string_view::npos) {
                     break;
                 }
+
                 output.remove_prefix(newline + 1);
             }
+
             return result;
         }
 
@@ -106,23 +118,28 @@ namespace ormi::platform {
         ) {
             for (const auto& variable : environment) {
                 const auto separator = variable.find('=');
+
                 if (separator != requested.size()) {
                     continue;
                 }
 
                 bool equal = true;
+
                 for (std::size_t i = 0; i < requested.size(); ++i) {
                     const auto lhs = static_cast<unsigned char>(variable[i]);
                     const auto rhs = static_cast<unsigned char>(requested[i]);
+
                     if (std::tolower(lhs) != std::tolower(rhs)) {
                         equal = false;
                         break;
                     }
                 }
+
                 if (equal) {
                     return std::string_view(variable).substr(separator + 1);
                 }
             }
+
             return std::nullopt;
         }
     }
@@ -130,6 +147,7 @@ namespace ormi::platform {
     std::optional<Tool> configured_msvc() {
         static const auto configured = []() -> std::optional<Tool> {
             const auto program_files = environment_path(L"ProgramFiles(x86)");
+
             if (program_files.empty()) {
                 return std::nullopt;
             }
@@ -138,6 +156,7 @@ namespace ormi::platform {
                 "Microsoft Visual Studio" /
                 "Installer" /
                 "vswhere.exe";
+
             if (!std::filesystem::is_regular_file(vswhere)) {
                 return std::nullopt;
             }
@@ -154,6 +173,7 @@ namespace ormi::platform {
                     "installationPath"
                 }
             );
+
             if (installation.code != 0) {
                 return std::nullopt;
             }
@@ -164,6 +184,7 @@ namespace ormi::platform {
             const auto setup = root / "Common7" / "Tools" / "VsDevCmd.bat";
             const auto shortened = short_path(setup);
             const auto command = find("cmd.exe");
+
             if (
                 root.empty() ||
                 shortened.empty() ||
@@ -183,6 +204,7 @@ namespace ormi::platform {
                         " -arch=x64 -host_arch=x64 >nul && set"
                 }
             );
+
             if (environment_result.code != 0) {
                 return std::nullopt;
             }
@@ -192,6 +214,7 @@ namespace ormi::platform {
                 environment,
                 "VCToolsInstallDir"
             );
+
             if (!tools) {
                 return std::nullopt;
             }
@@ -199,9 +222,11 @@ namespace ormi::platform {
             const auto compiler = std::filesystem::path(
                 windows::widen(*tools)
             ) / "bin" / "Hostx64" / "x64" / "cl.exe";
+
             if (!std::filesystem::is_regular_file(compiler)) {
                 return std::nullopt;
             }
+
             return Tool{compiler, std::move(environment)};
         }();
 

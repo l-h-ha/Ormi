@@ -1,4 +1,6 @@
+#include <algorithm>
 #include <array>
+#include <limits>
 #include <memory>
 #include <span>
 #include <string>
@@ -19,8 +21,13 @@ namespace ormi::core {
             std::size_t next_parent;
         };
 
-        std::vector<std::shared_ptr<Tensor>> topology(const std::shared_ptr<Tensor>& root) {
+        std::vector<std::shared_ptr<Tensor>> topology(const std::shared_ptr<Tensor>& root, std::size_t minimum_depth) {
             std::vector<std::shared_ptr<Tensor>> result;
+
+            if (root->graph_depth() < minimum_depth) {
+                return result;
+            }
+
             std::vector<Frame> stack{{&root, 0}};
             std::unordered_set<const Tensor*> visited;
             visited.insert(root.get());
@@ -37,6 +44,11 @@ namespace ormi::core {
                 }
 
                 const auto& parent = parents[frame.next_parent++];
+
+                if (parent->graph_depth() < minimum_depth) {
+                    continue;
+                }
+
                 if (!visited.insert(parent.get()).second) {
                     continue;
                 }
@@ -74,6 +86,7 @@ namespace ormi::core {
                 if (!output->shape().scalar()) {
                     ORMI_THROW(ShapeError, "A non-scalar gradient output requires an explicit seed.");
                 }
+
                 seed = ops::ones_like(output);
             }
 
@@ -89,14 +102,30 @@ namespace ormi::core {
                 ORMI_THROW(DeviceError, "Gradient seed device must match the output device.");
             }
 
+            if (inputs.empty()) {
+                return {};
+            }
+
+            auto minimum_depth = inputs[0]->graph_depth();
+
+            for (const auto& input : inputs) {
+                minimum_depth = std::min(minimum_depth, input->graph_depth());
+            }
+
             Grads gradients;
             gradients.add(output, std::move(seed));
-            auto nodes = topology(output);
+            auto nodes = topology(output, minimum_depth);
 
-            // Visit children before their parents so shared parents collect every contribution
-            // before their gradient rule builds more expressions. This pass reads no tensor values.
+            // Process children first so shared parents collect every contribution before
+            // building their gradient expressions
             for (auto position = nodes.rbegin(); position != nodes.rend(); ++position) {
                 const auto& node = *position;
+
+                // Stop backpropagation at minimum_depth, retaining graph edges for higher derivatives.
+                if (node->graph_depth() == minimum_depth && minimum_depth != std::numeric_limits<std::size_t>::max()) {
+                    continue;
+                }
+
                 const auto upstream = gradients.get(node);
 
                 if (!upstream) {
@@ -104,6 +133,7 @@ namespace ormi::core {
                 }
 
                 const auto* op = node->op();
+
                 if (!op) {
                     continue;
                 }

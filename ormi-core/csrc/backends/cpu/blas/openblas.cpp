@@ -65,6 +65,7 @@ namespace ormi::backends::cpu::blas {
 
             const auto lhs_layout = layout(lhs_matrix);
             const auto rhs_layout = layout(rhs_matrix);
+
             if (!lhs_layout || !rhs_layout) {
                 return false;
             }

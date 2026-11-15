@@ -45,6 +45,7 @@ namespace {
                 std::filesystem::copy_file(fixture, library,
                     std::filesystem::copy_options::overwrite_existing);
             }
+
             return cache::Artifact(library, cached,
                 std::make_unique<ormi::platform::FileLock>(
                     lock, ormi::platform::Lock::shared));
@@ -78,6 +79,7 @@ namespace {
         void* outputs[]{output.data()};
         const void* inputs[]{input.data()};
         compiled->function(outputs, inputs, 0, input.size(), input.size(), compiled->math);
+
         for (std::size_t i = 0; i < input.size(); ++i) {
             EXPECT_FLOAT_EQ(output[i], input[i] + increment);
         }
@@ -145,6 +147,7 @@ namespace {
 
     TEST_F(CPUJITArtifactTest, propagatesFreshLibraryFailureWithoutRetry) {
         failure = Failure::library;
+
         EXPECT_THROW(artifact::get("test source", std::span(&kernel, 1)), ormi::jitError);
         EXPECT_EQ(acquisitions, 1);
         EXPECT_EQ(discards, 0);
@@ -155,6 +158,7 @@ namespace {
         acquired_cached = true;
         failure = Failure::library;
         repair_valid = false;
+
         EXPECT_THROW(artifact::get("test source", std::span(&kernel, 1)), ormi::jitError);
         EXPECT_EQ(acquisitions, 2);
         EXPECT_EQ(discards, 1);
@@ -178,9 +182,11 @@ namespace {
 namespace ormi::backends::cpu::jit::cache {
     std::optional<Artifact> find(std::string_view, std::string_view) {
         auto& test = *CPUJITArtifactTest::current;
+
         if (!test.lookup_hit) {
             return std::nullopt;
         }
+
         return test.acquire(true, test.failure);
     }
 
@@ -188,11 +194,13 @@ namespace ormi::backends::cpu::jit::cache {
         auto& test = *CPUJITArtifactTest::current;
         ++test.acquisitions;
         auto failure = CPUJITArtifactTest::Failure::none;
+
         if (test.acquisitions == 1 && test.discards == 0) {
             failure = test.failure;
         } else if (!test.repair_valid) {
             failure = CPUJITArtifactTest::Failure::library;
         }
+
         return test.acquire(test.acquisitions == 1 && test.acquired_cached, failure);
     }
 

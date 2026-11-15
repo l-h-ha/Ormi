@@ -26,15 +26,19 @@ namespace ormi::core::ops {
             if (std::holds_alternative<double>(value)) {
                 return DType::float64;
             }
+
             if (std::holds_alternative<float>(value)) {
                 return DType::float32;
             }
+
             if (std::holds_alternative<Float16>(value)) {
                 return DType::float16;
             }
+
             if (std::holds_alternative<std::int32_t>(value)) {
                 return DType::int32;
             }
+
             return DType::boolean;
         }
 
@@ -42,15 +46,19 @@ namespace ormi::core::ops {
             if (const auto* scalar = std::get_if<double>(&value)) {
                 return scalar;
             }
+
             if (const auto* scalar = std::get_if<float>(&value)) {
                 return scalar;
             }
+
             if (const auto* scalar = std::get_if<Float16>(&value)) {
                 return scalar;
             }
+
             if (const auto* scalar = std::get_if<std::int32_t>(&value)) {
                 return scalar;
             }
+
             return std::get_if<bool>(&value);
         }
 

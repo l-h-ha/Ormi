@@ -37,6 +37,7 @@ namespace {
             ormi::core::ops::add(ormi::core::ops::mul(x, x), x)
         );
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto first = ormi::backends::cpu::jit::emit(*expression);
@@ -66,6 +67,7 @@ namespace {
         const auto x = tensor(ormi::core::DType::float64);
         const auto output = ormi::core::ops::cos(ormi::core::ops::exp(x));
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -75,6 +77,48 @@ namespace {
         EXPECT_NE(source.find("const double v2 = std::cos(v1);"), std::string::npos);
     }
 
+    TEST(CPUJITCodegenTest, emitsSingleElementMapsWithoutLoops) {
+        for (const auto dtype : {
+            ormi::core::DType::float16,
+            ormi::core::DType::float32,
+            ormi::core::DType::float64
+        }) {
+            for (const auto& shape : {
+                ormi::core::Shape{}, ormi::core::Shape{1}, ormi::core::Shape{1, 1, 1}
+            }) {
+                for (const bool transcendental : {false, true}) {
+                    const auto x = tensor(dtype, shape);
+                    auto output = ormi::core::ops::add(ormi::core::ops::mul(x, x), x);
+
+                    if (transcendental) {
+                        output = ormi::core::ops::sin(output);
+                    }
+
+                    const auto expression = ormi::core::runtime::fusion::build(*output);
+
+                    ASSERT_TRUE(expression.has_value());
+                    const auto source = ormi::backends::cpu::jit::emit(*expression);
+
+                    EXPECT_NE(source.find("if (begin == 0 && end != 0)"), std::string::npos);
+                    EXPECT_NE(source.find("constexpr unsigned long long i = 0;"), std::string::npos);
+                    EXPECT_EQ(source.find("for (unsigned long long i"), std::string::npos);
+                }
+            }
+        }
+    }
+
+    TEST(CPUJITCodegenTest, preservesEmptyMapLoop) {
+        const auto x = tensor(ormi::core::DType::float32, {0});
+        const auto output = ormi::core::ops::add(ormi::core::ops::mul(x, x), x);
+        const auto expression = ormi::core::runtime::fusion::build(*output);
+
+        ASSERT_TRUE(expression.has_value());
+        const auto source = ormi::backends::cpu::jit::emit(*expression);
+
+        EXPECT_NE(source.find("for (unsigned long long i = begin; i < end; ++i)"), std::string::npos);
+        EXPECT_EQ(source.find("if (begin == 0 && end != 0)"), std::string::npos);
+    }
+
     TEST(CPUJITCodegenTest, emitsPackedFloat32MathWithScalarTail) {
         const auto x = tensor(ormi::core::DType::float32, {65});
         const auto output = ormi::core::ops::mul(
@@ -82,6 +126,7 @@ namespace {
             x
         );
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -114,6 +159,7 @@ namespace {
             auxiliaries,
             boundaries
         );
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -144,6 +190,7 @@ namespace {
         const auto added = ormi::core::ops::add(square, x);
         const auto output = ormi::core::ops::mul(added, x);
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -170,6 +217,7 @@ namespace {
         const auto shifted = ormi::core::ops::add(scaled, bias);
         const auto output = ormi::core::ops::mul(shifted, input);
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -189,6 +237,7 @@ namespace {
         const auto added = ormi::core::ops::add(square, rhs);
         const auto output = ormi::core::ops::mul(added, lhs);
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -215,6 +264,7 @@ namespace {
         const auto added = ormi::core::ops::add(square, rhs);
         const auto output = ormi::core::ops::mul(added, lhs);
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -237,6 +287,7 @@ namespace {
         const auto added = ormi::core::ops::add(square, rhs);
         const auto output = ormi::core::ops::mul(added, lhs);
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -257,6 +308,7 @@ namespace {
         const auto rhs = tensor(ormi::core::DType::float32, {3});
         const auto output = ormi::core::ops::sin(ormi::core::ops::add(lhs, rhs));
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -271,6 +323,7 @@ namespace {
         const auto rhs = tensor(ormi::core::DType::float32, {3});
         const auto output = ormi::core::ops::sin(ormi::core::ops::add(lhs, rhs));
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -286,6 +339,7 @@ namespace {
             ormi::core::ops::add(transposed, transposed)
         );
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -307,6 +361,7 @@ namespace {
             ormi::core::ops::add(transposed, transposed)
         );
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -325,6 +380,7 @@ namespace {
             ormi::core::ops::add(ormi::core::ops::mul(x, x), x)
         );
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -349,6 +405,7 @@ namespace {
         const auto added = ormi::core::ops::add(square, x);
         const auto output = ormi::core::ops::mul(added, x);
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -379,6 +436,7 @@ namespace {
         const auto shifted = ormi::core::ops::add(scaled, scale);
         const auto output = ormi::core::ops::mul(shifted, input);
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -403,6 +461,7 @@ namespace {
         const auto added = ormi::core::ops::add(square, rhs);
         const auto output = ormi::core::ops::mul(added, lhs);
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -427,6 +486,7 @@ namespace {
         const auto added = ormi::core::ops::add(square, rhs);
         const auto output = ormi::core::ops::mul(added, lhs);
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -448,6 +508,7 @@ namespace {
         const auto mapped = ormi::core::ops::mul(added, input);
         const auto output = ormi::core::ops::mean(mapped, {1});
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -482,6 +543,7 @@ namespace {
         );
         const auto output = ormi::core::ops::sum(mapped);
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -507,6 +569,7 @@ namespace {
         );
         const auto output = ormi::core::ops::sum(mapped, {1}, true);
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -548,6 +611,7 @@ namespace {
         );
         const auto expression =
             ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -590,6 +654,7 @@ namespace {
         const auto output = ormi::core::ops::sum(mapped, {0});
         const auto expression =
             ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -632,6 +697,7 @@ namespace {
         const auto output = ormi::core::ops::mean(mapped, {1});
         const auto expression =
             ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -676,6 +742,7 @@ namespace {
         const auto output = ormi::core::ops::sum(mapped, {1});
         const auto expression =
             ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -717,6 +784,7 @@ namespace {
         const auto output = ormi::core::ops::sum(mapped, {1});
         const auto expression =
             ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -751,6 +819,7 @@ namespace {
         const auto output = ormi::core::ops::mean(mapped);
         const auto expression =
             ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -788,6 +857,7 @@ namespace {
         const auto output = ormi::core::ops::sum(mapped);
         const auto expression =
             ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -834,6 +904,7 @@ namespace {
         const auto output = ormi::core::ops::sum(mapped);
         const auto expression =
             ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -883,6 +954,7 @@ namespace {
         const auto output = ormi::core::ops::sum(mapped);
         const auto expression =
             ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -912,6 +984,7 @@ namespace {
         const auto mapped = ormi::core::ops::add(ormi::core::ops::mul(x, x), x);
         const auto output = ormi::core::ops::mean(mapped, {0});
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -934,6 +1007,7 @@ namespace {
             );
         }
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -974,6 +1048,7 @@ namespace {
             ormi::core::DType::float32
         );
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -1005,6 +1080,7 @@ namespace {
         );
         const auto output = ormi::core::ops::sum(mapped);
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -1036,6 +1112,7 @@ namespace {
         );
         const auto output = ormi::core::ops::mean(mapped, {1});
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -1060,6 +1137,7 @@ namespace {
             output = ormi::core::ops::sum(ormi::core::ops::sin(x));
         }
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
 
         const auto source = ormi::backends::cpu::jit::emit(*expression);
@@ -1084,6 +1162,7 @@ namespace {
         );
         const auto first = ormi::core::runtime::fusion::build(*first_output);
         const auto second = ormi::core::runtime::fusion::build(*second_output);
+
         ASSERT_TRUE(first.has_value());
         ASSERT_TRUE(second.has_value());
 
@@ -1106,11 +1185,13 @@ namespace {
             std::string::npos
         );
         const auto math_table = source.find("struct ormi_math_table");
+
         ASSERT_NE(math_table, std::string::npos);
         const auto buffered_math_table = source.find(
             "struct ormi_math_table",
             math_table + 1
         );
+
         ASSERT_NE(buffered_math_table, std::string::npos);
         EXPECT_EQ(
             source.find("struct ormi_math_table", buffered_math_table + 1),
@@ -1131,8 +1212,10 @@ namespace {
                 mapped, {1, 3}, true
             );
             const auto expression = ormi::core::runtime::fusion::build(*output);
+
             ASSERT_TRUE(expression.has_value());
             auto loop = ormi::backends::cpu::jit::plan(*expression);
+
             ASSERT_TRUE(loop.strided);
             ASSERT_TRUE(loop.ranged);
             ASSERT_EQ(loop.unit, 4u);
@@ -1143,9 +1226,11 @@ namespace {
                 if (vectorized && dtype == ormi::core::DType::float16) {
                     continue;
                 }
+
                 SCOPED_TRACE(vectorized);
                 loop.vectorized = vectorized;
                 const auto source = ormi::backends::cpu::jit::emit(*expression, loop);
+
                 EXPECT_NE(source.find("output_index = begin"), std::string::npos);
                 EXPECT_NE(source.find("index0 = begin / 4"), std::string::npos);
                 EXPECT_NE(source.find("index0 < end / 4"), std::string::npos);
@@ -1168,8 +1253,10 @@ namespace {
             const auto mapped = ormi::core::ops::add(ormi::core::ops::mul(x, x), x);
             const auto output = ormi::core::ops::mean(mapped);
             const auto expression = ormi::core::runtime::fusion::build(*output);
+
             ASSERT_TRUE(expression.has_value());
             auto loop = ormi::backends::cpu::jit::plan(*expression);
+
             ASSERT_TRUE(loop.strided);
             ASSERT_TRUE(loop.partial);
             ASSERT_EQ(loop.vectorized, dtype != ormi::core::DType::float16);
@@ -1179,9 +1266,11 @@ namespace {
                 if (vectorized && dtype == ormi::core::DType::float16) {
                     continue;
                 }
+
                 SCOPED_TRACE(vectorized);
                 loop.vectorized = vectorized;
                 const auto source = ormi::backends::cpu::jit::emit(*expression, loop);
+
                 EXPECT_NE(source.find(vectorized
                     ? "output[0] = total;"
                     : "output[output_index] = total;"), std::string::npos);
@@ -1195,14 +1284,17 @@ namespace {
         const auto mapped = ormi::core::ops::add(ormi::core::ops::mul(x, x), x);
         const auto output = ormi::core::ops::mean(mapped, {0});
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         ASSERT_TRUE(expression.has_value());
         const auto loop = ormi::backends::cpu::jit::plan(*expression);
+
         ASSERT_TRUE(loop.strided);
         ASSERT_EQ(loop.tile, 32u);
         ASSERT_FALSE(loop.ranged);
         ASSERT_EQ(loop.unit, 0u);
 
         const auto source = ormi::backends::cpu::jit::emit(*expression, loop);
+
         EXPECT_NE(source.find("tile = 0; tile < 32; tile += 32"), std::string::npos);
         EXPECT_NE(source.find("totals[lane] / static_cast<float>(70ull)"), std::string::npos);
         EXPECT_EQ(source.find("begin /"), std::string::npos);

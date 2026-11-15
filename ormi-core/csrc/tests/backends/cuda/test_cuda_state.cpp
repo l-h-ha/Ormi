@@ -44,6 +44,7 @@ namespace {
         EXPECT_EQ(ormi::backends::cuda::stream(device), state.stream());
 
         unsigned int flags = 0;
+
         ASSERT_EQ(cudaStreamGetFlags(state.stream(), &flags), cudaSuccess);
         EXPECT_NE(flags & cudaStreamNonBlocking, 0u);
     }
@@ -53,6 +54,7 @@ namespace {
         auto& state = ormi::backends::cuda::state(device);
 
         int supported = 0;
+
         ASSERT_EQ(
             cudaDeviceGetAttribute(
                 &supported,
@@ -69,6 +71,7 @@ namespace {
             EXPECT_NE(state.pool(), nullptr);
 
             cudaMemPool_t default_pool = nullptr;
+
             ASSERT_EQ(
                 cudaDeviceGetDefaultMemPool(&default_pool, device.index()),
                 cudaSuccess
@@ -76,6 +79,7 @@ namespace {
             EXPECT_NE(state.pool(), default_pool);
 
             std::uint64_t release_threshold = 0;
+
             ASSERT_EQ(
                 cudaMemPoolGetAttribute(
                     state.pool(),

@@ -57,6 +57,7 @@ namespace {
         }
 
         const auto restored = ormi::core::ops::matmul(lhs, rhs);
+
         EXPECT_EQ(restored->dtype(), ormi::core::DType::float32);
         EXPECT_EQ(restored->parents()[0], lhs);
         EXPECT_EQ(restored->parents()[1], rhs);
@@ -107,6 +108,7 @@ namespace {
         }
 
         EXPECT_EQ(ormi::core::ops::exp(input)->dtype(), ormi::core::DType::float16);
+
         EXPECT_EQ(ormi::core::ops::sum(input)->dtype(), ormi::core::DType::float16);
         EXPECT_EQ(ormi::core::ops::mean(input)->dtype(), ormi::core::DType::float16);
     }
@@ -162,6 +164,7 @@ namespace {
 
         {
             const ormi::core::Autocast autocast;
+
             std::thread worker([&] {
                 worker_dtype = ormi::core::ops::matmul(lhs, rhs)->dtype();
             });

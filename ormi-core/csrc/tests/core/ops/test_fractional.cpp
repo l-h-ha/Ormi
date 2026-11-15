@@ -38,6 +38,7 @@ namespace {
 
         const auto& attrs =
             std::get<ormi::core::Caputo>(result->attrs());
+
         EXPECT_DOUBLE_EQ(attrs.alpha, 0.5);
         EXPECT_DOUBLE_EQ(attrs.spacing, 0.25);
         EXPECT_EQ(attrs.axis, 1);
@@ -53,6 +54,7 @@ namespace {
 
         for (std::size_t row = 0; row < 2; ++row) {
             const auto slope = static_cast<double>(row + 1);
+
             for (std::size_t n = 0; n < 5; ++n) {
                 input_data[row * 5 + n] =
                     3.0 + slope * spacing * static_cast<double>(n);
@@ -66,11 +68,13 @@ namespace {
 
         for (std::size_t row = 0; row < 2; ++row) {
             const auto slope = static_cast<double>(row + 1);
+
             for (std::size_t n = 0; n < 5; ++n) {
                 const auto time = spacing * static_cast<double>(n);
                 const auto expected = n == 0
                     ? 0.0
                     : slope * std::pow(time, 1.0 - alpha) / gamma;
+
                 EXPECT_NEAR(output[row * 5 + n], expected, 1e-12);
             }
         }
@@ -111,6 +115,7 @@ namespace {
         EXPECT_TRUE(ormi::core::ops::is_caputo(*result));
 
         const auto& attrs = std::get<ormi::core::Caputo>(result->attrs());
+
         EXPECT_DOUBLE_EQ(attrs.alpha, 1.5);
         EXPECT_EQ(attrs.axis, 1);
         EXPECT_EQ(attrs.count, 5);
@@ -150,6 +155,7 @@ namespace {
 
             for (std::size_t row = 0; row < 2; ++row) {
                 const auto quadratic = static_cast<double>(row + 2);
+
                 for (std::size_t n = 0; n < count; ++n) {
                     const auto time = spacing * static_cast<double>(n);
                     const auto expected = n == 0
@@ -157,6 +163,7 @@ namespace {
                         : 2.0 * quadratic *
                             std::pow(time, 2.0 - alpha) /
                             std::tgamma(3.0 - alpha);
+
                     EXPECT_NEAR(output[row * count + n], expected, 1e-11);
                 }
             }
@@ -169,6 +176,7 @@ namespace {
             ormi::core::ops::caputo(empty, 0.25, 0.1, 1);
 
         empty_result->realize();
+
         EXPECT_TRUE(empty_result->realized());
         EXPECT_EQ(empty_result->numel(), 0);
 
@@ -181,6 +189,7 @@ namespace {
             ormi::core::ops::caputo(single, 0.25, 0.1);
         const auto* output =
             static_cast<const double*>(single_result->data());
+
         EXPECT_DOUBLE_EQ(output[0], 0.0);
         EXPECT_DOUBLE_EQ(output[1], 0.0);
     }
@@ -207,6 +216,7 @@ namespace {
             const auto expected = n == 0
                 ? 0.0
                 : std::sqrt(0.5 * static_cast<double>(n)) / gamma;
+
             EXPECT_NEAR(output[n], expected, 1e-6);
         }
     }

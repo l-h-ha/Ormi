@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <memory_resource>
@@ -72,11 +73,14 @@ namespace ormi::core::runtime::fusion {
             explicit Builder(
                 Tensor& root,
                 std::span<Tensor* const> auxiliary_outputs = {},
-                const std::unordered_set<const Tensor*>* boundaries = nullptr
+                const std::unordered_set<const Tensor*>* boundaries = nullptr,
+                std::size_t max_operations = 0
             )
                 : root_(pointwise_root(root)),
                   auxiliary_outputs_(auxiliary_outputs),
                   boundaries_(boundaries),
+                  max_operations_(max_operations),
+                  minimum_output_depth_(root_->graph_depth()),
                   expr_{
                       root_->dtype(),
                       layout::dimensions(root_->shape()),
@@ -89,19 +93,29 @@ namespace ormi::core::runtime::fusion {
                       reduction(root)
                   }
             {
+                for (const auto* output : auxiliary_outputs_) {
+                    minimum_output_depth_ = std::min(minimum_output_depth_, output->graph_depth());
+                }
+
                 expr_.nodes.reserve(initial_capacity);
                 expr_.inputs.reserve(initial_capacity);
                 indices_.reserve(initial_capacity);
             }
 
             std::optional<Expr> run() {
+                if (max_operations_ && auxiliary_outputs_.size() >= max_operations_) {
+                    return std::nullopt;
+                }
+
                 std::pmr::vector<Frame> stack{&scratch_};
                 stack.reserve(initial_capacity);
+
                 for (auto output = auxiliary_outputs_.rbegin();
                      output != auxiliary_outputs_.rend();
                      ++output) {
                     stack.emplace_back(*output, Phase::visit);
                 }
+
                 stack.emplace_back(root_, Phase::visit);
 
                 while (!stack.empty()) {
@@ -125,10 +139,31 @@ namespace ormi::core::runtime::fusion {
                         if (!append_input(tensor)) {
                             return std::nullopt;
                         }
+
                         continue;
                     }
 
                     if (frame.phase == Phase::visit) {
+                        if (max_operations_ && !output(*tensor)) {
+                            // Reserve one operation for each requested output.
+                            const auto available = max_operations_ - auxiliary_outputs_.size() - 1;
+
+                            if (expanded_ == available) {
+                                // A cut input must not depend on an output of this kernel.
+                                if (!auxiliary_outputs_.empty() && tensor->graph_depth() >= minimum_output_depth_) {
+                                    return std::nullopt;
+                                }
+
+                                if (!append_input(tensor)) {
+                                    return std::nullopt;
+                                }
+
+                                continue;
+                            }
+
+                            ++expanded_;
+                        }
+
                         stack.emplace_back(tensor, Phase::append);
 
                         for (auto parent = tensor->parents().rbegin(); parent != tensor->parents().rend(); ++parent) {
@@ -136,6 +171,7 @@ namespace ormi::core::runtime::fusion {
                                 stack.emplace_back(parent->get(), Phase::visit);
                             }
                         }
+
                         continue;
                     }
 
@@ -148,9 +184,11 @@ namespace ormi::core::runtime::fusion {
 
                 expr_.output = indices_.at(root_);
                 expr_.auxiliary_outputs.reserve(auxiliary_outputs_.size());
+
                 for (const auto* output : auxiliary_outputs_) {
                     expr_.auxiliary_outputs.push_back(indices_.at(output));
                 }
+
                 return std::move(expr_);
             }
 
@@ -181,10 +219,17 @@ namespace ormi::core::runtime::fusion {
                     tensor.realized() ||
                     (
                         boundaries_ &&
-                        boundaries_->contains(&tensor)
+                        boundaries_->contains(&tensor) &&
+                        !output(tensor)
                     ) ||
                     !operation(tensor) ||
                     !supported_dtype(tensor.dtype());
+            }
+
+            bool output(const Tensor& tensor) const {
+                return
+                    &tensor == root_ ||
+                    std::find(auxiliary_outputs_.begin(), auxiliary_outputs_.end(), &tensor) != auxiliary_outputs_.end();
             }
 
             bool append_input(Tensor* tensor) {
@@ -199,6 +244,7 @@ namespace ormi::core::runtime::fusion {
                 const auto linear =
                     tensor->shape() == root_->shape() && tensor->is_contiguous();
                 std::vector<Axis> axes;
+
                 if (
                     !linear && !layout::input_axes(
                         tensor->shape(),
@@ -260,6 +306,9 @@ namespace ormi::core::runtime::fusion {
             Tensor* root_;
             std::span<Tensor* const> auxiliary_outputs_;
             const std::unordered_set<const Tensor*>* boundaries_;
+            std::size_t max_operations_;
+            std::size_t minimum_output_depth_;
+            std::size_t expanded_ = 0;
             Expr expr_;
             std::array<std::byte, initial_scratch_bytes> scratch_storage_;
             std::pmr::monotonic_buffer_resource scratch_{
@@ -274,13 +323,15 @@ namespace ormi::core::runtime::fusion {
         std::optional<Expr> build_group(
             Tensor& root,
             std::span<Tensor* const> auxiliary_outputs,
-            const std::unordered_set<const Tensor*>* boundaries
+            const std::unordered_set<const Tensor*>* boundaries,
+            std::size_t max_operations
         ) {
             if (!eligible(root) || (is_reduction(root) && !auxiliary_outputs.empty())) {
                 return std::nullopt;
             }
 
             std::unordered_set<const Tensor*> outputs{&root};
+
             for (auto* output : auxiliary_outputs) {
                 if (
                     !output ||
@@ -294,39 +345,45 @@ namespace ormi::core::runtime::fusion {
                     return std::nullopt;
                 }
             }
-            return Builder(root, auxiliary_outputs, boundaries).run();
+
+            return Builder(root, auxiliary_outputs, boundaries, max_operations).run();
         }
     }
 
-    std::optional<Expr> build(Tensor& root) {
+    std::optional<Expr> build(Tensor& root, std::size_t max_operations) {
         if (!eligible(root)) {
             return std::nullopt;
         }
-        return Builder(root).run();
+
+        return Builder(root, {}, nullptr, max_operations).run();
     }
 
     std::optional<Expr> build(
         Tensor& root,
-        const std::unordered_set<const Tensor*>& boundaries
+        const std::unordered_set<const Tensor*>& boundaries,
+        std::size_t max_operations
     ) {
         if (!eligible(root)) {
             return std::nullopt;
         }
-        return Builder(root, {}, &boundaries).run();
-    }
 
-    std::optional<Expr> build(
-        Tensor& root,
-        std::span<Tensor* const> auxiliary_outputs
-    ) {
-        return build_group(root, auxiliary_outputs, nullptr);
+        return Builder(root, {}, &boundaries, max_operations).run();
     }
 
     std::optional<Expr> build(
         Tensor& root,
         std::span<Tensor* const> auxiliary_outputs,
-        const std::unordered_set<const Tensor*>& boundaries
+        std::size_t max_operations
     ) {
-        return build_group(root, auxiliary_outputs, &boundaries);
+        return build_group(root, auxiliary_outputs, nullptr, max_operations);
+    }
+
+    std::optional<Expr> build(
+        Tensor& root,
+        std::span<Tensor* const> auxiliary_outputs,
+        const std::unordered_set<const Tensor*>& boundaries,
+        std::size_t max_operations
+    ) {
+        return build_group(root, auxiliary_outputs, &boundaries, max_operations);
     }
 }

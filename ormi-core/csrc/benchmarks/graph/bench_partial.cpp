@@ -18,9 +18,11 @@ namespace {
     std::shared_ptr<Tensor> points(std::int64_t count, Device device) {
         auto input = std::make_shared<Tensor>(device, Shape{count, 1}, DType::float64);
         std::vector<double> values(input->numel());
+
         for (std::size_t i = 0; i < values.size(); ++i) {
             values[i] = 0.1 + 0.01 * static_cast<double>(i);
         }
+
         memory::copy(input->data(), device, values.data(), Device::cpu(), input->bytes());
         return input;
     }
@@ -30,6 +32,7 @@ namespace {
         const auto centered = ops::sub(input, ops::mean(input, {0}, true));
         const auto output = ops::mul(ops::mul(centered, centered), centered);
         const auto order = static_cast<std::size_t>(state.range(1));
+
         for (auto _ : state) {
             auto result = partial(output, input, {}, {}, order);
             benchmark::DoNotOptimize(result);
@@ -47,6 +50,7 @@ namespace {
         runtime::device::synchronize(device);
         state.counters["steps"] = static_cast<double>(plan.steps());
         state.counters["storage_bytes"] = static_cast<double>(plan.storage_bytes());
+
         for (auto _ : state) {
             plan.run();
             runtime::device::synchronize(device);
@@ -68,6 +72,7 @@ namespace {
         runtime::device::synchronize(device);
         state.counters["steps"] = static_cast<double>(plan.steps());
         state.counters["storage_bytes"] = static_cast<double>(plan.storage_bytes());
+
         for (auto _ : state) {
             replay.run();
             runtime::device::synchronize(device);

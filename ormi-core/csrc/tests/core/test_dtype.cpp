@@ -77,11 +77,13 @@ namespace {
     TEST(DTypeTest, streamsDTypeName) {
         std::ostringstream out;
         out << ormi::core::DType::float32;
+
         EXPECT_EQ(out.str(), "float32");
     }
 
     TEST(DTypeTest, rejectsUnknownDType) {
         const auto dtype = static_cast<ormi::core::DType>(999);
+
         EXPECT_THROW((void)ormi::core::dtype_size(dtype), ormi::DTypeError);
         EXPECT_THROW((void)ormi::core::to_string(dtype), ormi::DTypeError);
         EXPECT_THROW(

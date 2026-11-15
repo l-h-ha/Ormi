@@ -20,12 +20,14 @@ namespace {
         std::size_t end
     ) {
         auto& visits = *static_cast<Visits*>(opaque);
+
         if (
             begin % visits.unit != 0 ||
             (end != visits.values.size() && end % visits.unit != 0)
         ) {
             visits.aligned = false;
         }
+
         for (std::size_t i = begin; i < end; ++i) {
             ++visits.values[i];
         }
@@ -75,6 +77,7 @@ namespace {
         if (slot != 0) {
             return;
         }
+
         ormi::backends::cpu::executor::run(
             1024,
             1,
@@ -100,6 +103,7 @@ namespace {
         );
 
         EXPECT_TRUE(visits.aligned);
+
         for (const auto& count : visits.values) {
             EXPECT_EQ(count.load(), 1);
         }
@@ -121,6 +125,7 @@ namespace {
         );
 
         EXPECT_TRUE(visits.aligned);
+
         for (const auto& count : visits.values) {
             EXPECT_EQ(count.load(), 1);
         }
@@ -135,9 +140,11 @@ namespace {
             unit,
             work
         );
+
         if (slots < 3) {
             GTEST_SKIP() << "This check requires at least three CPU threads.";
         }
+
         Calls calls(slots);
 
         ormi::backends::cpu::executor::run(

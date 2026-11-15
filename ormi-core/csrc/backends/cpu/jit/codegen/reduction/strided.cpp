@@ -10,6 +10,7 @@ namespace ormi::backends::cpu::jit::codegen::reduction {
             code.out
                 << "\n    unsigned long long output_index = "
                 << output_begin(code) << ";\n";
+
             for (
                 std::size_t level = 0;
                 level < code.loop.output_dimensions.size();
@@ -62,11 +63,13 @@ namespace ormi::backends::cpu::jit::codegen::reduction {
         const auto outer = code.loop.reduced_dimensions.size() - 1;
 
         code.out << "\n";
+
         for (const auto dimension : code.loop.output_dimensions) {
             code.out
                 << "    const unsigned long long index" << dimension
                 << " = 0;\n";
         }
+
         code.out
             << "    " << accumulator << " total = "
             << literal(
@@ -139,6 +142,7 @@ namespace ormi::backends::cpu::jit::codegen::reduction {
         for (std::size_t level = outer; level > 0; --level) {
             code.out << std::string(level * 4, ' ') << "}\n";
         }
+
         code.out
             << "    output[0] = "
             << reduction_result(code, accumulator)
@@ -366,6 +370,7 @@ namespace ormi::backends::cpu::jit::codegen::reduction {
         const auto& reduction = *code.expr.reduction;
         constexpr std::string_view accumulator = "double";
         const bool blocked = code.expr.dtype != core::DType::float64;
+
         if (reduction.output.size == 0) {
             return;
         }
@@ -379,6 +384,7 @@ namespace ormi::backends::cpu::jit::codegen::reduction {
                 core::runtime::fusion::Constant::zero
             )
             << ";\n";
+
         if (blocked) {
             code.out
                 << output_indent << "float block_total = 0.0f;\n"
@@ -425,6 +431,7 @@ namespace ormi::backends::cpu::jit::codegen::reduction {
                 ' '
             );
             emit_nodes(code, reduced_indent);
+
             if (blocked) {
                 code.out
                     << reduced_indent << "block_total += "
@@ -461,6 +468,7 @@ namespace ormi::backends::cpu::jit::codegen::reduction {
         if (blocked) {
             code.out << output_indent << "total += block_total;\n";
         }
+
         code.out
             << output_indent << "output[output_index] = "
             << reduction_result(code, accumulator)

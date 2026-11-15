@@ -47,8 +47,7 @@ namespace ormi::nn {
         return nn::log_softmax(input, axis_);
     }
 
-    LeakyReLU::LeakyReLU(double negative_slope)
-        : negative_slope_(negative_slope) {
+    LeakyReLU::LeakyReLU(double negative_slope) : negative_slope_(negative_slope) {
         if (!std::isfinite(negative_slope) || negative_slope < 0) {
             ORMI_THROW(OperationError, "LeakyReLU negative_slope must be finite and nonnegative.");
         }

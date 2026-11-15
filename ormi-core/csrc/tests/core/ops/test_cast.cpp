@@ -151,12 +151,14 @@ namespace {
             ormi::core::DType::float64
         );
         auto* input_data = static_cast<double*>(input->data());
+
         for (std::size_t i = 0; i < values.size(); ++i) {
             input_data[i] = values[i];
         }
 
         const auto output = ormi::core::ops::cast(input, ormi::core::DType::int32);
         const auto* output_data = static_cast<const std::int32_t*>(output->data());
+
         for (std::size_t i = 0; i < expected.size(); ++i) {
             EXPECT_EQ(output_data[i], expected[i]);
         }
@@ -171,9 +173,11 @@ namespace {
         auto* value = static_cast<double*>(input->data());
 
         *value = std::numeric_limits<double>::infinity();
+
         EXPECT_THROW(ormi::core::ops::cast(input, ormi::core::DType::int32)->realize(), ormi::DTypeError);
 
         *value = static_cast<double>(std::numeric_limits<std::int32_t>::max()) + 1.0;
+
         EXPECT_THROW(ormi::core::ops::cast(input, ormi::core::DType::int32)->realize(), ormi::DTypeError);
     }
 

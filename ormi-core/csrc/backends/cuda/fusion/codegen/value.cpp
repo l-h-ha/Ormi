@@ -62,12 +62,14 @@ namespace ormi::backends::cuda::fusion {
                     return x + " > " + zero + " ? " + x + " + " + log1p + "(" + exp + "(-" + x +
                            ")) : " + log1p + "(" + exp + "(" + x + "))";
             }
+
             ORMI_THROW(OperationError, "CUDA fusion received an unknown unary operation.");
         }
 
         std::string binary(core::ops::BinaryOp op, std::string_view lhs, std::string_view rhs) {
             const auto left = std::string(lhs);
             const auto right = std::string(rhs);
+
             switch (op) {
                 case core::ops::BinaryOp::add:
                     return left + " + " + right;
@@ -84,6 +86,7 @@ namespace ormi::backends::cuda::fusion {
                            right + " : (" + left + comparison + right + " ? " + left + " : " + right + "))";
                 }
             }
+
             ORMI_THROW(OperationError, "CUDA fusion received an unknown binary operation.");
         }
 
@@ -91,6 +94,7 @@ namespace ormi::backends::cuda::fusion {
             if (dtype == core::DType::float16) {
                 return "ormi_half_round(" + expression + ")";
             }
+
             return expression;
         }
 
@@ -100,20 +104,26 @@ namespace ormi::backends::cuda::fusion {
             bool physical_order
         ) {
             std::string index;
+
             if (tile) {
                 const auto& strides = tile->inputs[input.index];
+
                 for (std::size_t dimension = 0; dimension < strides.size(); ++dimension) {
                     if (strides[dimension] == 0) {
                         continue;
                     }
+
                     if (!index.empty()) {
                         index += " + ";
                     }
+
                     index += "index" + std::to_string(dimension);
+
                     if (strides[dimension] != 1) {
                         index += " * " + std::to_string(strides[dimension]);
                     }
                 }
+
                 if (index.empty()) {
                     index = "0";
                 }
@@ -122,6 +132,7 @@ namespace ormi::backends::cuda::fusion {
             } else {
                 index = input.linear ? "i" : offset("i", input.axes);
             }
+
             return index;
         }
 
@@ -133,9 +144,11 @@ namespace ormi::backends::cuda::fusion {
         ) {
             const auto index = input_index(input, tile, physical_order);
             auto expression = "input" + std::to_string(input.index) + "[" + index + "]";
+
             if (dtype == core::DType::float16) {
                 return "ormi_half_value(" + expression + ")";
             }
+
             return expression;
         }
 
@@ -168,23 +181,29 @@ namespace ormi::backends::cuda::fusion {
         }
 
         std::ostringstream result;
+
         for (std::size_t i = 0; i < axes.size(); ++i) {
             const auto& axis = axes[i];
+
             if (i != 0) {
                 result << " + ";
             }
 
             result << "(";
+
             if (axis.divisor != 1) {
                 result << "(" << index << " / " << axis.divisor << ")";
             } else {
                 result << index;
             }
+
             result << " % " << axis.extent << ")";
+
             if (axis.stride != 1) {
                 result << " * " << axis.stride;
             }
         }
+
         return std::move(result).str();
     }
 
@@ -204,6 +223,7 @@ namespace ormi::backends::cuda::fusion {
                 if (input->index >= expression.inputs.size()) {
                     ORMI_THROW(OperationError, "Fusion expression references an invalid input.");
                 }
+
                 source << input_value(node.dtype, *input, tile, physical_order);
             } else if (const auto* constant = std::get_if<core::runtime::fusion::Constant>(&instruction)) {
                 source << literal(node.dtype, *constant);

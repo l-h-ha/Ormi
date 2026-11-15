@@ -16,6 +16,7 @@ namespace ormi::backends::cpu::avx2 {
             std::int64_t rhs_row_stride
         ) {
             std::size_t column = 0;
+
             for (; column + 32 <= columns; column += 32) {
                 auto sum0 = _mm256_setzero_ps();
                 auto sum1 = _mm256_setzero_ps();
@@ -50,6 +51,7 @@ namespace ormi::backends::cpu::avx2 {
 
             for (; column + 8 <= columns; column += 8) {
                 auto sum = _mm256_setzero_ps();
+
                 for (std::size_t k = 0; k < inner; ++k) {
                     const auto lhs_value = _mm256_set1_ps(
                         lhs[k * static_cast<std::size_t>(lhs_column_stride)]
@@ -60,16 +62,19 @@ namespace ormi::backends::cpu::avx2 {
                         lhs_value, _mm256_loadu_ps(rhs_values), sum
                     );
                 }
+
                 _mm256_storeu_ps(out + column, sum);
             }
 
             for (; column < columns; ++column) {
                 float sum = 0.0f;
+
                 for (std::size_t k = 0; k < inner; ++k) {
                     sum +=
                         lhs[k * static_cast<std::size_t>(lhs_column_stride)] *
                         rhs[k * static_cast<std::size_t>(rhs_row_stride) + column];
                 }
+
                 out[column] = sum;
             }
         }
@@ -87,6 +92,7 @@ namespace ormi::backends::cpu::avx2 {
             std::int64_t out_row_stride
         ) {
             std::size_t row = 0;
+
             for (; row + 2 <= rows; row += 2) {
                 auto* out0 =
                     out + row * static_cast<std::size_t>(out_row_stride);
@@ -142,6 +148,7 @@ namespace ormi::backends::cpu::avx2 {
                 for (; column + 8 <= columns; column += 8) {
                     auto sum0 = _mm256_setzero_ps();
                     auto sum1 = _mm256_setzero_ps();
+
                     for (std::size_t k = 0; k < inner; ++k) {
                         const auto offset =
                             k * static_cast<std::size_t>(lhs_column_stride);
@@ -156,6 +163,7 @@ namespace ormi::backends::cpu::avx2 {
                             _mm256_set1_ps(lhs1[offset]), rhs_values, sum1
                         );
                     }
+
                     _mm256_storeu_ps(out0 + column, sum0);
                     _mm256_storeu_ps(out1 + column, sum1);
                 }
@@ -163,6 +171,7 @@ namespace ormi::backends::cpu::avx2 {
                 for (; column < columns; ++column) {
                     float sum0 = 0.0f;
                     float sum1 = 0.0f;
+
                     for (std::size_t k = 0; k < inner; ++k) {
                         const auto lhs_offset =
                             k * static_cast<std::size_t>(lhs_column_stride);
@@ -172,6 +181,7 @@ namespace ormi::backends::cpu::avx2 {
                         sum0 += lhs0[lhs_offset] * rhs_value;
                         sum1 += lhs1[lhs_offset] * rhs_value;
                     }
+
                     out0[column] = sum0;
                     out1[column] = sum1;
                 }
@@ -204,6 +214,7 @@ namespace ormi::backends::cpu::avx2 {
         std::int64_t out_row_stride
     ) {
         std::size_t row = 0;
+
         for (; row + row_gemm_tile <= rows; row += row_gemm_tile) {
             auto* out0 = out + row * static_cast<std::size_t>(out_row_stride);
             auto* out1 = out +

@@ -32,6 +32,7 @@ namespace ormi::backends::cpu::jit::execution {
                     reduction = expression.reduction->op;
                     reduced = expression.reduction->reduced.size;
                 }
+
                 if (compiled.partial) {
                     range = compiled.range;
                 }
@@ -68,6 +69,7 @@ namespace ormi::backends::cpu::jit::execution {
 
         void invoke(void* opaque, std::size_t slot, std::size_t begin, std::size_t end) {
             const auto& invocation = *static_cast<const Invocation*>(opaque);
+
             if (invocation.stride != 0) {
                 auto* output = static_cast<void*>(
                     static_cast<std::byte*>(invocation.outputs[0]) +
@@ -84,6 +86,7 @@ namespace ormi::backends::cpu::jit::execution {
                 );
                 return;
             }
+
             invocation.function(
                 invocation.outputs,
                 invocation.inputs,
@@ -98,6 +101,7 @@ namespace ormi::backends::cpu::jit::execution {
         T accumulate(const Kernel& kernel, const void* const* inputs, std::span<T> prepared) {
             const auto& compiled = kernel.compiled;
             const auto slots = executor::slots(kernel.range, compiled.unit, compiled.work);
+
             if (slots == 1) {
                 T result{};
                 void* outputs[]{&result};
@@ -115,6 +119,7 @@ namespace ormi::backends::cpu::jit::execution {
 
             std::vector<T> local;
             auto* values = prepared.data();
+
             if (prepared.empty()) {
                 local.resize(slots);
                 values = local.data();
@@ -124,6 +129,7 @@ namespace ormi::backends::cpu::jit::execution {
                     "Prepared CPU reduction storage is smaller than its execution plan."
                 );
             }
+
             for (std::size_t i = 0; i < slots; ++i) {
                 values[i] = T{};
             }
@@ -146,9 +152,11 @@ namespace ormi::backends::cpu::jit::execution {
             );
 
             T result{};
+
             for (std::size_t i = 0; i < slots; ++i) {
                 result += values[i];
             }
+
             return result;
         }
 
@@ -157,6 +165,7 @@ namespace ormi::backends::cpu::jit::execution {
             if (kernel.reduction == core::ops::ReduceOp::mean) {
                 total /= static_cast<T>(kernel.reduced);
             }
+
             return total;
         }
 
@@ -207,6 +216,7 @@ namespace ormi::backends::cpu::jit::execution {
             std::span<double> partials64 = {}
         ) {
             const auto& compiled = kernel.compiled;
+
             if (compiled.partial) {
                 if (outputs.size() != 1) {
                     ORMI_THROW(
@@ -214,6 +224,7 @@ namespace ormi::backends::cpu::jit::execution {
                         "CPU JIT reductions do not support auxiliary outputs."
                     );
                 }
+
                 execute_partial(
                     outputs[0], kernel, inputs, partials32, partials64
                 );
@@ -228,6 +239,7 @@ namespace ormi::backends::cpu::jit::execution {
                 compiled.math,
                 0
             };
+
             if (compiled.unit != 0) {
                 executor::run(
                     kernel.range,
@@ -238,6 +250,7 @@ namespace ormi::backends::cpu::jit::execution {
                 );
                 return;
             }
+
             invoke(&invocation, 0, 0, kernel.range);
         }
 
@@ -246,13 +259,17 @@ namespace ormi::backends::cpu::jit::execution {
             std::array<void*, output_capacity> local_outputs{};
             auto* outputs = call.overflow_outputs.empty()
                 ? local_outputs.data() : call.overflow_outputs.data();
+
             for (std::size_t i = 0; i < call.tensors.size(); ++i) {
                 call.inputs[i] = call.tensors[i]->data();
             }
+
             outputs[0] = out.data();
+
             for (std::size_t i = 0; i < call.auxiliary_outputs.size(); ++i) {
                 outputs[i + 1] = call.auxiliary_outputs[i]->data();
             }
+
             run_kernel(
                 call.kernel,
                 {outputs, 1 + call.auxiliary_outputs.size()},
@@ -275,10 +292,12 @@ namespace ormi::backends::cpu::jit::execution {
         const Kernel kernel(expression, *compiled);
         std::vector<float> partials32;
         std::vector<double> partials64;
+
         if (kernel.compiled.partial) {
             const auto slots = executor::slots(
                 kernel.range, kernel.compiled.unit, kernel.compiled.work
             );
+
             if (slots > 1) {
                 if (kernel.dtype == core::DType::float64) {
                     partials64.resize(slots);
@@ -287,6 +306,7 @@ namespace ormi::backends::cpu::jit::execution {
                 }
             }
         }
+
         const auto partial_bytes =
             partials32.size() * sizeof(float) + partials64.size() * sizeof(double);
         auto call = std::make_unique<Call>(Call{
@@ -300,9 +320,11 @@ namespace ormi::backends::cpu::jit::execution {
             .partials64 = std::move(partials64)
         });
         const auto output_count = 1 + auxiliary_outputs.size();
+
         if (output_count > output_capacity) {
             call->overflow_outputs.resize(output_count);
         }
+
         return core::Setup(
             call.release(),
             run_call,
@@ -326,22 +348,27 @@ namespace ormi::backends::cpu::jit::execution {
         auto* inputs = local_inputs.data();
         auto* outputs = local_outputs.data();
         const auto output_count = 1 + auxiliary_outputs.size();
+
         if (expression.inputs.size() > input_capacity) {
             overflow_inputs.resize(expression.inputs.size());
             inputs = overflow_inputs.data();
         }
+
         if (output_count > output_capacity) {
             overflow_outputs.resize(output_count);
             outputs = overflow_outputs.data();
         }
+
         for (std::size_t i = 0; i < expression.inputs.size(); ++i) {
             inputs[i] = expression.inputs[i]->data();
         }
 
         outputs[0] = out.data();
+
         for (std::size_t i = 0; i < auxiliary_outputs.size(); ++i) {
             outputs[i + 1] = auxiliary_outputs[i]->data();
         }
+
         run_kernel(kernel, {outputs, output_count}, inputs);
     }
 }

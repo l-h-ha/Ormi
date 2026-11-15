@@ -77,23 +77,30 @@ namespace ormi::core::ops {
         if (!input || !indices) {
             ORMI_THROW(OperationError, "Pick requires input and indices.");
         }
+
         if (!is_floating(input->dtype()) || indices->dtype() != DType::int32) {
             ORMI_THROW(DTypeError, "Pick requires floating-point input and Int32 indices.");
         }
+
         if (input->device() != indices->device()) {
             ORMI_THROW(DeviceError, "Pick tensors must use the same device.");
         }
+
         if (axis < 0) {
             axis += static_cast<std::int64_t>(input->rank());
         }
+
         if (axis < 0 || axis >= static_cast<std::int64_t>(input->rank())) {
             ORMI_THROW(ShapeError, "Pick axis is out of range.");
         }
+
         auto shape = input->shape().dims();
         shape.erase(shape.begin() + axis);
+
         if (Shape(shape) != indices->shape()) {
             ORMI_THROW(ShapeError, "Pick indices must match the input shape with the selected axis removed.");
         }
+
         return std::make_shared<Tensor>(
             op_ref<pick_op>(),
             Pick{axis, input->shape(), ignore_index},
@@ -114,23 +121,30 @@ namespace ormi::core::ops {
         if (!input || !indices) {
             ORMI_THROW(OperationError, "Unpick requires input and indices.");
         }
+
         if (!is_floating(input->dtype()) || indices->dtype() != DType::int32) {
             ORMI_THROW(DTypeError, "Unpick requires floating-point input and Int32 indices.");
         }
+
         if (input->device() != indices->device()) {
             ORMI_THROW(DeviceError, "Unpick tensors must use the same device.");
         }
+
         if (axis < 0) {
             axis += static_cast<std::int64_t>(shape.rank());
         }
+
         if (axis < 0 || axis >= static_cast<std::int64_t>(shape.rank())) {
             ORMI_THROW(ShapeError, "Unpick axis is out of range.");
         }
+
         auto dimensions = shape.dims();
         dimensions.erase(dimensions.begin() + axis);
+
         if (Shape(dimensions) != input->shape() || input->shape() != indices->shape()) {
             ORMI_THROW(ShapeError, "Unpick input and indices must match the output shape with the selected axis removed.");
         }
+
         return std::make_shared<Tensor>(
             op_ref<unpick_op>(),
             Pick{axis, shape, ignore_index},

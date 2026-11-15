@@ -21,11 +21,13 @@ namespace ormi::backends::cpu::jit::codegen::reduction {
                 core::runtime::fusion::Constant::zero
             )
             << ";\n";
+
         if (blocked) {
             code.out
                 << "        float block_total = 0.0f;\n"
                 << "        unsigned int block_size = 0;\n";
         }
+
         code.out
             << "        const auto input_base = "
             << offset("output_index", reduction.output.axes) << ";\n"
@@ -37,6 +39,7 @@ namespace ormi::backends::cpu::jit::codegen::reduction {
             << offset("reduced_index", reduction.reduced.axes)
             << ";\n";
         emit_nodes(code, "            ");
+
         if (blocked) {
             code.out
                 << "            block_total += "
@@ -51,10 +54,13 @@ namespace ormi::backends::cpu::jit::codegen::reduction {
                 << "            total += " << value(code.expr.output)
                 << ";\n";
         }
+
         code.out << "        }\n";
+
         if (blocked) {
             code.out << "        total += block_total;\n";
         }
+
         code.out
             << "        output[output_index] = "
             << reduction_result(code, accumulator)
@@ -164,6 +170,7 @@ namespace ormi::backends::cpu::jit::codegen::reduction {
             << offset("output_index", reduction.output.axes) << ";\n"
             << "        unsigned long long reduced_index = "
             << reduced_begin(code) << ";\n";
+
         if (blocked) {
             const auto block_elements = code.loop.lanes * block_steps;
             code.out
@@ -188,6 +195,7 @@ namespace ormi::backends::cpu::jit::codegen::reduction {
                 << "            }\n"
                 << "        }\n";
         }
+
         code.out
             << "        alignas(64) " << scalar << " partials["
             << code.loop.lanes << "] = {};\n"

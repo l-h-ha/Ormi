@@ -82,6 +82,7 @@ namespace {
     TEST(CPUReductionTest, realizesContiguousFirstAxisSum) {
         const auto input = floatTensor({4, 3});
         auto* input_data = static_cast<float*>(input->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             input_data[i] = static_cast<float>(i + 1);
         }
@@ -119,12 +120,15 @@ namespace {
         for (std::size_t slab = 0; slab < outer; ++slab) {
             for (std::size_t column = 0; column < columns; ++column) {
                 float expected = 0.0f;
+
                 for (std::size_t row = 0; row < rows; ++row) {
                     expected += input_data[
                         (slab * rows + row) * columns + column
                     ];
                 }
+
                 const auto index = slab * columns + column;
+
                 EXPECT_FLOAT_EQ(sum_data[index], expected);
                 EXPECT_FLOAT_EQ(
                     mean_data[index],
@@ -142,6 +146,7 @@ namespace {
         );
         auto* values = static_cast<ormi::core::Float16*>(input->data());
         const float source[]{2048.0f, 1.0f, 2.0f, -2048.0f, 1.0f, 3.0f};
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = ormi::core::Float16{source[i]};
         }
@@ -162,6 +167,7 @@ namespace {
             ormi::core::DType::int32
         );
         auto* values = static_cast<std::int32_t*>(input->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = static_cast<std::int32_t>(i + 1);
         }
@@ -236,6 +242,7 @@ namespace {
     TEST(ReductionTest, realizesPartialMean) {
         const auto input = floatTensor({2, 3});
         auto* values = static_cast<float*>(input->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = static_cast<float>(i + 1);
         }

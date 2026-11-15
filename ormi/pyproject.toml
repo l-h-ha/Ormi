@@ -4,17 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ormi"
-version = "0.1.0a7"
+version = "0.1.0a8"
 description = "Python API for ORMI tensors and neural networks."
 readme = "README.md"
-authors = [{ name = "Ha H. Le" }]
+authors = [{ name = "Hong Ha Le" }]
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.10,<3.14"
-dependencies = ["ormi-core==0.1.0a7", "tqdm>=4.67,<5"]
+dependencies = ["ormi-core==0.1.0a8", "tqdm>=4.67,<5"]
 
 [project.optional-dependencies]
-cuda = ["ormi-cuda==0.1.0a7"]
+cuda = ["ormi-cuda==0.1.0a8"]
 examples = []
 
 [tool.setuptools]

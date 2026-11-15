@@ -62,6 +62,7 @@ namespace ormi::backends::cuda::elementwise {
 
             if (axis >= lhs_rank_offset) {
                 const auto lhs_axis = axis - lhs_rank_offset;
+
                 if (lhs.shape()[lhs_axis] != 1) {
                     index.lhs_strides[axis] = static_cast<std::size_t>(lhs_strides[lhs_axis]);
                 }
@@ -69,6 +70,7 @@ namespace ormi::backends::cuda::elementwise {
 
             if (axis >= rhs_rank_offset) {
                 const auto rhs_axis = axis - rhs_rank_offset;
+
                 if (rhs.shape()[rhs_axis] != 1) {
                     index.rhs_strides[axis] = static_cast<std::size_t>(rhs_strides[rhs_axis]);
                 }

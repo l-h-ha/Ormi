@@ -48,6 +48,7 @@ namespace {
                 ormi::core::ops::reshape(tensors.back(), {1})
             );
         }
+
         return tensors;
     }
 
@@ -161,14 +162,18 @@ namespace {
         const auto mapped = ormi::core::ops::add(values, values);
         std::vector<Tensor> outputs;
         outputs.reserve(static_cast<std::size_t>(state.range(1)));
+
         for (std::int64_t index = 0; index < state.range(1); ++index) {
             outputs.push_back(ormi::core::ops::neg(mapped));
         }
+
         Plan plan(outputs);
+
         if (plan.steps() != 1u) {
             state.SkipWithError("Expected one fused step for sibling outputs.");
             return;
         }
+
         plan.run();
 
         for (auto _ : state) {

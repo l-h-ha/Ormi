@@ -52,6 +52,7 @@ namespace {
                 break;
             }
         }
+
         state.counters["participants"] = static_cast<double>(slots);
     }
 }

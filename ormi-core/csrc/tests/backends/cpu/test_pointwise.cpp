@@ -48,23 +48,28 @@ namespace {
     std::shared_ptr<Tensor> input(Shape shape) {
         auto result = std::make_shared<Tensor>(Device::cpu(), std::move(shape), dtype<T>());
         auto* values = static_cast<T*>(result->data());
+
         for (std::size_t i = 0; i < result->numel(); ++i) {
             values[i] = static_cast<T>(i % 17 + 1);
         }
+
         return result;
     }
 
     std::size_t reference_offset(std::size_t linear, const Shape& shape, const Tensor& input) {
         const auto leading = shape.rank() - input.rank();
         std::size_t offset = 0;
+
         for (std::size_t axis = shape.rank(); axis > 0; --axis) {
             const auto index = axis - 1;
             const auto coordinate = linear % static_cast<std::size_t>(shape[index]);
             linear /= static_cast<std::size_t>(shape[index]);
+
             if (index >= leading && input.shape()[index - leading] != 1) {
                 offset += coordinate * static_cast<std::size_t>(input.strides()[index - leading]);
             }
         }
+
         return offset;
     }
 
@@ -84,6 +89,7 @@ namespace {
             case BinaryOp::maximum:
                 return value(lhs) > value(rhs) ? lhs : rhs;
         }
+
         ADD_FAILURE() << "Unknown operation";
         return T{};
     }
@@ -109,18 +115,22 @@ namespace {
             BinaryOp::minimum,
             BinaryOp::maximum
         };
+
         for (const auto op : operations) {
             SCOPED_TRACE(static_cast<int>(op));
             ormi::backends::cpu::pointwise_binary(op, output, lhs, rhs);
+
             EXPECT_EQ(value(guarded[0]), value(first));
             EXPECT_EQ(value(guarded[count + 1]), value(last));
             const auto* actual = static_cast<const T*>(output.data());
+
             for (std::size_t i = 0; i < count; ++i) {
                 const auto expected = reference(
                     op,
                     left[reference_offset(i, shape, lhs)],
                     right[reference_offset(i, shape, rhs)]
                 );
+
                 ASSERT_EQ(value(actual[i]), value(expected)) << "index=" << i;
             }
         }
@@ -138,6 +148,7 @@ namespace {
         const auto dense = input<T>(view.shape());
         auto* packed = static_cast<T*>(dense->data());
         const auto* source = static_cast<const T*>(view.data());
+
         for (std::size_t i = 0; i < count; ++i) {
             packed[i] = source[reference_offset(i, view.shape(), view)];
         }
@@ -156,19 +167,23 @@ namespace {
             ops::UnaryOp::tanh, ops::UnaryOp::sigmoid, ops::UnaryOp::softplus, ops::UnaryOp::relu,
             ops::UnaryOp::erf, ops::UnaryOp::log1p, ops::UnaryOp::expm1, ops::UnaryOp::rsqrt
         };
+
         for (const auto op : operations) {
             if constexpr (std::is_same_v<T, std::int32_t>) {
                 if (op != ops::UnaryOp::neg) {
                     continue;
                 }
             }
+
             SCOPED_TRACE(static_cast<int>(op));
             ormi::backends::cpu::pointwise_unary(op, expected, *dense);
             ormi::backends::cpu::pointwise_unary(op, output, view);
+
             EXPECT_EQ(std::memcmp(&guarded[0], &first, sizeof(T)), 0);
             EXPECT_EQ(std::memcmp(&guarded[count + 1], &last, sizeof(T)), 0);
             const auto* actual = static_cast<const T*>(output.data());
             const auto* reference = static_cast<const T*>(expected.data());
+
             for (std::size_t i = 0; i < count; ++i) {
                 ASSERT_EQ(std::memcmp(&actual[i], &reference[i], sizeof(T)), 0) << "index=" << i;
             }
@@ -219,9 +234,11 @@ namespace {
     TYPED_TEST(CPUUnaryTest, handlesHighRankAndEmptyViews) {
         const Shape shape{2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1};
         auto strides = contiguous_strides(shape);
+
         for (std::size_t i = 0; i < strides.size(); ++i) {
             strides[i] = shape[i] == 1 ? 9999999 : strides[i] * 2;
         }
+
         const auto base = input<TypeParam>({132});
         const Tensor high(base->buffer(), shape, dtype<TypeParam>(), strides, 3 * sizeof(TypeParam));
         check_unary<TypeParam>(high);
@@ -252,6 +269,7 @@ namespace {
 
         const auto* actual = static_cast<const TypeParam*>(output.data());
         constexpr std::array expected{-2, -2, 2, 2, -2, -2, -2, -2};
+
         for (std::size_t i = 0; i < expected.size(); ++i) {
             EXPECT_EQ(value(actual[i]), expected[i]) << "index=" << i;
         }
@@ -271,6 +289,7 @@ namespace {
             check_unary<TypeParam>(view);
             const Tensor repeated(base->buffer(), {2, 3, 17}, dtype<TypeParam>(), {6, 2, 0});
             check_unary<TypeParam>(repeated);
+
             for (std::size_t i = 0; i < 12; i += 2) {
                 const Tensor scalar(base->buffer(), {37}, dtype<TypeParam>(), {0}, i * sizeof(TypeParam));
                 check_unary<TypeParam>(scalar);
@@ -281,6 +300,7 @@ namespace {
     TYPED_TEST(CPUBroadcastTest, handlesDenseInputsAndScalarRanks) {
         const auto dense = input<TypeParam>({2, 3, 5});
         check<TypeParam>(*dense, *input<TypeParam>({2, 3, 5}));
+
         for (const auto& shape : {Shape{}, Shape{1}, Shape{1, 1, 1, 1}}) {
             const auto scalar = input<TypeParam>(shape);
             check<TypeParam>(*dense, *scalar);
@@ -333,9 +353,11 @@ namespace {
 
     TYPED_TEST(CPUBroadcastTest, handlesHighRankAndEmptyOutputs) {
         std::vector<std::int64_t> left(12, 1), right(12, 1);
+
         for (std::size_t axis = 0; axis < left.size(); ++axis) {
             (axis % 2 == 0 ? left : right)[axis] = 2;
         }
+
         check<TypeParam>(*input<TypeParam>(Shape(left)), *input<TypeParam>(Shape(right)));
         check<TypeParam>(*input<TypeParam>({2, 0, 5}), *input<TypeParam>({1, 1, 5}));
         check<TypeParam>(*input<TypeParam>({}), *input<TypeParam>({0, 3}));
@@ -353,14 +375,17 @@ namespace {
         const auto scalar = input<float>({});
         *static_cast<float*>(scalar->data()) = 0.0f;
         Tensor output(Device::cpu(), {2, 3}, DType::float32);
+
         for (const auto op : {BinaryOp::minimum, BinaryOp::maximum}) {
             ormi::backends::cpu::pointwise_binary(op, output, *lhs, *scalar);
             const auto* result = static_cast<const float*>(output.data());
+
             EXPECT_EQ(std::bit_cast<std::uint32_t>(result[0]), std::uint32_t{0x7fc01234});
             EXPECT_FALSE(std::signbit(result[1]));
             EXPECT_FALSE(std::signbit(result[5]));
             ormi::backends::cpu::pointwise_binary(op, output, *scalar, *lhs);
             result = static_cast<const float*>(output.data());
+
             EXPECT_EQ(std::bit_cast<std::uint32_t>(result[0]), std::uint32_t{0x7fc01234});
             EXPECT_TRUE(std::signbit(result[1]));
             EXPECT_TRUE(std::signbit(result[5]));

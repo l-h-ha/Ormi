@@ -70,9 +70,11 @@ namespace {
 
         const auto actual = *static_cast<const float*>(output->data());
         const auto expected = cosine ? std::cos(0.25f) * 0.5f : -0.125f;
+
         if (std::abs(actual - expected) > 1.0e-6f) {
             state.SkipWithError("Prepared pointwise kernel produced an incorrect value.");
         }
+
         state.SetItemsProcessed(state.iterations() * elements);
     }
 
@@ -95,9 +97,11 @@ namespace {
         }
 
         const auto actual = *static_cast<const float*>(output->data());
+
         if (std::abs(actual - std::sin(0.75f)) > 1.0e-6f) {
             state.SkipWithError("Prepared pointwise kernel produced an incorrect value.");
         }
+
         state.SetItemsProcessed(state.iterations() * batch * width);
     }
 
@@ -133,6 +137,7 @@ namespace {
         const auto expected_cosine = std::cos(0.75f);
         const auto actual_sine = *static_cast<const float*>(sine->data());
         const auto actual_cosine = *static_cast<const float*>(cosine->data());
+
         if (
             std::abs(actual_sine - expected_sine) > 1.0e-6f ||
             std::abs(actual_cosine - expected_cosine) > 1.0e-6f
@@ -141,6 +146,7 @@ namespace {
                 "Prepared paired sine and cosine produced an incorrect value."
             );
         }
+
         state.SetItemsProcessed(state.iterations() * batch * width);
     }
 
@@ -148,6 +154,7 @@ namespace {
         const auto math = ormi::backends::cpu::jit::math(
             ormi::backends::cpu::jit::MathABI::buffered
         );
+
         if (!math.functions) {
             state.SkipWithError("CPU vector math is unavailable.");
             return;
@@ -165,6 +172,7 @@ namespace {
             for (std::size_t i = 0; i < elements; i += input.size()) {
                 function(output.data(), input.data());
             }
+
             benchmark::ClobberMemory();
         }
 

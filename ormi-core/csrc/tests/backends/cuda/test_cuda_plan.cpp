@@ -33,6 +33,7 @@ namespace {
         ormi::core::runtime::backend(out.device()).memory.copy_async(
             out.device(), out.data(), out.parents()[0]->data(), out.bytes()
         );
+
         if (fail_copy) {
             ORMI_THROW(ormi::OperationError, "Test execution failed.");
         }
@@ -59,11 +60,13 @@ namespace {
         void SetUp() override {
             int devices = 0;
             const auto status = cudaGetDeviceCount(&devices);
+
             if (status != cudaSuccess) {
                 GTEST_SKIP()
                     << "CUDA runtime is unavailable: "
                     << cudaGetErrorString(status);
             }
+
             if (devices == 0) {
                 GTEST_SKIP() << "No CUDA device is available.";
             }
@@ -111,6 +114,7 @@ namespace {
 
         plan.run();
         ormi::core::runtime::device::synchronize(input->device());
+
         EXPECT_FLOAT_EQ(read(output), std::sin(0.75f));
 
         constexpr float next = 1.0f;
@@ -123,6 +127,7 @@ namespace {
         );
         plan.run();
         ormi::core::runtime::device::synchronize(input->device());
+
         EXPECT_FLOAT_EQ(read(output), std::sin(2.0f));
     }
 
@@ -139,6 +144,7 @@ namespace {
 
         plan.run();
         ormi::core::runtime::device::synchronize(input->device());
+
         EXPECT_FLOAT_EQ(read(negative), -1.0f);
         EXPECT_FLOAT_EQ(read(exponential), std::exp(1.0f));
 
@@ -151,6 +157,7 @@ namespace {
         );
         plan.run();
         ormi::core::runtime::device::synchronize(input->device());
+
         EXPECT_EQ(negative->buffer(), negative_buffer);
         EXPECT_EQ(exponential->buffer(), exponential_buffer);
         EXPECT_FLOAT_EQ(read(negative), -1.5f);
@@ -170,6 +177,7 @@ namespace {
 
         plan.run();
         ormi::core::runtime::device::synchronize(input->device());
+
         EXPECT_DOUBLE_EQ(read_as<double>(negative), -0.5);
         EXPECT_DOUBLE_EQ(read_as<double>(exponential), std::exp(0.5));
     }
@@ -191,6 +199,7 @@ namespace {
 
         plan.run();
         ormi::core::runtime::device::synchronize(input->device());
+
         EXPECT_EQ(read_as<Float16>(negative).bits(), Float16{-1.0f}.bits());
         EXPECT_EQ(
             read_as<Float16>(exponential).bits(),
@@ -223,6 +232,7 @@ namespace {
         EXPECT_EQ(plan.storage_bytes(), 0u);
 
         plan.run();
+
         EXPECT_TRUE(negative->realized());
         EXPECT_TRUE(exponential->realized());
         EXPECT_EQ(negative->numel(), 0u);
@@ -251,6 +261,7 @@ namespace {
         EXPECT_EQ(plan.storage_bytes(), 2 * sizeof(float));
 
         plan.run();
+
         EXPECT_FLOAT_EQ(read(output), std::sin(0.75f));
     }
 
@@ -270,6 +281,7 @@ namespace {
 
         replay->run();
         ormi::core::runtime::device::synchronize(input->device());
+
         EXPECT_FLOAT_EQ(read(output), std::sin(0.25f));
     }
 
@@ -306,11 +318,14 @@ namespace {
         }
 
         ASSERT_FALSE(input_owner.expired());
+
         ASSERT_FALSE(output_owner.expired());
         replay->run();
+
         EXPECT_FLOAT_EQ(read(output_owner.lock()), -0.5f);
 
         replay.reset();
+
         EXPECT_TRUE(input_owner.expired());
         EXPECT_TRUE(output_owner.expired());
     }
@@ -341,12 +356,15 @@ namespace {
 
         *first = std::move(*second);
         second.reset();
+
         EXPECT_TRUE(first_owner.expired());
         ASSERT_FALSE(second_owner.expired());
         first->run();
+
         EXPECT_FLOAT_EQ(read(second_owner.lock()), -2.0f);
 
         first.reset();
+
         EXPECT_TRUE(second_owner.expired());
     }
 
@@ -364,12 +382,14 @@ namespace {
             plan.run();
             ormi::core::runtime::device::synchronize(device);
             auto replay = plan.record();
+
             for (int run = 0; run < 32; ++run) {
                 replay.run();
             }
         }
 
         EXPECT_TRUE(input_owner.expired());
+
         EXPECT_TRUE(output_owner.expired());
         EXPECT_NO_THROW(ormi::core::runtime::device::synchronize(device));
         EXPECT_FLOAT_EQ(read(scalar(3.0f)), 3.0f);
@@ -389,6 +409,7 @@ namespace {
 
         EXPECT_THROW(static_cast<void>(plan.record()), ormi::OperationError);
         plan.run();
+
         EXPECT_FLOAT_EQ(*static_cast<const float*>(cpu_output->data()), -1.0f);
         EXPECT_FLOAT_EQ(read(cuda_output), -2.0f);
     }
@@ -402,14 +423,18 @@ namespace {
         const auto buffer = output->buffer();
 
         fail_copy = true;
+
         EXPECT_THROW(static_cast<void>(plan.record()), ormi::OperationError);
         fail_copy = false;
+
         EXPECT_EQ(output->buffer(), buffer);
 
         plan.run();
+
         EXPECT_FLOAT_EQ(read(output), 2.0f);
         auto replay = plan.record();
         replay.run();
+
         EXPECT_FLOAT_EQ(read(output), 2.0f);
     }
 
@@ -419,14 +444,18 @@ namespace {
         Plan plan({output});
 
         fail_copy = true;
+
         EXPECT_THROW(plan.run(), ormi::OperationError);
         fail_copy = false;
+
         EXPECT_THROW(static_cast<void>(plan.record()), ormi::OperationError);
 
         plan.run();
+
         EXPECT_FLOAT_EQ(read(output), 2.0f);
         auto replay = plan.record();
         replay.run();
+
         EXPECT_FLOAT_EQ(read(output), 2.0f);
     }
 
@@ -441,9 +470,11 @@ namespace {
         );
 
         plan.run();
+
         EXPECT_FLOAT_EQ(read(parameter), 1.9f);
 
         plan.run();
+
         EXPECT_FLOAT_EQ(read(parameter), 1.8f);
     }
 
@@ -463,10 +494,12 @@ namespace {
         );
 
         plan.run();
+
         EXPECT_FLOAT_EQ(read(first), 5.0f);
         EXPECT_FLOAT_EQ(read(second), 6.0f);
 
         plan.run();
+
         EXPECT_FLOAT_EQ(read(first), 11.0f);
         EXPECT_FLOAT_EQ(read(second), 30.0f);
     }
@@ -498,6 +531,7 @@ namespace {
             ormi::core::runtime::device::synchronize(
                 parameter->device()
             );
+
             ASSERT_FLOAT_EQ(read(parameter), 1.9f);
 
             replay.emplace(plan.record());
@@ -505,6 +539,7 @@ namespace {
 
         replay->run();
         ormi::core::runtime::device::synchronize(parameter->device());
+
         EXPECT_FLOAT_EQ(read(parameter), 1.8f);
     }
 }

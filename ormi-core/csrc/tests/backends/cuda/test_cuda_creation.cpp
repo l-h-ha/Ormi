@@ -57,6 +57,7 @@ namespace {
 
         EXPECT_FALSE(tensor->realized());
         const auto output = copy_to_host<double, 6>(*tensor);
+
         EXPECT_TRUE(tensor->realized());
 
         for (const double value : output) {
@@ -130,6 +131,7 @@ namespace {
         const auto one_values = copy_to_host<float, 4>(*ones);
 
         EXPECT_FALSE(input->realized());
+
         for (std::size_t i = 0; i < zero_values.size(); ++i) {
             EXPECT_FLOAT_EQ(zero_values[i], 0.0f);
             EXPECT_FLOAT_EQ(one_values[i], 1.0f);

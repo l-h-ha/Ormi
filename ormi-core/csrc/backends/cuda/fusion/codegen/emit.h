@@ -33,6 +33,7 @@ namespace ormi::backends::cuda::fusion {
         if (dtype == core::DType::float16) {
             return "ormi_half_bits(" + std::string(expression) + ")";
         }
+
         return std::string(expression);
     }
 

@@ -31,23 +31,29 @@ namespace ormi::backends::cpu::jit {
 
         std::optional<CXX> parse(std::string_view value) {
             const auto id = lower(value);
+
             if (id == "gcc") {
                 return CXX::gcc;
             }
+
             if (id == "clang") {
                 return CXX::clang;
             }
+
             if (id == "clang-cl" || id == "clang_cl") {
                 return CXX::clang_cl;
             }
+
             if (id == "msvc" || id == "cl") {
                 return CXX::msvc;
             }
+
             return std::nullopt;
         }
 
         std::optional<CXX> from_name(const std::filesystem::path& executable) {
             auto name = lower(executable.filename().string());
+
             if (name.ends_with(".exe")) {
                 name.resize(name.size() - 4);
             }
@@ -55,26 +61,33 @@ namespace ormi::backends::cpu::jit {
             if (name == "cl") {
                 return CXX::msvc;
             }
+
             if (name == "clang-cl") {
                 return CXX::clang_cl;
             }
+
             if (name == "g++") {
                 return CXX::gcc;
             }
+
             if (name == "clang++") {
                 return CXX::clang;
             }
+
             return std::nullopt;
         }
 
         std::optional<CXX> from_output(std::string_view output) {
             const auto text = lower(output);
+
             if (text.find("clang") != std::string::npos) {
                 return CXX::clang;
             }
+
             if (text.find("microsoft") != std::string::npos) {
                 return CXX::msvc;
             }
+
             if (
                 text.find("gcc") != std::string::npos ||
                 text.find("g++") != std::string::npos ||
@@ -82,6 +95,7 @@ namespace ormi::backends::cpu::jit {
             ) {
                 return CXX::gcc;
             }
+
             return std::nullopt;
         }
 
@@ -95,9 +109,11 @@ namespace ormi::backends::cpu::jit {
                 environment,
                 compiler_timeout()
             );
+
             if (result.state != platform::Process::State::exited) {
                 return std::nullopt;
             }
+
             const auto id = from_output(result.output);
             return id
                 ? std::optional<Toolchain>(Toolchain{
@@ -124,11 +140,13 @@ namespace ormi::backends::cpu::jit {
             }
 
             auto configured = platform::configured_msvc();
+
             if (!configured) {
                 return {};
             }
 
             std::error_code error;
+
             if (!std::filesystem::equivalent(
                 executable,
                 configured->executable,
@@ -136,6 +154,7 @@ namespace ormi::backends::cpu::jit {
             ) || error) {
                 return {};
             }
+
             return std::move(configured->environment);
         }
 
@@ -145,14 +164,17 @@ namespace ormi::backends::cpu::jit {
         ) {
             const auto named = from_name(executable);
             const auto id = requested ? requested : named;
+
             if (!id) {
                 return inspect_wrapper(executable);
             }
 
             std::vector<std::string> environment;
+
             if (*id == CXX::msvc) {
                 environment = msvc_environment(executable);
             }
+
             return Toolchain{executable, *id, std::move(environment)};
         }
 
@@ -189,6 +211,7 @@ namespace ormi::backends::cpu::jit {
 
         if (!explicit_id.empty()) {
             requested = parse(explicit_id);
+
             if (!requested) {
                 ORMI_THROW(jitError, "ORMI_CPU_JIT_CXX_ID must be gcc, clang, clang-cl, or msvc.");
             }
@@ -196,6 +219,7 @@ namespace ormi::backends::cpu::jit {
 
         if (!explicit_compiler.empty()) {
             const auto executable = platform::find(explicit_compiler);
+
             if (!executable) {
                 ORMI_THROW(
                     CompilerUnavailable,
@@ -207,6 +231,7 @@ namespace ormi::backends::cpu::jit {
             if (auto compiler = identify(*executable, requested)) {
                 return std::move(*compiler);
             }
+
             ORMI_THROW(
                 jitError,
                 "ORMI cannot identify the compiler syntax for " +
@@ -216,19 +241,24 @@ namespace ormi::backends::cpu::jit {
         }
 
         std::string diagnostics;
+
         for (const auto name : platform::cxx_candidates()) {
             const auto executable = platform::find(name);
+
             if (!executable) {
                 continue;
             }
 
             auto compiler = identify(*executable);
+
             if (!compiler) {
                 continue;
             }
+
             if (requested && *requested != compiler->id) {
                 continue;
             }
+
             if (const auto reason = compatibility::check(
                 *compiler,
                 compiler_timeout()
@@ -236,6 +266,7 @@ namespace ormi::backends::cpu::jit {
                 append_rejection(diagnostics, *compiler, *reason);
                 continue;
             }
+
             return std::move(*compiler);
         }
 
@@ -246,6 +277,7 @@ namespace ormi::backends::cpu::jit {
                     CXX::msvc,
                     std::move(configured->environment)
                 };
+
                 if (const auto reason = compatibility::check(
                     compiler,
                     compiler_timeout()

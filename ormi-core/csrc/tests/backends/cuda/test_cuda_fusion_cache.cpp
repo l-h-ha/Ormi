@@ -35,9 +35,11 @@ namespace {
 
     std::optional<std::string> environment(const char* name) {
         const auto* value = std::getenv(name);
+
         if (!value) {
             return std::nullopt;
         }
+
         return value;
     }
 
@@ -104,8 +106,10 @@ namespace {
             const auto destination = path / name;
             std::filesystem::create_directories(destination.parent_path());
             std::ofstream output(destination, std::ios::binary);
+
             ASSERT_TRUE(output);
             output << contents;
+
             ASSERT_TRUE(output);
         }
 
@@ -228,10 +232,12 @@ namespace {
 
         const auto first =
             ormi::platform::run(helper, build_arguments);
+
         ASSERT_EQ(first.code, 0) << first.output;
 
         const auto second =
             ormi::platform::run(helper, load_arguments);
+
         EXPECT_EQ(second.code, 0) << second.output;
     }
 
@@ -294,16 +300,19 @@ namespace {
         environment("ORMI_CUDA_JIT_CACHE_MAX_BYTES", "1");
 
         const auto artifact = cache::get("protected", "target", build);
+
         EXPECT_FALSE(artifact.cached);
         EXPECT_EQ(artifact.ptx, "ptx");
         const auto protected_key = cache::key("protected", "target");
         const auto old_key = cache::key("old", "target");
+
         EXPECT_TRUE(std::filesystem::exists(directory.path / (protected_key + ".cu")));
         EXPECT_TRUE(std::filesystem::exists(directory.path / (protected_key + ".ptx")));
         EXPECT_FALSE(std::filesystem::exists(directory.path / (old_key + ".cu")));
         EXPECT_FALSE(std::filesystem::exists(directory.path / (old_key + ".ptx")));
         EXPECT_TRUE(std::filesystem::exists(directory.path / (old_key + ".lock")));
         const auto info = cache::info();
+
         EXPECT_EQ(info.entries, 1u);
         EXPECT_EQ(info.bytes, 12u);
         EXPECT_EQ(info.limit, 1u);
@@ -313,14 +322,18 @@ namespace {
         Directory directory;
         environment("ORMI_CUDA_JIT_CACHE_MAX_BYTES", "0");
         builds = 0;
+
         for (const auto* source : {"first", "second", "third"}) {
             EXPECT_FALSE(cache::get(source, "target", build).cached);
         }
+
         for (const auto* source : {"first", "second", "third"}) {
             EXPECT_TRUE(cache::get(source, "target", build).cached);
         }
+
         EXPECT_EQ(builds, 3);
         const auto info = cache::info();
+
         EXPECT_EQ(info.entries, 3u);
         EXPECT_EQ(info.bytes, 25u);
         EXPECT_EQ(info.limit, 0u);
@@ -358,6 +371,7 @@ namespace {
         environment("ORMI_CUDA_JIT_CACHE_MAX_BYTES", "1");
 
         const auto artifact = cache::get("new", "target", build);
+
         EXPECT_FALSE(artifact.cached);
         EXPECT_EQ(artifact.ptx, "ptx");
         EXPECT_TRUE(std::filesystem::exists(directory.source("old", "target")));
@@ -365,6 +379,7 @@ namespace {
         EXPECT_TRUE(cache::get("new", "target", build).cached);
 
         std::filesystem::remove_all(directory.path / ".maintenance.lock");
+
         EXPECT_FALSE(cache::get("retry", "target", build).cached);
         EXPECT_FALSE(std::filesystem::exists(directory.source("old", "target")));
         EXPECT_FALSE(std::filesystem::exists(directory.source("new", "target")));
@@ -432,10 +447,12 @@ namespace {
         std::filesystem::create_directory(directory.path / (ptx_directory + ".ptx"));
 
         const auto info = ormi::backends::cuda::fusion::cache::info();
+
         EXPECT_EQ(info.entries, 1u);
         EXPECT_EQ(info.bytes, 9u);
 
         const auto cleared = ormi::backends::cuda::fusion::cache::clear();
+
         EXPECT_EQ(cleared.entries, 0u);
         EXPECT_EQ(cleared.bytes, 0u);
         EXPECT_FALSE(std::filesystem::exists(directory.path / (complete + ".cu")));
@@ -451,11 +468,13 @@ namespace {
         const std::string stem(32, 'a');
         directory.file(stem + ".cu", "source");
         directory.file(stem + ".ptx", "ptx");
+
         for (const auto& invalid : {std::string(32, 'z'), std::string(31, 'b'),
                 std::string(33, 'c'), std::string("unrelated")}) {
             directory.file(invalid + ".cu", "ignored source");
             directory.file(invalid + ".ptx", "ignored ptx");
         }
+
         directory.file(stem + ".123.tmp.cu", "staged source");
         directory.file(stem + ".123.tmp.ptx", "staged ptx");
         directory.file(stem + ".lock", "lock");
@@ -464,6 +483,7 @@ namespace {
         directory.file("nested/" + stem + ".ptx", "nested ptx");
 
         const auto info = ormi::backends::cuda::fusion::cache::info();
+
         EXPECT_EQ(info.entries, 1u);
         EXPECT_EQ(info.bytes, 9u);
     }
@@ -475,6 +495,7 @@ namespace {
         directory.file(stem + ".ptx");
 
         const auto info = ormi::backends::cuda::fusion::cache::info();
+
         EXPECT_EQ(info.entries, 1u);
         EXPECT_EQ(info.bytes, 0u);
         EXPECT_EQ(ormi::backends::cuda::fusion::cache::clear().entries, 0u);
@@ -487,6 +508,7 @@ namespace {
         directory.file(stem + ".ptx", "ptx");
 
         const auto info = ormi::backends::cuda::fusion::cache::info();
+
         EXPECT_EQ(info.entries, 1u);
         EXPECT_EQ(info.bytes, 9u);
     }
@@ -494,9 +516,11 @@ namespace {
     TEST(CUDAFusionCacheTest, pruningIgnoresIncompleteAndUnrelatedFiles) {
         Directory directory;
         environment("ORMI_CUDA_JIT_CACHE_MAX_BYTES", "18");
+
         for (const auto* source : {"first", "second"}) {
             ormi::backends::cuda::fusion::cache::get(source, "target", build);
         }
+
         const auto now = std::filesystem::file_time_type::clock::now();
         std::filesystem::last_write_time(directory.source("first", "target"),
             now - std::chrono::hours(2));
@@ -512,6 +536,7 @@ namespace {
 
         ormi::backends::cuda::fusion::cache::get("third", "target", build);
         const auto info = ormi::backends::cuda::fusion::cache::info();
+
         EXPECT_EQ(info.entries, 2u);
         EXPECT_EQ(info.bytes, 17u);
         EXPECT_FALSE(std::filesystem::exists(directory.source("first", "target")));
@@ -525,10 +550,12 @@ namespace {
     TEST(CUDAFusionCacheTest, reportsMissingDirectoryAsEmpty) {
         Directory directory;
         const auto info = ormi::backends::cuda::fusion::cache::info();
+
         EXPECT_EQ(info.path, directory.path);
         EXPECT_EQ(info.entries, 0u);
         EXPECT_EQ(info.bytes, 0u);
         const auto cleared = ormi::backends::cuda::fusion::cache::clear();
+
         EXPECT_EQ(cleared.entries, 0u);
         EXPECT_EQ(cleared.bytes, 0u);
         EXPECT_FALSE(std::filesystem::exists(directory.path));
@@ -537,6 +564,7 @@ namespace {
     TEST(CUDAFusionCacheTest, rejectsNonDirectoryCachePath) {
         Directory directory;
         std::ofstream(directory.path, std::ios::binary) << "not a directory";
+
         ASSERT_TRUE(std::filesystem::is_regular_file(directory.path));
 
         EXPECT_THROW(ormi::backends::cuda::fusion::cache::info(), ormi::jitError);
@@ -557,12 +585,14 @@ namespace {
 
         const auto failed_build = [&]() -> std::string {
             ++builds;
+
             EXPECT_FALSE(std::filesystem::exists(directory.path / stale_source));
             EXPECT_FALSE(std::filesystem::exists(directory.path / stale_ptx));
             directory.file(stale_source, "partial source");
             directory.file(stale_ptx, "partial ptx");
             throw std::runtime_error("compiler failed");
         };
+
         try {
             cache::get("source", "target", failed_build);
             FAIL() << "Expected the compiler exception.";
@@ -579,6 +609,7 @@ namespace {
         EXPECT_EQ(cache::info().entries, 0u);
 
         const auto retry = cache::get("source", "target", build);
+
         EXPECT_FALSE(retry.cached);
         EXPECT_EQ(retry.ptx, "ptx");
         EXPECT_TRUE(cache::get("source", "target", build).cached);
@@ -600,6 +631,7 @@ namespace {
         EXPECT_FALSE(std::filesystem::exists(directory.path / (stem + ".ptx")));
         EXPECT_EQ(cache::info().entries, 0u);
         const auto retry = cache::get("source", "target", build);
+
         EXPECT_FALSE(retry.cached);
         EXPECT_EQ(retry.ptx, "ptx");
         EXPECT_TRUE(cache::get("source", "target", build).cached);
@@ -616,6 +648,7 @@ namespace {
         };
 
         const auto cached = cache::get("source", "target", unexpected_build);
+
         EXPECT_TRUE(cached.cached);
         EXPECT_EQ(cached.ptx, "ptx");
     }
@@ -645,6 +678,7 @@ namespace {
 
             std::filesystem::remove_all(blocked);
             const auto retry = cache::get("source", "target", build);
+
             EXPECT_FALSE(retry.cached);
             EXPECT_EQ(retry.ptx, "ptx");
             EXPECT_TRUE(cache::get("source", "target", build).cached);
@@ -679,6 +713,7 @@ namespace {
 
             std::filesystem::remove_all(blocked);
             const auto retry = cache::get("source", "target", build);
+
             EXPECT_FALSE(retry.cached);
             EXPECT_EQ(retry.ptx, "ptx");
             EXPECT_TRUE(cache::get("source", "target", build).cached);

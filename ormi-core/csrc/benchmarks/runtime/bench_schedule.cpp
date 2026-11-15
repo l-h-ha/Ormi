@@ -34,12 +34,14 @@ namespace {
 
     Tensor graph(const Tensor& source, std::size_t depth) {
         auto value = source;
+
         for (std::size_t index = 0; index < depth; ++index) {
             value = ormi::core::ops::add(
                 ormi::core::ops::mul(value, source),
                 source
             );
         }
+
         return value;
     }
 
@@ -47,9 +49,11 @@ namespace {
         std::vector<Tensor> result;
         result.reserve(depth + 1);
         result.push_back(source);
+
         for (std::size_t index = 0; index < depth; ++index) {
             result.push_back(ormi::core::ops::reshape(result.back(), {1}));
         }
+
         return result;
     }
 
@@ -57,9 +61,11 @@ namespace {
         const auto candidates = ormi::core::runtime::fusion::find_candidates(roots);
         std::unordered_set<const ormi::core::Tensor*> completed;
         std::vector<ormi::core::runtime::Step> steps;
+
         for (auto* root : roots) {
             ormi::core::runtime::schedule::append(*root, completed, steps, candidates);
         }
+
         return steps;
     }
 
@@ -99,11 +105,14 @@ namespace {
         std::vector<ormi::core::Tensor*> roots;
         outputs.reserve(static_cast<std::size_t>(state.range(1)));
         roots.reserve(static_cast<std::size_t>(state.range(1)));
+
         for (std::int64_t index = 0; index < state.range(1); ++index) {
             outputs.push_back(ormi::core::ops::neg(mapped));
             roots.push_back(outputs.back().get());
         }
+
         const auto warmup = build_schedule(roots);
+
         if (warmup.size() != 1 || warmup.front().output_count() != roots.size()) {
             state.SkipWithError("Expected one grouped fusion step.");
             return;
@@ -113,6 +122,7 @@ namespace {
             auto steps = build_schedule(roots);
             benchmark::DoNotOptimize(steps.size());
         }
+
         state.counters["outputs"] = static_cast<double>(roots.size());
     }
 

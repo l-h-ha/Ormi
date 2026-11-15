@@ -27,6 +27,7 @@ namespace ormi::core::runtime::catalog {
                 return static_cast<BackendId>(index);
             }
         }
+
         return backend_invalid;
     }
 
@@ -37,9 +38,11 @@ namespace ormi::core::runtime::catalog {
             if (!entries[index].host) {
                 continue;
             }
+
             if (result != backend_invalid) {
                 return backend_invalid;
             }
+
             result = static_cast<BackendId>(index);
         }
 
@@ -50,6 +53,7 @@ namespace ormi::core::runtime::catalog {
         if (entries.size() > static_cast<std::size_t>(backend_invalid)) {
             return false;
         }
+
         if (host() == backend_invalid) {
             return false;
         }
@@ -69,6 +73,7 @@ namespace ormi::core::runtime::catalog {
                 }
             }
         }
+
         return true;
     }
 

@@ -34,6 +34,7 @@ namespace {
         model.register_buffer(buffer, "count");
         model.register_module(layers, "layers");
         const auto state = model.state();
+
         ASSERT_EQ(state.size(), 3u);
         EXPECT_EQ(state.at("layers.0.weight"), weight);
         EXPECT_EQ(state.at("layers.1.weight"), weight);
@@ -41,6 +42,7 @@ namespace {
         EXPECT_EQ(model.parameters(), (std::vector{weight}));
         EXPECT_EQ(model.buffers(), (std::vector{buffer}));
         layers->append(std::make_shared<ormi::nn::Linear>(2, 3));
+
         EXPECT_EQ(model.state().at("layers.0.weight"), weight);
         EXPECT_EQ(model.state().count("layers.2.bias"), 1u);
         EXPECT_EQ(state.size(), 3u);
@@ -51,15 +53,18 @@ namespace {
         const auto tensor = nn_test::leaf({1});
         const auto child = std::make_shared<Identity>();
         model.register_parameter(tensor, "weight");
+
         EXPECT_THROW(model.register_parameter(tensor, "weight"), ormi::OperationError);
         EXPECT_THROW(model.register_buffer(tensor, "weight"), ormi::OperationError);
         EXPECT_THROW(model.register_module(child, "weight"), ormi::OperationError);
+
         for (const auto& name :
              {std::string("a.b"), std::string("a/b"), std::string("a\\b"), std::string("a\0b", 3)}) {
             EXPECT_THROW(model.register_parameter(tensor, name), ormi::OperationError);
             EXPECT_THROW(model.register_buffer(tensor, name), ormi::OperationError);
             EXPECT_THROW(model.register_module(child, name), ormi::OperationError);
         }
+
         EXPECT_EQ(model.state().size(), 1u);
         EXPECT_TRUE(model.buffers().empty());
         EXPECT_TRUE(model.children().empty());
@@ -76,11 +81,14 @@ namespace {
             model.register_buffer(tensor);
             model.register_module(std::make_shared<Identity>());
             state = model.state();
+
             EXPECT_EQ(state.at("parameter_0"), tensor);
             EXPECT_EQ(state.at("buffer_0"), tensor);
         }
+
         EXPECT_FALSE(lifetime.expired());
         state.clear();
+
         EXPECT_TRUE(lifetime.expired());
     }
 }

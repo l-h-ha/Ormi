@@ -19,10 +19,12 @@ namespace {
 
     std::size_t descriptor_count() {
         std::size_t count = 0;
+
         for (const auto& entry : std::filesystem::directory_iterator("/proc/self/fd")) {
             static_cast<void>(entry);
             ++count;
         }
+
         return count;
     }
 
@@ -30,6 +32,7 @@ namespace {
         const auto result = ormi::platform::run(
             helper, std::vector<std::string>{"arguments", "", "middle", ""}
         );
+
         EXPECT_EQ(result.state, ormi::platform::Process::State::exited);
         EXPECT_EQ(result.code, 0);
         EXPECT_EQ(result.output, "0:\n6:middle\n0:\n");
@@ -39,6 +42,7 @@ namespace {
         const auto result = ormi::platform::run(
             helper / "not-an-executable", std::vector<std::string>{}
         );
+
         EXPECT_EQ(result.state, ormi::platform::Process::State::exited);
         EXPECT_EQ(result.code, 127);
         EXPECT_TRUE(result.output.empty());
@@ -49,6 +53,7 @@ namespace {
             helper, std::vector<std::string>{"sleep"}, {},
             std::chrono::milliseconds(100)
         );
+
         EXPECT_EQ(result.state, ormi::platform::Process::State::timed_out);
         EXPECT_EQ(result.code, SIGKILL);
     }
@@ -61,11 +66,13 @@ namespace {
             const auto result = ormi::platform::run(
                 helper, std::vector<std::string>{mode}, {}, timeout
             );
+
             EXPECT_EQ(result.code, std::string(mode) == "normal" ? 7 : SIGKILL);
             int status = 0;
             errno = 0;
             const auto remaining = waitpid(-1, &status, WNOHANG);
             const auto error = errno;
+
             EXPECT_EQ(remaining, -1) << mode;
             EXPECT_EQ(error, ECHILD) << mode;
         }
@@ -73,15 +80,18 @@ namespace {
 
     TEST(PlatformLinuxProcessTest, closesDescriptorsAfterExitCrashAndFailedExec) {
         const auto before = descriptor_count();
+
         for (unsigned i = 0; i < 12; ++i) {
             ormi::platform::run(helper, std::vector<std::string>{"normal"});
             ormi::platform::run(helper, std::vector<std::string>{"crash"});
             ormi::platform::run(helper / "not-an-executable", std::vector<std::string>{});
         }
+
         ormi::platform::run(
             helper, std::vector<std::string>{"sleep"}, {},
             std::chrono::milliseconds(100)
         );
+
         EXPECT_EQ(descriptor_count(), before);
     }
 }

@@ -8,8 +8,7 @@
 #include <ormi/core/tensor.h>
 
 namespace ormi::nn {
-    // Owns registered parameters, buffers, and child modules. forward builds tensor graphs.
-    // Prepared execution runs their tensor operations directly.
+    // Owns registered parameters, buffers, and child modules.
     class Module {
     public:
         Module() = default;
@@ -27,14 +26,12 @@ namespace ormi::nn {
 
         // List this module's parameters, then each child's recursively. Shared tensors appear once.
         std::vector<std::shared_ptr<core::Tensor>> parameters() const;
-        // Non-trainable state, such as running statistics, in the same traversal order as parameters().
+        // Non-trainable state, such as running statistics, in parameters() traversal order.
         std::vector<std::shared_ptr<core::Tensor>> buffers() const;
-        // Live parameters and buffers by path, including every path to shared state.
-        // This does not copy data or execute graphs.
+        // Live parameters and buffers under every registered path, including shared state.
         std::map<std::string, std::shared_ptr<core::Tensor>> state() const;
         const std::vector<std::shared_ptr<Module>>& children() const noexcept;
-        // Set this module and its registered children recursively. Mode affects future forward calls.
-        // Existing graphs and Plans keep the behavior selected when they were built.
+        // Set the mode recursively for future forward calls, leaving existing graphs and Plans unchanged.
         void train(bool mode = true);
         void eval();
         bool training() const noexcept;
@@ -56,7 +53,7 @@ namespace ormi::nn {
         std::vector<std::pair<std::string, std::shared_ptr<core::Tensor>>> parameters_;
         std::vector<std::pair<std::string, std::shared_ptr<core::Tensor>>> buffers_;
         std::vector<std::shared_ptr<Module>> children_;
-        // Uses the same indices as children_. Forward execution reads children_ directly.
+        // Uses the same indices as children_.
         std::vector<std::string> child_names_;
         bool training_ = true;
     };

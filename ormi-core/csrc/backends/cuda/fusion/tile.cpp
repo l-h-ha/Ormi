@@ -17,16 +17,20 @@ namespace ormi::backends::cuda::fusion {
             const std::vector<std::size_t>& shape
         ) {
             std::size_t stride = 1;
+
             for (std::size_t i = shape.size(); i > 0; --i) {
                 const auto current = i - 1;
+
                 if (
                     stride == logical_stride &&
                     shape[current] == extent
                 ) {
                     return current;
                 }
+
                 stride *= shape[current];
             }
+
             return std::nullopt;
         }
 
@@ -36,14 +40,18 @@ namespace ormi::backends::cuda::fusion {
         ) {
             std::vector<std::size_t> result;
             result.reserve(iteration.axes.size());
+
             for (const auto& axis : iteration.axes) {
                 const auto current =
                     dimension(axis.stride, axis.extent, shape);
+
                 if (!current) {
                     return std::nullopt;
                 }
+
                 result.push_back(*current);
             }
+
             return result;
         }
 
@@ -52,10 +60,12 @@ namespace ormi::backends::cuda::fusion {
         ) {
             std::vector<std::size_t> result(shape.size());
             std::size_t stride = 1;
+
             for (std::size_t i = shape.size(); i > 0; --i) {
                 result[i - 1] = stride;
                 stride *= shape[i - 1];
             }
+
             return result;
         }
     }
@@ -74,6 +84,7 @@ namespace ormi::backends::cuda::fusion {
             dimensions(expression.reduction->output, expression.shape);
         const auto reduced =
             dimensions(expression.reduction->reduced, expression.shape);
+
         if (
             !output ||
             !reduced ||
@@ -84,18 +95,23 @@ namespace ormi::backends::cuda::fusion {
         }
 
         std::vector<bool> represented(expression.shape.size(), false);
+
         for (const auto current : *output) {
             if (represented[current]) {
                 return std::nullopt;
             }
+
             represented[current] = true;
         }
+
         for (const auto current : *reduced) {
             if (represented[current]) {
                 return std::nullopt;
             }
+
             represented[current] = true;
         }
+
         if (
             !std::all_of(
                 represented.begin(),
@@ -112,40 +128,49 @@ namespace ormi::backends::cuda::fusion {
             expression.inputs.size(),
             std::vector<std::size_t>(expression.shape.size(), 0)
         );
+
         for (const auto& node : expression.nodes) {
             const auto* input =
                 std::get_if<core::runtime::fusion::Input>(
                     &node.instruction
                 );
+
             if (!input) {
                 continue;
             }
+
             if (input->index >= inputs.size()) {
                 return std::nullopt;
             }
+
             if (input->linear) {
                 inputs[input->index] =
                     contiguous_strides(expression.shape);
                 continue;
             }
+
             for (const auto& axis : input->axes) {
                 const auto current = dimension(
                     axis.divisor,
                     axis.extent,
                     expression.shape
                 );
+
                 if (!current) {
                     return std::nullopt;
                 }
+
                 inputs[input->index][*current] = axis.stride;
             }
         }
 
         std::optional<std::size_t> tiled_axis;
+
         for (const auto current : *output) {
             if (expression.shape[current] < warp_width) {
                 continue;
             }
+
             const bool contiguous = std::all_of(
                 inputs.begin(),
                 inputs.end(),
@@ -160,6 +185,7 @@ namespace ormi::backends::cuda::fusion {
                     return strides[current] == 1;
                 }
             );
+
             if (
                 contiguous &&
                 reads_axis &&
@@ -172,6 +198,7 @@ namespace ormi::backends::cuda::fusion {
                 tiled_axis = current;
             }
         }
+
         if (!tiled_axis) {
             return std::nullopt;
         }

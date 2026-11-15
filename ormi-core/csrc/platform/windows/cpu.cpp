@@ -85,6 +85,7 @@ namespace ormi::platform {
             nullptr,
             &bytes
         );
+
         if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || bytes == 0) {
             return std::max<std::size_t>(
                 std::thread::hardware_concurrency(),
@@ -96,6 +97,7 @@ namespace ormi::platform {
             (bytes + sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX) - 1) /
                 sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)
         );
+
         if (!GetLogicalProcessorInformationEx(
             RelationProcessorCore,
             reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(
@@ -111,6 +113,7 @@ namespace ormi::platform {
 
         std::size_t cores = 0;
         std::size_t offset = 0;
+
         while (offset < bytes) {
             const auto* entry = reinterpret_cast<
                 const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*
@@ -118,14 +121,18 @@ namespace ormi::platform {
                 reinterpret_cast<const unsigned char*>(storage.data()) +
                     offset
             );
+
             if (entry->Relationship == RelationProcessorCore) {
                 ++cores;
             }
+
             if (entry->Size == 0) {
                 break;
             }
+
             offset += entry->Size;
         }
+
         return std::max<std::size_t>(cores, 1);
     }
 }

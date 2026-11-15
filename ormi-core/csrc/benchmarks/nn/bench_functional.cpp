@@ -19,16 +19,20 @@ namespace {
         const auto input = ormi::core::ops::full({state.range(0)}, 0.25f, ormi::core::Device::cpu());
         input->realize();
         auto* values = static_cast<float*>(input->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = static_cast<float>(static_cast<int>(i % 127) - 63) / 32.0f;
         }
+
         const auto output = activation(input);
         ormi::core::Plan plan({output});
         plan.run();
+
         for (auto _ : state) {
             plan.run();
             benchmark::ClobberMemory();
         }
+
         state.SetItemsProcessed(state.iterations() * state.range(0));
         state.counters["steps"] = static_cast<double>(plan.steps());
     }
@@ -40,17 +44,21 @@ namespace {
         input->realize();
         target->realize();
         auto* values = static_cast<float*>(input->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = static_cast<float>(static_cast<int>(i % 127) - 63) / 32.0f;
         }
+
         const auto loss = ormi::nn::cross_entropy(input, target);
         const auto gradient = ormi::core::grad(loss, input);
         ormi::core::Plan plan({loss, gradient});
         plan.run();
+
         for (auto _ : state) {
             plan.run();
             benchmark::ClobberMemory();
         }
+
         state.counters["steps"] = static_cast<double>(plan.steps());
     }
 

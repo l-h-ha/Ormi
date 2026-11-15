@@ -16,6 +16,7 @@ namespace ormi::backends::cpu::jit::codegen {
             if (input.linear) {
                 return "i";
             }
+
             return offset("i", input.axes);
         }
 
@@ -34,15 +35,19 @@ namespace ormi::backends::cpu::jit::codegen {
                 ++dimension
             ) {
                 const auto stride = strides[dimension];
+
                 if (stride == 0) {
                     continue;
                 }
+
                 if (!address.empty()) {
                     address += " + ";
                 }
+
                 address += dimension == inner
                     ? "inner_index"
                     : "index" + std::to_string(dimension);
+
                 if (stride != 1) {
                     address += " * " + std::to_string(stride);
                 }
@@ -52,6 +57,7 @@ namespace ormi::backends::cpu::jit::codegen {
                 return "_mm256_set1_ps(" + name + "[" +
                     (address.empty() ? "0" : address) + "])";
             }
+
             if (strides[inner] == 1) {
                 return "_mm256_loadu_ps(" + name + " + " + address + ")";
             }
@@ -72,23 +78,29 @@ namespace ormi::backends::cpu::jit::codegen {
         }
 
         std::ostringstream result;
+
         for (std::size_t i = 0; i < axes.size(); ++i) {
             const auto& axis = axes[i];
+
             if (i != 0) {
                 result << " + ";
             }
 
             result << "(";
+
             if (axis.divisor != 1) {
                 result << "(" << index << " / " << axis.divisor << ")";
             } else {
                 result << index;
             }
+
             result << " % " << axis.extent << ")";
+
             if (axis.stride != 1) {
                 result << " * " << axis.stride;
             }
         }
+
         return result.str();
     }
 
@@ -98,9 +110,11 @@ namespace ormi::backends::cpu::jit::codegen {
         const Loop& loop
     ) {
         auto expression = "input" + std::to_string(input.index);
+
         if (loop.strided) {
             expression += "[";
             bool first = true;
+
             for (
                 std::size_t dimension = 0;
                 dimension < loop.strides[input.index].size();
@@ -108,22 +122,29 @@ namespace ormi::backends::cpu::jit::codegen {
             ) {
                 const auto stride =
                     loop.strides[input.index][dimension];
+
                 if (stride == 0) {
                     continue;
                 }
+
                 if (!first) {
                     expression += " + ";
                 }
+
                 first = false;
                 expression += "index" + std::to_string(dimension);
+
                 if (stride != 1) {
                     expression += " * " + std::to_string(stride);
                 }
             }
+
             expression += first ? "0]" : "]";
+
             if (dtype == core::DType::float16) {
                 return "ormi_half_value(" + expression + ")";
             }
+
             return expression;
         }
 
@@ -148,9 +169,11 @@ namespace ormi::backends::cpu::jit::codegen {
                 expression += "[" + input_offset(input) + "]";
                 break;
         }
+
         if (dtype == core::DType::float16) {
             return "ormi_half_value(" + expression + ")";
         }
+
         return expression;
     }
 
@@ -166,11 +189,13 @@ namespace ormi::backends::cpu::jit::codegen {
                     "Packed strided fusion requires Float32 inputs."
                 );
             }
+
             return packed_strided_input(input, loop);
         }
 
         const auto name = "input" + std::to_string(input.index);
         const bool float16 = dtype == core::DType::float16;
+
         switch (loop.inputs[input.index]) {
             case Access::linear:
                 return float16

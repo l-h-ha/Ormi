@@ -64,6 +64,10 @@ namespace ormi::bindings {
         >> updates
     );
     py::array tensor_numpy(const std::shared_ptr<core::Tensor>& tensor);
+    std::shared_ptr<core::Tensor> tensor_getitem(const std::shared_ptr<core::Tensor>& tensor, py::object index);
+    std::vector<std::shared_ptr<core::Tensor>> tensor_grad_many(
+        const std::shared_ptr<core::Tensor>& output, py::object inputs, std::shared_ptr<core::Tensor> seed
+    );
     void tensor_copy_from(core::Tensor& destination, py::object source);
     py::object tensor_item(const std::shared_ptr<core::Tensor>& tensor);
     std::shared_ptr<core::Tensor> tensor_realize(const std::shared_ptr<core::Tensor>& tensor);

@@ -20,9 +20,9 @@ jobs:
           python-version: '3.12'
 
       - name: Install check dependencies
-        run: python -m pip install packaging pytest
+        run: python -m pip install packaging pytest PyYAML
 
-      - name: Test version checks
+      - name: Test release configuration
         run: python -I -m pytest --noconftest --import-mode=importlib .github/tests -q -p no:cacheprovider
 
       - name: Match package versions, dependency pins, and release tag
@@ -76,7 +76,7 @@ jobs:
           C:\vcpkg\vcpkg.exe install
           --x-manifest-root=${{ github.workspace }}\ormi-core
           --triplet=x64-windows
-          
+
       - name: Build wheels
         uses: pypa/cibuildwheel@v3.4.1
         env:
@@ -111,7 +111,7 @@ jobs:
         if: runner.os == 'Windows'
         uses: Jimver/cuda-toolkit@v0.2.16
         with:
-          cuda: '12.4.0'
+          cuda: '12.8.1'
 
       - name: Build wheel
         uses: pypa/cibuildwheel@v3.4.1
@@ -293,7 +293,7 @@ jobs:
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
-        
+
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
         with:

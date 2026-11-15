@@ -62,6 +62,7 @@ namespace ormi::backends::cpu::gemm::portable {
             for (std::size_t row = 0; row < rows; ++row) {
                 auto* out_row = out + row * columns;
                 const auto lhs_value = lhs_column[row];
+
                 for (std::size_t column = 0; column < columns; ++column) {
                     out_row[column] += lhs_value * rhs_row[column];
                 }
@@ -172,6 +173,7 @@ namespace ormi::backends::cpu::gemm::portable {
         for (std::size_t row = 0; row < rows; ++row) {
             for (std::size_t column = 0; column < columns; ++column) {
                 float sum = 0.0f;
+
                 for (std::size_t k = 0; k < inner; ++k) {
                     const auto lhs_offset =
                         row * static_cast<std::size_t>(lhs_row_stride) +

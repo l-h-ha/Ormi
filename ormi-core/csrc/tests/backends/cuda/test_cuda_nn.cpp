@@ -24,12 +24,14 @@
 namespace {
     TEST(CUDANNTest, directRsqrtSupportsAllFloatingDtypes) {
         int count = 0;
+
         if (cudaGetDeviceCount(&count) != cudaSuccess || count == 0) {
             GTEST_SKIP() << "No CUDA device is available.";
         }
 
         using namespace ormi::core;
         const auto device = Device::from("cuda:0");
+
         for (const auto dtype : {DType::float16, DType::float32, DType::float64}) {
             const auto input = ops::cast(ops::full({8}, 2.0f, device), dtype);
             const auto output = std::make_shared<Tensor>(device, Shape{8}, dtype);
@@ -39,11 +41,13 @@ namespace {
             runtime::memory::copy(Device::cpu(), values.data(), device, converted->data(), sizeof(values));
 
             double tolerance = 3e-15;
+
             if (dtype == DType::float16) {
                 tolerance = 3e-4;
             } else if (dtype == DType::float32) {
                 tolerance = 1e-7;
             }
+
             for (const auto value : values) {
                 EXPECT_NEAR(value, 1.0 / std::sqrt(2.0), tolerance);
             }
@@ -52,9 +56,11 @@ namespace {
 
     TEST(CUDANNTest, halfMaxGradientCountsTiesWithoutOverflow) {
         int count = 0;
+
         if (cudaGetDeviceCount(&count) != cudaSuccess || count == 0) {
             GTEST_SKIP() << "No CUDA device is available.";
         }
+
         using namespace ormi::core;
         const auto device = Device::from("cuda:0");
         const auto input = ops::full({65536}, Float16{1.f}, device);
@@ -68,6 +74,7 @@ namespace {
             gradient->data(),
             values.size() * sizeof(Float16)
         );
+
         for (const auto value : values) {
             EXPECT_FLOAT_EQ(static_cast<float>(value), 1.f / 65536.f);
         }
@@ -75,9 +82,11 @@ namespace {
 
     TEST(CUDANNTest, directAndFusedActivationKernelsAgree) {
         int count = 0;
+
         if (cudaGetDeviceCount(&count) != cudaSuccess || count == 0) {
             GTEST_SKIP() << "No CUDA device is available.";
         }
+
         using namespace ormi::core;
         const auto device = Device::from("cuda:0");
         const auto input = std::make_shared<Tensor>(device, Shape{7}, DType::float32);
@@ -112,6 +121,7 @@ namespace {
             ops::expm1,
             ops::rsqrt
         };
+
         for (std::size_t op = 0; op < operations.size(); ++op) {
             Tensor direct(device, {7}, DType::float32), host(Device::cpu(), {7}, DType::float32);
             runtime::pointwise::unary(operations[op], direct, *input);
@@ -121,8 +131,10 @@ namespace {
             const auto fused = functions[op](input);
             std::array<float, 7> optimized{};
             runtime::memory::copy(Device::cpu(), optimized.data(), device, fused->data(), sizeof(optimized));
+
             for (std::size_t i = 0; i < values.size(); ++i) {
                 const auto expected = static_cast<const float*>(host.data())[i];
+
                 if (std::isnan(expected)) {
                     EXPECT_TRUE(std::isnan(actual[i]));
                     EXPECT_TRUE(std::isnan(optimized[i]));

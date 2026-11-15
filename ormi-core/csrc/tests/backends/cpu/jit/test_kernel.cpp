@@ -17,6 +17,7 @@
 #include <gtest/gtest.h>
 
 #include <ormi/core/autocast.h>
+#include <ormi/core/autograd.h>
 #include <ormi/core/device.h>
 #include <ormi/core/dtype.h>
 #include <ormi/core/error.h>
@@ -62,6 +63,7 @@ namespace {
             if (const char* previous = std::getenv("ORMI_CPU_JIT_CACHE_DIR")) {
                 previous_ = previous;
             }
+
             // Compiled DLLs can remain loaded after a test finishes.
             std::error_code ignored;
             std::filesystem::remove_all(path_, ignored);
@@ -107,13 +109,78 @@ namespace {
         const auto* data = static_cast<const float*>(output->data());
 
         const float values[]{-0.5f, 0.0f, 0.5f, 1.0f};
+
         for (std::size_t i = 0; i < output->numel(); ++i) {
             EXPECT_FLOAT_EQ(data[i], std::sin(std::exp(values[i] * values[i] + values[i])));
         }
+
         EXPECT_FALSE(square->realized());
         EXPECT_FALSE(sum->realized());
         EXPECT_FALSE(exponential->realized());
         EXPECT_TRUE(output->realized());
+    }
+
+    TEST(CPUJITKernelTest, executesSingleElementMapsForFloatingDtypes) {
+        Cache cache;
+
+        for (const auto dtype : {
+            ormi::core::DType::float16,
+            ormi::core::DType::float32,
+            ormi::core::DType::float64
+        }) {
+            SCOPED_TRACE(static_cast<int>(dtype));
+            const auto input = std::make_shared<ormi::core::Tensor>(
+                ormi::core::Device::cpu(), ormi::core::Shape{1, 1}, dtype
+            );
+
+            if (dtype == ormi::core::DType::float16) {
+                *static_cast<ormi::core::Float16*>(input->data()) = ormi::core::Float16(0.5f);
+            } else if (dtype == ormi::core::DType::float32) {
+                *static_cast<float*>(input->data()) = 0.5f;
+            } else {
+                *static_cast<double*>(input->data()) = 0.5;
+            }
+
+            const auto square = ormi::core::ops::mul(input, input);
+            const auto output = ormi::core::ops::add(square, input);
+
+            const auto result = ormi::core::ops::cast(output, ormi::core::DType::float64);
+
+            EXPECT_DOUBLE_EQ(*static_cast<const double*>(result->data()), 0.75);
+            EXPECT_FALSE(square->realized());
+        }
+    }
+
+    TEST(CPUJITKernelTest, reusesSharedScalarsInDeepGraphsAndHigherDerivatives) {
+        Cache cache;
+        const auto input = std::make_shared<ormi::core::Tensor>(
+            ormi::core::Device::cpu(), ormi::core::Shape{}, ormi::core::DType::float64
+        );
+        *static_cast<double*>(input->data()) = 0.125;
+        const auto shared = ormi::core::ops::add(ormi::core::ops::mul(input, input), input);
+        auto output = shared;
+        double expected = 0.140625;
+        double first = 1.25;
+        double second = 2.;
+
+        for (int step = 0; step < 160; ++step) {
+            second = -std::sin(expected)*first*first + std::cos(expected)*second + 2.;
+            first = std::cos(expected)*first + 1.25;
+            expected = std::sin(expected) + 0.140625;
+            output = ormi::core::ops::add(ormi::core::ops::sin(output), shared);
+        }
+
+        output->realize();
+
+        EXPECT_TRUE(shared->realized());
+        EXPECT_NEAR(*static_cast<const double*>(output->data()), expected, 1e-13);
+        const auto derivative = ormi::core::grad(output, input);
+        const auto curvature = ormi::core::grad(derivative, input);
+
+        EXPECT_FALSE(derivative->realized());
+        EXPECT_FALSE(curvature->realized());
+        EXPECT_NEAR(*static_cast<const double*>(derivative->data()), first, 1e-11);
+        EXPECT_NEAR(*static_cast<const double*>(curvature->data()), second, 1e-10);
     }
 
     TEST(CPUJITKernelTest, executesPreparedKernelWithAuxiliaryOutput) {
@@ -134,6 +201,7 @@ namespace {
             auxiliaries,
             boundaries
         );
+
         ASSERT_TRUE(expression.has_value());
 
         auto step = ormi::core::runtime::Step::deferred_fusion(
@@ -158,11 +226,14 @@ namespace {
         const auto* actual_sine = static_cast<const float*>(sine->data());
         const auto* actual_cosine = static_cast<const float*>(cosine->data());
         const float values[]{-0.5f, 0.0f, 0.5f, 1.0f};
+
         for (std::size_t i = 0; i < sine->numel(); ++i) {
             const auto mapped_value = values[i] * values[i] + values[i];
+
             EXPECT_FLOAT_EQ(actual_sine[i], std::sin(mapped_value));
             EXPECT_FLOAT_EQ(actual_cosine[i], std::cos(mapped_value));
         }
+
         EXPECT_TRUE(sine->realized());
         EXPECT_TRUE(cosine->realized());
         EXPECT_FALSE(mapped->realized());
@@ -181,9 +252,11 @@ namespace {
         const auto* data = static_cast<const double*>(output->data());
 
         const double values[]{-0.5, 0.0, 0.5, 1.0};
+
         for (std::size_t i = 0; i < output->numel(); ++i) {
             EXPECT_DOUBLE_EQ(data[i], std::cos(std::exp(values[i] * values[i] + values[i])));
         }
+
         EXPECT_FALSE(square->realized());
         EXPECT_FALSE(sum->realized());
         EXPECT_FALSE(exponential->realized());
@@ -200,6 +273,7 @@ namespace {
             ormi::core::DType::float32
         );
         auto* values = static_cast<float*>(input->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = static_cast<float>(i % 17) * 0.125f;
         }
@@ -212,6 +286,7 @@ namespace {
         for (std::size_t i = 0; i < input->numel(); ++i) {
             EXPECT_FLOAT_EQ(result[i], (values[i] * values[i] + values[i]) * values[i]);
         }
+
         EXPECT_FALSE(square->realized());
         EXPECT_FALSE(added->realized());
     }
@@ -227,6 +302,7 @@ namespace {
             ormi::core::DType::float32
         );
         auto* values = static_cast<float*>(input->data());
+
         for (std::size_t i = 0; i < elements; ++i) {
             values[i] = static_cast<float>(i % 17) * 0.125f;
         }
@@ -239,6 +315,7 @@ namespace {
         for (std::size_t i = 0; i < elements; ++i) {
             const auto expected =
                 (values[i] * values[i] + values[i]) * values[i];
+
             if (result[i] != expected) {
                 ADD_FAILURE()
                     << "Incorrect result at index " << i
@@ -271,6 +348,7 @@ namespace {
         auto* values = static_cast<float*>(input->data());
         *static_cast<float*>(scale->data()) = 1.5f;
         *static_cast<float*>(bias->data()) = -0.25f;
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = static_cast<float>(i % 17) * 0.125f;
         }
@@ -283,6 +361,7 @@ namespace {
         for (std::size_t i = 0; i < input->numel(); ++i) {
             EXPECT_FLOAT_EQ(result[i], (values[i] * 1.5f - 0.25f) * values[i]);
         }
+
         EXPECT_FALSE(scaled->realized());
         EXPECT_FALSE(shifted->realized());
     }
@@ -303,6 +382,7 @@ namespace {
         );
         auto* values = static_cast<double*>(input->data());
         *static_cast<double*>(scale->data()) = 0.25;
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = static_cast<double>(i % 17) * 0.125;
         }
@@ -315,6 +395,7 @@ namespace {
         for (std::size_t i = 0; i < input->numel(); ++i) {
             EXPECT_DOUBLE_EQ(result[i], (values[i] * 0.25 + 0.25) * values[i]);
         }
+
         EXPECT_FALSE(scaled->realized());
         EXPECT_FALSE(shifted->realized());
     }
@@ -335,9 +416,11 @@ namespace {
         );
         auto* lhs_values = static_cast<float*>(lhs->data());
         auto* rhs_values = static_cast<float*>(rhs->data());
+
         for (std::size_t i = 0; i < lhs->numel(); ++i) {
             lhs_values[i] = static_cast<float>(i + 1) * 0.25f;
         }
+
         for (std::size_t i = 0; i < rhs->numel(); ++i) {
             rhs_values[i] = static_cast<float>(i + 1) * 0.5f;
         }
@@ -353,6 +436,7 @@ namespace {
                 (lhs_values[i] * lhs_values[i] + rhs_values[i % 4]) * lhs_values[i]
             );
         }
+
         EXPECT_FALSE(square->realized());
         EXPECT_FALSE(added->realized());
     }
@@ -363,9 +447,11 @@ namespace {
             ormi::core::Device::cpu(), ormi::core::Shape{118}, ormi::core::DType::float32
         );
         auto* values = static_cast<float*>(storage->data());
+
         for (std::size_t i = 0; i < storage->numel(); ++i) {
             values[i] = static_cast<float>(i % 23) * 0.03125f;
         }
+
         const auto input = std::make_shared<ormi::core::Tensor>(
             storage->buffer(), ormi::core::Shape{2, 3, 17}, ormi::core::DType::float32,
             std::vector<std::int64_t>{}, 64
@@ -376,10 +462,13 @@ namespace {
         const auto mapped = ormi::core::ops::add(ormi::core::ops::mul(input, row), input);
         const auto output = ormi::core::ops::mul(mapped, input);
         const auto* result = static_cast<const float*>(output->data());
+
         for (std::size_t i = 0; i < output->numel(); ++i) {
             const auto x = values[i + 16];
+
             EXPECT_FLOAT_EQ(result[i], (x * values[i % 51] + x) * x) << i;
         }
+
         EXPECT_FALSE(mapped->realized());
     }
 
@@ -393,12 +482,15 @@ namespace {
         );
         auto* values = static_cast<float*>(input->data());
         auto* factors = static_cast<float*>(row->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = static_cast<float>(i % 17) * 0.0625f;
         }
+
         for (std::size_t i = 0; i < row->numel(); ++i) {
             factors[i] = static_cast<float>(i + 1) * 0.03125f;
         }
+
         const auto mapped = ormi::core::ops::add(ormi::core::ops::mul(input, row), input);
         const auto primary = ormi::core::ops::cast(mapped, ormi::core::DType::float64);
         const auto auxiliary = ormi::core::ops::cast(
@@ -407,6 +499,7 @@ namespace {
         const std::array<ormi::core::Tensor*, 1> auxiliaries{auxiliary.get()};
         const std::unordered_set<const ormi::core::Tensor*> boundaries;
         auto expression = ormi::core::runtime::fusion::build(*primary, auxiliaries, boundaries);
+
         ASSERT_TRUE(expression.has_value());
         auto step = ormi::core::runtime::Step::deferred_fusion(
             *primary,
@@ -419,11 +512,14 @@ namespace {
         step.run();
         const auto* actual_primary = static_cast<const double*>(primary->data());
         const auto* actual_auxiliary = static_cast<const double*>(auxiliary->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             const auto expected = values[i] * factors[i % 19] + values[i];
+
             EXPECT_DOUBLE_EQ(actual_primary[i], static_cast<double>(expected)) << i;
             EXPECT_DOUBLE_EQ(actual_auxiliary[i], static_cast<double>(expected * values[i])) << i;
         }
+
         EXPECT_FALSE(mapped->realized());
     }
 
@@ -443,9 +539,11 @@ namespace {
         );
         auto* lhs_values = static_cast<double*>(lhs->data());
         auto* rhs_values = static_cast<double*>(rhs->data());
+
         for (std::size_t i = 0; i < lhs->numel(); ++i) {
             lhs_values[i] = static_cast<double>(i + 1) * 0.25;
         }
+
         rhs_values[0] = 0.5;
         rhs_values[1] = 1.5;
 
@@ -460,6 +558,7 @@ namespace {
                 (lhs_values[i] * lhs_values[i] + rhs_values[i / 4]) * lhs_values[i]
             );
         }
+
         EXPECT_FALSE(square->realized());
         EXPECT_FALSE(added->realized());
     }
@@ -486,12 +585,15 @@ namespace {
         auto* values = static_cast<float*>(input->data());
         auto* row_values = static_cast<float*>(row->data());
         auto* column_values = static_cast<float*>(column->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = static_cast<float>(i % 17) * 0.125f;
         }
+
         for (std::size_t i = 0; i < row->numel(); ++i) {
             row_values[i] = static_cast<float>(i % 11) * 0.0625f;
         }
+
         for (std::size_t i = 0; i < column->numel(); ++i) {
             column_values[i] = static_cast<float>(i % 7) * 0.25f;
         }
@@ -506,6 +608,7 @@ namespace {
                 (values[i] * row_values[i % 513] +
                     column_values[i / 513]) *
                 values[i];
+
             if (result[i] != expected) {
                 ADD_FAILURE()
                     << "Incorrect result at index " << i
@@ -514,6 +617,7 @@ namespace {
                 break;
             }
         }
+
         EXPECT_FALSE(scaled->realized());
         EXPECT_FALSE(shifted->realized());
     }
@@ -535,9 +639,11 @@ namespace {
         );
         auto* values = static_cast<Float16*>(input->data());
         auto* row_values = static_cast<Float16*>(row->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = Float16{static_cast<float>(i % 17) * 0.03125f};
         }
+
         for (std::size_t i = 0; i < row->numel(); ++i) {
             row_values[i] =
                 Float16{static_cast<float>(i % 11) * 0.015625f};
@@ -552,12 +658,14 @@ namespace {
             const auto expected =
                 (values[i] * values[i] + row_values[i % 513]) *
                 values[i];
+
             if (result[i].bits() != expected.bits()) {
                 ADD_FAILURE()
                     << "Incorrect Float16 result at index " << i;
                 break;
             }
         }
+
         EXPECT_FALSE(square->realized());
         EXPECT_FALSE(added->realized());
     }
@@ -578,9 +686,11 @@ namespace {
         );
         auto* lhs_values = static_cast<float*>(lhs->data());
         auto* rhs_values = static_cast<float*>(rhs->data());
+
         for (std::size_t i = 0; i < lhs->numel(); ++i) {
             lhs_values[i] = static_cast<float>(i + 1) * 0.125f;
         }
+
         for (std::size_t i = 0; i < rhs->numel(); ++i) {
             rhs_values[i] = static_cast<float>(i + 1) * 0.25f;
         }
@@ -596,6 +706,7 @@ namespace {
                 (lhs_values[i] * lhs_values[i] + rhs_values[i % 12]) * lhs_values[i]
             );
         }
+
         EXPECT_FALSE(square->realized());
         EXPECT_FALSE(added->realized());
     }
@@ -616,9 +727,11 @@ namespace {
         );
         auto* lhs_values = static_cast<float*>(lhs->data());
         auto* rhs_values = static_cast<float*>(rhs->data());
+
         for (std::size_t i = 0; i < lhs->numel(); ++i) {
             lhs_values[i] = static_cast<float>(i + 1) * 0.25f;
         }
+
         rhs_values[0] = 0.5f;
         rhs_values[1] = 1.0f;
         rhs_values[2] = 1.5f;
@@ -633,6 +746,7 @@ namespace {
                 for (std::size_t column = 0; column < 4; ++column) {
                     const auto output_index = batch * 12 + row * 4 + column;
                     const auto lhs_value = lhs_values[batch * 4 + column];
+
                     EXPECT_FLOAT_EQ(
                         result[output_index],
                         (lhs_value * lhs_value + rhs_values[row]) * lhs_value
@@ -640,6 +754,7 @@ namespace {
                 }
             }
         }
+
         EXPECT_FALSE(square->realized());
         EXPECT_FALSE(added->realized());
     }
@@ -700,9 +815,11 @@ namespace {
                 const auto expected = std::sin(
                     (lhs_data[row] + rhs_data[column]) * lhs_data[row]
                 );
+
                 EXPECT_FLOAT_EQ(data[row * 3 + column], expected);
             }
         }
+
         EXPECT_FALSE(sum->realized());
         EXPECT_TRUE(output->realized());
     }
@@ -741,6 +858,7 @@ namespace {
             ormi::core::DType::float32
         );
         auto* base_data = static_cast<float*>(base->data());
+
         for (std::size_t i = 0; i < base->numel(); ++i) {
             base_data[i] = static_cast<float>(i + 1);
         }
@@ -754,6 +872,7 @@ namespace {
         for (std::size_t i = 0; i < output->numel(); ++i) {
             EXPECT_FLOAT_EQ(data[i], std::sin(logical[i] * logical[i] + logical[i]));
         }
+
         EXPECT_FALSE(square->realized());
     }
 
@@ -773,6 +892,7 @@ namespace {
         );
         auto* base_data = static_cast<float*>(base->data());
         auto* linear_data = static_cast<float*>(linear->data());
+
         for (std::size_t i = 0; i < base->numel(); ++i) {
             base_data[i] = static_cast<float>(i + 1);
             linear_data[i] = static_cast<float>(i) * 0.25f;
@@ -793,6 +913,7 @@ namespace {
                     const auto input_index =
                         axis1 * 12 + axis2 * 4 + axis0;
                     const auto value = base_data[input_index];
+
                     EXPECT_FLOAT_EQ(
                         data[output_index],
                         std::sin(
@@ -802,6 +923,7 @@ namespace {
                 }
             }
         }
+
         EXPECT_FALSE(square->realized());
     }
 
@@ -815,6 +937,7 @@ namespace {
             ormi::core::DType::float32
         );
         auto* base_data = static_cast<float*>(base->data());
+
         for (std::size_t i = 0; i < base->numel(); ++i) {
             base_data[i] = static_cast<float>(i) * 0.001f;
         }
@@ -828,12 +951,14 @@ namespace {
             for (std::size_t column = 0; column < 35; ++column) {
                 const auto output_index = row * 35 + column;
                 const auto input_index = column * 33 + row;
+
                 EXPECT_FLOAT_EQ(
                     data[output_index],
                     std::sin(base_data[input_index] * 2.0f)
                 );
             }
         }
+
         EXPECT_FALSE(sum->realized());
     }
 
@@ -859,6 +984,7 @@ namespace {
             EXPECT_FLOAT_EQ(data[i], std::sin(4.0f));
             EXPECT_FLOAT_EQ(data[i + 3], std::sin(8.0f));
         }
+
         EXPECT_FALSE(sum->realized());
     }
 
@@ -887,8 +1013,10 @@ namespace {
             const auto rounded_square = input_data[i] * input_data[i];
             const auto rounded_sum = rounded_square + input_data[i];
             const auto expected = Float16{std::sin(static_cast<float>(rounded_sum))};
+
             EXPECT_EQ(data[i].bits(), expected.bits());
         }
+
         EXPECT_FALSE(square->realized());
         EXPECT_FALSE(sum->realized());
     }
@@ -909,9 +1037,11 @@ namespace {
             ormi::core::DType::float16
         );
         auto* values = static_cast<Float16*>(input->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = Float16{static_cast<float>(static_cast<int>(i % 17) - 8) * 0.125f};
         }
+
         values[0] = Float16::from_bits(0x7d01u);
         values[1] = Float16::from_bits(0xfd01u);
         values[2] = Float16{std::numeric_limits<float>::infinity()};
@@ -925,8 +1055,10 @@ namespace {
 
         for (std::size_t i = 0; i < output->numel(); ++i) {
             const auto expected = (values[i] * values[i] + values[i]) * values[i];
+
             EXPECT_EQ(result[i].bits(), expected.bits()) << "index " << i;
         }
+
         EXPECT_FALSE(square->realized());
         EXPECT_FALSE(added->realized());
     }
@@ -952,11 +1084,13 @@ namespace {
             ormi::core::DType::float16
         );
         auto* values = static_cast<Float16*>(input->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = Float16{
                 static_cast<float>(static_cast<int>(i % 17) - 8) * 0.125f
             };
         }
+
         const auto factor = Float16{0.3333f};
         *static_cast<Float16*>(scale->data()) = factor;
 
@@ -967,8 +1101,10 @@ namespace {
 
         for (std::size_t i = 0; i < output->numel(); ++i) {
             const auto expected = (values[i] * factor + factor) * values[i];
+
             EXPECT_EQ(result[i].bits(), expected.bits()) << "index " << i;
         }
+
         EXPECT_FALSE(scaled->realized());
         EXPECT_FALSE(shifted->realized());
     }
@@ -995,11 +1131,13 @@ namespace {
         );
         auto* lhs_values = static_cast<Float16*>(lhs->data());
         auto* rhs_values = static_cast<Float16*>(rhs->data());
+
         for (std::size_t i = 0; i < lhs->numel(); ++i) {
             lhs_values[i] = Float16{
                 static_cast<float>(static_cast<int>(i % 19) - 9) * 0.03125f
             };
         }
+
         for (std::size_t i = 0; i < rhs->numel(); ++i) {
             rhs_values[i] = Float16{static_cast<float>(i + 1) * 0.015625f};
         }
@@ -1012,8 +1150,10 @@ namespace {
         for (std::size_t i = 0; i < output->numel(); ++i) {
             const auto expected =
                 (lhs_values[i] * lhs_values[i] + rhs_values[i % 17]) * lhs_values[i];
+
             EXPECT_EQ(result[i].bits(), expected.bits()) << "index " << i;
         }
+
         EXPECT_FALSE(square->realized());
         EXPECT_FALSE(added->realized());
     }
@@ -1040,9 +1180,11 @@ namespace {
         );
         auto* lhs_values = static_cast<Float16*>(lhs->data());
         auto* rhs_values = static_cast<Float16*>(rhs->data());
+
         for (std::size_t i = 0; i < lhs->numel(); ++i) {
             lhs_values[i] = Float16{static_cast<float>(i % 17) * 0.03125f};
         }
+
         for (std::size_t i = 0; i < rhs->numel(); ++i) {
             rhs_values[i] = Float16{static_cast<float>(i + 1) * 0.125f};
         }
@@ -1055,8 +1197,10 @@ namespace {
         for (std::size_t i = 0; i < output->numel(); ++i) {
             const auto expected =
                 (lhs_values[i] * lhs_values[i] + rhs_values[i / 17]) * lhs_values[i];
+
             EXPECT_EQ(result[i].bits(), expected.bits()) << "index " << i;
         }
+
         EXPECT_FALSE(square->realized());
         EXPECT_FALSE(added->realized());
     }
@@ -1083,9 +1227,11 @@ namespace {
         );
         auto* lhs_values = static_cast<Float16*>(lhs->data());
         auto* rhs_values = static_cast<Float16*>(rhs->data());
+
         for (std::size_t i = 0; i < lhs->numel(); ++i) {
             lhs_values[i] = Float16{static_cast<float>(i % 23) * 0.015625f};
         }
+
         for (std::size_t i = 0; i < rhs->numel(); ++i) {
             rhs_values[i] = Float16{static_cast<float>(i % 13) * 0.03125f};
         }
@@ -1098,8 +1244,10 @@ namespace {
         for (std::size_t i = 0; i < output->numel(); ++i) {
             const auto expected =
                 (lhs_values[i] * lhs_values[i] + rhs_values[i % 51]) * lhs_values[i];
+
             EXPECT_EQ(result[i].bits(), expected.bits()) << "index " << i;
         }
+
         EXPECT_FALSE(square->realized());
         EXPECT_FALSE(added->realized());
     }
@@ -1122,9 +1270,11 @@ namespace {
         );
         auto* lhs_values = static_cast<Float16*>(lhs->data());
         auto* rhs_values = static_cast<Float16*>(rhs->data());
+
         for (std::size_t i = 0; i < lhs->numel(); ++i) {
             lhs_values[i] = Float16{static_cast<float>(i % 17) * 0.03125f};
         }
+
         for (std::size_t i = 0; i < rhs->numel(); ++i) {
             rhs_values[i] = Float16{static_cast<float>(i + 1) * 0.015625f};
         }
@@ -1137,6 +1287,7 @@ namespace {
         for (std::size_t i = 0; i < output->numel(); ++i) {
             const auto expected =
                 (lhs_values[i] * lhs_values[i] + rhs_values[i % 17]) * lhs_values[i];
+
             EXPECT_EQ(result[i].bits(), expected.bits());
         }
     }
@@ -1153,9 +1304,11 @@ namespace {
             ormi::core::DType::float16
         );
         auto* values = static_cast<Float16*>(input->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = Float16{static_cast<float>(i) * 0.03125f};
         }
+
         const auto square = ormi::core::ops::mul(input, input);
         const auto added = ormi::core::ops::add(square, input);
         const auto output = ormi::core::ops::mul(added, input);
@@ -1163,6 +1316,7 @@ namespace {
 
         for (std::size_t i = 0; i < output->numel(); ++i) {
             const auto expected = (values[i] * values[i] + values[i]) * values[i];
+
             EXPECT_EQ(result[i].bits(), expected.bits());
         }
     }
@@ -1183,6 +1337,7 @@ namespace {
             ormi::core::DType::float16
         );
         auto* values = static_cast<Float16*>(input->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = Float16{
                 static_cast<float>(static_cast<int>(i % 17) - 8) * 0.03125f
@@ -1196,9 +1351,11 @@ namespace {
         const auto result = *static_cast<const Float16*>(output->data());
 
         float expected = 0.0f;
+
         for (const auto value : std::span<const Float16>(values, input->numel())) {
             expected += static_cast<float>((value * value + value) * value);
         }
+
         EXPECT_EQ(result.bits(), Float16{expected}.bits());
         EXPECT_FALSE(square->realized());
         EXPECT_FALSE(added->realized());
@@ -1221,6 +1378,7 @@ namespace {
             ormi::core::DType::float16
         );
         auto* values = static_cast<Float16*>(input->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = Float16{
                 static_cast<float>(static_cast<int>(i % 13) - 6) * 0.03125f
@@ -1234,12 +1392,15 @@ namespace {
 
         for (std::size_t row = 0; row < 2; ++row) {
             float expected = 0.0f;
+
             for (std::size_t column = 0; column < 65; ++column) {
                 const auto value = values[row * 65 + column];
                 expected += static_cast<float>(value * value + value);
             }
+
             EXPECT_EQ(result[row].bits(), Float16{expected / 65.0f}.bits());
         }
+
         EXPECT_FALSE(square->realized());
         EXPECT_FALSE(mapped->realized());
     }
@@ -1255,6 +1416,7 @@ namespace {
             ormi::core::DType::float16
         );
         auto* values = static_cast<Float16*>(input->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = Float16{
                 static_cast<float>(static_cast<int>(i % 11) - 5) *
@@ -1269,15 +1431,18 @@ namespace {
 
         for (std::size_t column = 0; column < 70; ++column) {
             float expected = 0.0f;
+
             for (std::size_t row = 0; row < 5; ++row) {
                 const auto value = values[row * 70 + column];
                 expected += static_cast<float>(value * value + value);
             }
+
             EXPECT_EQ(
                 result[column].bits(),
                 Float16{expected / 5.0f}.bits()
             );
         }
+
         EXPECT_FALSE(square->realized());
         EXPECT_FALSE(mapped->realized());
     }
@@ -1294,6 +1459,7 @@ namespace {
             ormi::core::DType::float32
         );
         auto* values = static_cast<float*>(input->data());
+
         for (std::size_t row = 0; row < rows; ++row) {
             for (std::size_t column = 0; column < columns; ++column) {
                 values[row * columns + column] =
@@ -1310,12 +1476,15 @@ namespace {
 
         for (std::size_t column = 0; column < columns; ++column) {
             float expected = 0.0f;
+
             for (std::size_t row = 0; row < rows; ++row) {
                 const auto value = values[row * columns + column];
                 expected += value * value + value;
             }
+
             EXPECT_NEAR(result[column], expected, 1.0e-5f);
         }
+
         EXPECT_FALSE(mapped->realized());
     }
 
@@ -1473,6 +1642,7 @@ namespace {
             ormi::core::DType::float32
         );
         auto* values = static_cast<float*>(base->data());
+
         for (std::size_t j = 0; j < middle; ++j) {
             for (std::size_t k = 0; k < last; ++k) {
                 for (std::size_t i = 0; i < first; ++i) {
@@ -1497,9 +1667,11 @@ namespace {
                     static_cast<float>(k) * 0.001f;
                 const auto expected =
                     static_cast<float>(middle) * (value * value + value);
+
                 EXPECT_NEAR(result[i * last + k], expected, 1e-4f);
             }
         }
+
         EXPECT_FALSE(square->realized());
         EXPECT_FALSE(mapped->realized());
     }
@@ -1641,6 +1813,7 @@ namespace {
         auto* base_values = static_cast<double*>(base->data());
         auto* contiguous_values =
             static_cast<double*>(contiguous->data());
+
         for (std::size_t row = 0; row < rows; ++row) {
             for (std::size_t column = 0; column < columns; ++column) {
                 base_values[column * rows + row] =
@@ -1666,6 +1839,7 @@ namespace {
         const auto result = *static_cast<const double*>(output->data());
 
         double expected = 0.0;
+
         for (std::size_t row = 0; row < rows; ++row) {
             for (std::size_t column = 0; column < columns; ++column) {
                 const auto lhs = base_values[column * rows + row];
@@ -1674,6 +1848,7 @@ namespace {
                 expected += (lhs * lhs + rhs) * lhs;
             }
         }
+
         expected /= static_cast<double>(rows * columns);
 
         EXPECT_NEAR(result, expected, 1.0e-10);
@@ -1703,11 +1878,13 @@ namespace {
             ormi::core::DType::float16
         );
         auto* values = static_cast<Float16*>(input->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = Float16{
                 static_cast<float>(static_cast<int>(i % 11) - 5) * 0.03125f
             };
         }
+
         const auto factor = Float16{0.5f};
         *static_cast<Float16*>(scale->data()) = factor;
 
@@ -1717,9 +1894,11 @@ namespace {
         const auto result = *static_cast<const Float16*>(output->data());
 
         float expected = 0.0f;
+
         for (const auto value : std::span<const Float16>(values, input->numel())) {
             expected += static_cast<float>(value * factor + factor);
         }
+
         EXPECT_EQ(result.bits(), Float16{expected}.bits());
         EXPECT_FALSE(scaled->realized());
         EXPECT_FALSE(mapped->realized());
@@ -1737,6 +1916,7 @@ namespace {
             ormi::core::DType::float16
         );
         auto* values = static_cast<Float16*>(input->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = Float16{static_cast<float>(i % 8) * 0.03125f};
         }
@@ -1747,9 +1927,11 @@ namespace {
         const auto result = *static_cast<const Float16*>(output->data());
 
         float expected = 0.0f;
+
         for (const auto value : std::span<const Float16>(values, input->numel())) {
             expected += static_cast<float>(value * value + value);
         }
+
         EXPECT_EQ(result.bits(), Float16{expected}.bits());
         EXPECT_FALSE(mapped->realized());
     }
@@ -1767,6 +1949,7 @@ namespace {
         const auto value = *static_cast<const float*>(output->data());
         const float input_values[]{-0.5f, 0.0f, 0.5f, 1.0f};
         float expected = 0.0f;
+
         for (const auto input_value : input_values) {
             expected += std::sin(input_value * input_value + input_value);
         }
@@ -1799,6 +1982,7 @@ namespace {
         const auto output = ormi::core::ops::sum(mapped);
 
         float expected = 0.0f;
+
         for (const auto value : std::span<const Float16>(values, 4)) {
             const auto rounded_square = value * value;
             const auto rounded_sum = rounded_square + value;
@@ -1806,6 +1990,7 @@ namespace {
         }
 
         const auto result = *static_cast<const Float16*>(output->data());
+
         EXPECT_EQ(result.bits(), Float16{expected}.bits());
         EXPECT_FALSE(mapped->realized());
     }
@@ -1873,10 +2058,12 @@ namespace {
         );
         auto* values = static_cast<float*>(input->data());
         float expected = 0.0f;
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = static_cast<float>(i + 1) * 0.125f;
             expected += values[i] * values[i] + values[i];
         }
+
         const auto square = ormi::core::ops::mul(input, input);
         const auto mapped = ormi::core::ops::add(square, input);
         const auto output = ormi::core::ops::sum(mapped);
@@ -1898,22 +2085,28 @@ namespace {
             ormi::core::DType::float64
         );
         auto* values = static_cast<double*>(input->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = static_cast<double>(i + 1) * 0.25;
         }
+
         const auto square = ormi::core::ops::mul(input, input);
         const auto mapped = ormi::core::ops::add(square, input);
         const auto output = ormi::core::ops::mean(mapped, {1});
 
         const auto* result = static_cast<const double*>(output->data());
+
         for (std::size_t row = 0; row < 2; ++row) {
             double expected = 0.0;
+
             for (std::size_t column = 0; column < 33; ++column) {
                 const auto value = values[row * 33 + column];
                 expected += value * value + value;
             }
+
             EXPECT_NEAR(result[row], expected / 33.0, 1.0e-12);
         }
+
         EXPECT_FALSE(mapped->realized());
     }
 
@@ -1929,6 +2122,7 @@ namespace {
             ormi::core::DType::float32
         );
         auto* values = static_cast<float*>(input->data());
+
         for (std::size_t row = 0; row < rows; ++row) {
             for (std::size_t column = 0; column < columns; ++column) {
                 values[row * columns + column] =
@@ -1945,12 +2139,15 @@ namespace {
 
         for (std::size_t row = 0; row < rows; ++row) {
             float expected = 0.0f;
+
             for (std::size_t column = 0; column < columns; ++column) {
                 const auto value = values[row * columns + column];
                 expected += value * value + value;
             }
+
             EXPECT_NEAR(result[row], expected, 1.0e-5f);
         }
+
         EXPECT_FALSE(mapped->realized());
     }
 
@@ -1967,6 +2164,7 @@ namespace {
             ormi::core::DType::float16
         );
         auto* values = static_cast<Float16*>(input->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = Float16{0.5f};
         }
@@ -1977,9 +2175,11 @@ namespace {
         const auto* result = static_cast<const Float16*>(output->data());
 
         const Float16 expected{384.75f};
+
         for (std::size_t row = 0; row < rows; ++row) {
             EXPECT_EQ(result[row].bits(), expected.bits());
         }
+
         EXPECT_FALSE(mapped->realized());
     }
 
@@ -2080,6 +2280,7 @@ namespace {
             ormi::core::DType::float16
         );
         auto* values = static_cast<Float16*>(input->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = Float16{
                 static_cast<float>(static_cast<int>(i % 17) - 8) * 0.03125f
@@ -2097,6 +2298,7 @@ namespace {
 
         const auto result = *static_cast<const float*>(output->data());
         float expected = 0.0f;
+
         for (const auto value : std::span<const Float16>(values, input->numel())) {
             expected += static_cast<float>(value * value + value);
         }
@@ -2122,6 +2324,7 @@ namespace {
             ormi::core::DType::float32
         );
         auto* values = static_cast<float*>(input->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = static_cast<float>(i) * 0.013f - 0.4f;
         }
@@ -2139,8 +2342,10 @@ namespace {
 
         for (std::size_t i = 0; i < output->numel(); ++i) {
             const Float16 value{values[i]};
+
             EXPECT_FLOAT_EQ(result[i], static_cast<float>(value * value));
         }
+
         EXPECT_FALSE(narrowed->realized());
         EXPECT_FALSE(square->realized());
     }
@@ -2203,9 +2408,11 @@ namespace {
             ormi::core::DType::float32
         );
         auto* values = static_cast<float*>(input->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = static_cast<float>(i + 1);
         }
+
         const auto square = ormi::core::ops::mul(input, input);
         const auto mapped = ormi::core::ops::add(square, input);
         const auto output = ormi::core::ops::sum(mapped, {0, 2}, true);
@@ -2243,14 +2450,17 @@ namespace {
         auto* input_values = static_cast<float*>(input->data());
         auto* row_values = static_cast<float*>(row->data());
         auto* column_values = static_cast<float*>(column->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             input_values[i] = static_cast<float>(
                 static_cast<int>(i % 17) - 8
             ) * 0.03125f;
         }
+
         for (std::size_t i = 0; i < last; ++i) {
             row_values[i] = static_cast<float>(i % 5 + 1) * 0.125f;
         }
+
         for (std::size_t i = 0; i < middle; ++i) {
             column_values[i] = static_cast<float>(
                 static_cast<int>(i) - 2
@@ -2267,6 +2477,7 @@ namespace {
 
         for (std::size_t j = 0; j < middle; ++j) {
             double expected = 0.0;
+
             for (std::size_t i = 0; i < first; ++i) {
                 for (std::size_t k = 0; k < last; ++k) {
                     const auto input_index =
@@ -2277,9 +2488,12 @@ namespace {
                     expected += shifted_value * shifted_value;
                 }
             }
+
             expected /= static_cast<double>(first * last);
+
             EXPECT_NEAR(result[j], static_cast<float>(expected), 1.0e-6f);
         }
+
         EXPECT_FALSE(shifted->realized());
         EXPECT_FALSE(mapped->realized());
     }
@@ -2299,9 +2513,11 @@ namespace {
             ormi::core::DType::float32
         );
         auto* base_values = static_cast<float*>(base->data());
+
         for (std::size_t i = 0; i < base->numel(); ++i) {
             base_values[i] = static_cast<float>(i + 1);
         }
+
         auto* rhs_values = static_cast<float*>(rhs->data());
         rhs_values[0] = 0.5f;
         rhs_values[1] = 1.0f;
@@ -2330,6 +2546,7 @@ namespace {
             ormi::core::DType::float32
         );
         auto* values = static_cast<float*>(base->data());
+
         for (std::size_t column = 0; column < columns; ++column) {
             for (std::size_t row = 0; row < rows; ++row) {
                 values[column * rows + row] =
@@ -2348,12 +2565,15 @@ namespace {
 
         for (std::size_t row = 0; row < rows; ++row) {
             float expected = 0.0f;
+
             for (std::size_t column = 0; column < columns; ++column) {
                 const auto value = values[column * rows + row];
                 expected += value * value + value;
             }
+
             EXPECT_NEAR(result[row], expected, 1.0e-5f);
         }
+
         EXPECT_FALSE(mapped->realized());
     }
 
@@ -2369,6 +2589,7 @@ namespace {
             ormi::core::DType::float64
         );
         auto* values = static_cast<double*>(base->data());
+
         for (std::size_t column = 0; column < columns; ++column) {
             for (std::size_t row = 0; row < rows; ++row) {
                 values[column * rows + row] =
@@ -2387,13 +2608,17 @@ namespace {
 
         for (std::size_t row = 0; row < rows; ++row) {
             double expected = 0.0;
+
             for (std::size_t column = 0; column < columns; ++column) {
                 const auto value = values[column * rows + row];
                 expected += value * value + value;
             }
+
             expected /= static_cast<double>(columns);
+
             EXPECT_NEAR(result[row], expected, 1.0e-12);
         }
+
         EXPECT_FALSE(mapped->realized());
     }
 
@@ -2407,6 +2632,7 @@ namespace {
             ormi::core::DType::float32
         );
         auto* values = static_cast<float*>(base->data());
+
         for (std::size_t i = 0; i < base->numel(); ++i) {
             values[i] = static_cast<float>(i + 1) * 0.1f;
         }
@@ -2422,6 +2648,7 @@ namespace {
 
         for (std::size_t axis1 = 0; axis1 < 2; ++axis1) {
             float expected = 0.0f;
+
             for (std::size_t axis0 = 0; axis0 < 4; ++axis0) {
                 for (std::size_t axis2 = 0; axis2 < 3; ++axis2) {
                     const auto input_index =
@@ -2430,8 +2657,10 @@ namespace {
                     expected += value * value + value;
                 }
             }
+
             EXPECT_FLOAT_EQ(result[axis1], expected);
         }
+
         EXPECT_FALSE(mapped->realized());
     }
 
@@ -2479,9 +2708,11 @@ namespace {
         }
 
         auto output = inputs[0];
+
         for (std::size_t input = 1; input < inputs.size(); ++input) {
             output = ormi::core::ops::add(output, inputs[input]);
         }
+
         const auto* result = static_cast<const float*>(output->data());
 
         EXPECT_FLOAT_EQ(result[0], 45.0f);
@@ -2510,6 +2741,7 @@ namespace {
         }
 
         std::array<std::thread, workers> threads;
+
         for (std::size_t worker = 0; worker < workers; ++worker) {
             threads[worker] = std::thread([&, worker] {
                 try {
@@ -2519,6 +2751,7 @@ namespace {
                 }
             });
         }
+
         for (auto& thread : threads) {
             thread.join();
         }
@@ -2527,10 +2760,12 @@ namespace {
             if (errors[worker]) {
                 std::rethrow_exception(errors[worker]);
             }
+
             const auto* result =
                 static_cast<const float*>(outputs[worker]->data());
             const auto first = static_cast<float>(worker + 1);
             const auto second = static_cast<float>(worker + 2);
+
             EXPECT_FLOAT_EQ(result[0], first * first + first);
             EXPECT_FLOAT_EQ(result[1], second * second + second);
         }
@@ -2565,9 +2800,11 @@ namespace {
         );
         auto* lhs_values = static_cast<float*>(lhs->data());
         auto* rhs_values = static_cast<float*>(rhs->data());
+
         for (std::size_t i = 0; i < lhs->numel(); ++i) {
             lhs_values[i] = static_cast<float>(i + 1) * 0.25f;
         }
+
         for (std::size_t i = 0; i < rhs->numel(); ++i) {
             rhs_values[i] = static_cast<float>(i + 1) * 0.5f;
         }
@@ -2589,6 +2826,7 @@ namespace {
                 (lhs_values[i] * lhs_values[i] + rhs_values[i % 8]) * lhs_values[i]
             );
         }
+
         EXPECT_FALSE(square->realized());
         EXPECT_FALSE(added->realized());
     }
@@ -2604,10 +2842,12 @@ namespace {
         );
         auto* values = static_cast<float*>(input->data());
         float expected = 0.0f;
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = static_cast<float>(i + 1) * 0.125f;
             expected += values[i] * values[i] + values[i];
         }
+
         const auto square = ormi::core::ops::mul(input, input);
         const auto mapped = ormi::core::ops::add(square, input);
         const auto output = ormi::core::ops::sum(mapped);
@@ -2640,9 +2880,11 @@ namespace {
             ormi::core::DType::float16
         );
         auto* values = static_cast<Float16*>(input->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = Float16{static_cast<float>(i) * 0.03125f};
         }
+
         const auto square = ormi::core::ops::mul(input, input);
         const auto added = ormi::core::ops::add(square, input);
         const auto output = ormi::core::ops::mul(added, input);
@@ -2656,6 +2898,7 @@ namespace {
 
         for (std::size_t i = 0; i < output->numel(); ++i) {
             const auto expected = (values[i] * values[i] + values[i]) * values[i];
+
             EXPECT_EQ(result[i].bits(), expected.bits());
         }
     }
@@ -2676,11 +2919,13 @@ namespace {
             ormi::core::DType::float16
         );
         auto* values = static_cast<Float16*>(input->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             values[i] = Float16{
                 static_cast<float>(static_cast<int>(i % 17) - 8) * 0.03125f
             };
         }
+
         const auto square = ormi::core::ops::mul(input, input);
         const auto added = ormi::core::ops::add(square, input);
         const auto mapped = ormi::core::ops::mul(added, input);
@@ -2694,9 +2939,11 @@ namespace {
         }
 
         float expected = 0.0f;
+
         for (const auto value : std::span<const Float16>(values, input->numel())) {
             expected += static_cast<float>((value * value + value) * value);
         }
+
         EXPECT_EQ(result->bits(), Float16{expected}.bits());
         EXPECT_FALSE(mapped->realized());
     }
@@ -2723,12 +2970,15 @@ namespace {
         );
         auto* lhs_values = static_cast<Float16*>(lhs->data());
         auto* rhs_values = static_cast<Float16*>(rhs->data());
+
         for (std::size_t i = 0; i < lhs->numel(); ++i) {
             lhs_values[i] = Float16{static_cast<float>(i % 17) * 0.03125f};
         }
+
         for (std::size_t i = 0; i < rhs->numel(); ++i) {
             rhs_values[i] = Float16{static_cast<float>(i + 1) * 0.015625f};
         }
+
         const auto square = ormi::core::ops::mul(lhs, lhs);
         const auto added = ormi::core::ops::add(square, rhs);
         const auto output = ormi::core::ops::mul(added, lhs);
@@ -2743,8 +2993,10 @@ namespace {
         for (std::size_t i = 0; i < output->numel(); ++i) {
             const auto expected =
                 (lhs_values[i] * lhs_values[i] + rhs_values[i % 17]) * lhs_values[i];
+
             EXPECT_EQ(result[i].bits(), expected.bits());
         }
+
         EXPECT_FALSE(square->realized());
         EXPECT_FALSE(added->realized());
     }

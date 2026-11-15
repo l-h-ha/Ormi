@@ -26,6 +26,7 @@ namespace ormi::platform {
                 LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR |
                     LOAD_LIBRARY_SEARCH_DEFAULT_DIRS
             );
+
             if (!handle) {
                 handle = LoadLibraryExW(
                     absolute.c_str(),
@@ -33,6 +34,7 @@ namespace ormi::platform {
                     LOAD_WITH_ALTERED_SEARCH_PATH
                 );
             }
+
             return handle;
         }
     }
@@ -64,9 +66,11 @@ namespace ormi::platform {
             if (handle_) {
                 FreeLibrary(reinterpret_cast<HMODULE>(handle_));
             }
+
             handle_ = other.handle_;
             other.handle_ = nullptr;
         }
+
         return *this;
     }
 
@@ -76,12 +80,14 @@ namespace ormi::platform {
             reinterpret_cast<HMODULE>(handle_),
             owned.c_str()
         ));
+
         if (!result) {
             ORMI_THROW(
                 jitError,
                 "Shared library does not export symbol: " + owned
             );
         }
+
         return result;
     }
 
@@ -94,6 +100,7 @@ namespace ormi::platform {
         std::string_view stem
     ) {
         HMODULE module = nullptr;
+
         if (!GetModuleHandleExW(
             GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
                 GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
@@ -109,6 +116,7 @@ namespace ormi::platform {
             path.data(),
             static_cast<DWORD>(path.size())
         );
+
         if (size == 0 || size >= path.size()) {
             ORMI_THROW(jitError, "Cannot locate the ORMI core module path.");
         }

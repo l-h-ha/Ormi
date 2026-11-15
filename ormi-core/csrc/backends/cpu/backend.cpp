@@ -46,7 +46,8 @@ namespace ormi::backends::cpu {
                 {.supports = jit::supports,
                  .prepare = jit::prepare,
                  .prepare_many = jit::prepare_many,
-                 .execute = jit::execute},
+                 .execute = jit::execute,
+                 .max_operations = 256},
             .recording = {.record = nullptr, .replay = nullptr, .release = nullptr}
         };
     }

@@ -20,6 +20,7 @@ namespace ormi::backends::cpu {
                     } else {
                         ORMI_THROW(DTypeError, "CPU rsqrt requires a floating-point tensor.");
                     }
+
                     return;
                 case core::ops::UnaryOp::abs:
                     if constexpr (std::is_floating_point_v<T>) {
@@ -27,6 +28,7 @@ namespace ormi::backends::cpu {
                     } else {
                         ORMI_THROW(DTypeError, "CPU abs requires a floating-point tensor.");
                     }
+
                     return;
                 case core::ops::UnaryOp::sign:
                     if constexpr (std::is_floating_point_v<T>) {
@@ -36,6 +38,7 @@ namespace ormi::backends::cpu {
                     } else {
                         ORMI_THROW(DTypeError, "CPU sign requires a floating-point tensor.");
                     }
+
                     return;
                 case core::ops::UnaryOp::positive:
                     if constexpr (std::is_floating_point_v<T>) {
@@ -45,6 +48,7 @@ namespace ormi::backends::cpu {
                     } else {
                         ORMI_THROW(DTypeError, "CPU positive requires a floating-point tensor.");
                     }
+
                     return;
                 case core::ops::UnaryOp::relu:
                     if constexpr (std::is_floating_point_v<T>) {
@@ -52,6 +56,7 @@ namespace ormi::backends::cpu {
                     } else {
                         ORMI_THROW(DTypeError, "CPU relu requires a floating-point tensor.");
                     }
+
                     return;
                 case core::ops::UnaryOp::tanh:
                     if constexpr (std::is_floating_point_v<T>) {
@@ -59,6 +64,7 @@ namespace ormi::backends::cpu {
                     } else {
                         ORMI_THROW(DTypeError, "CPU tanh requires a floating-point tensor.");
                     }
+
                     return;
                 case core::ops::UnaryOp::sigmoid:
                     if constexpr (std::is_floating_point_v<T>) {
@@ -69,6 +75,7 @@ namespace ormi::backends::cpu {
                     } else {
                         ORMI_THROW(DTypeError, "CPU sigmoid requires a floating-point tensor.");
                     }
+
                     return;
                 case core::ops::UnaryOp::softplus:
                     if constexpr (std::is_floating_point_v<T>) {
@@ -79,6 +86,7 @@ namespace ormi::backends::cpu {
                     } else {
                         ORMI_THROW(DTypeError, "CPU softplus requires a floating-point tensor.");
                     }
+
                     return;
                 case core::ops::UnaryOp::erf:
                     if constexpr (std::is_floating_point_v<T>) {
@@ -86,6 +94,7 @@ namespace ormi::backends::cpu {
                     } else {
                         ORMI_THROW(DTypeError, "CPU erf requires a floating-point tensor.");
                     }
+
                     return;
                 case core::ops::UnaryOp::log1p:
                     if constexpr (std::is_floating_point_v<T>) {
@@ -93,6 +102,7 @@ namespace ormi::backends::cpu {
                     } else {
                         ORMI_THROW(DTypeError, "CPU log1p requires a floating-point tensor.");
                     }
+
                     return;
                 case core::ops::UnaryOp::expm1:
                     if constexpr (std::is_floating_point_v<T>) {
@@ -100,6 +110,7 @@ namespace ormi::backends::cpu {
                     } else {
                         ORMI_THROW(DTypeError, "CPU expm1 requires a floating-point tensor.");
                     }
+
                     return;
                 case core::ops::UnaryOp::neg:
                     unary<T>(out, input, [](T value) { return -value; });
@@ -110,6 +121,7 @@ namespace ormi::backends::cpu {
                     } else {
                         ORMI_THROW(DTypeError, "CPU exp requires a floating-point tensor.");
                     }
+
                     return;
                 case core::ops::UnaryOp::log:
                     if constexpr (std::is_floating_point_v<T>) {
@@ -117,6 +129,7 @@ namespace ormi::backends::cpu {
                     } else {
                         ORMI_THROW(DTypeError, "CPU log requires a floating-point tensor.");
                     }
+
                     return;
                 case core::ops::UnaryOp::sin:
                     if constexpr (std::is_floating_point_v<T>) {
@@ -124,6 +137,7 @@ namespace ormi::backends::cpu {
                     } else {
                         ORMI_THROW(DTypeError, "CPU sin requires a floating-point tensor.");
                     }
+
                     return;
                 case core::ops::UnaryOp::cos:
                     if constexpr (std::is_floating_point_v<T>) {
@@ -131,6 +145,7 @@ namespace ormi::backends::cpu {
                     } else {
                         ORMI_THROW(DTypeError, "CPU cos requires a floating-point tensor.");
                     }
+
                     return;
             }
 

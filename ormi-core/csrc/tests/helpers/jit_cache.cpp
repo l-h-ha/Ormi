@@ -32,6 +32,7 @@ int main(int argc, char** argv) {
     }
 
     environment("ORMI_CPU_JIT_CACHE_DIR", argv[1]);
+
     if (std::string_view(argv[2]) == "load") {
         environment("ORMI_CPU_JIT_CXX", "Z:/ormi/missing/compiler.exe");
         environment("ORMI_CPU_JIT_CXX_ID", "gcc");
@@ -51,9 +52,11 @@ int main(int argc, char** argv) {
             ormi::core::ops::mul(input, input)
         );
         ormi::core::Plan plan({output});
+
         if (plan.steps() != 1 || output->realized()) {
             return 5;
         }
+
         plan.run();
         const auto value = *static_cast<const float*>(output->data());
         return std::abs(value - std::exp(0.25f)) < 1e-6f ? 0 : 3;

@@ -18,6 +18,7 @@ namespace ormi::backends::cpu {
             for (std::size_t i = 0; i < elements; ++i) {
                 out_data[i] = apply(input_data[i]);
             }
+
             return;
         }
 
@@ -35,23 +36,28 @@ namespace ormi::backends::cpu {
         while (outer_axes > 0) {
             const auto axis = outer_axes - 1;
             const auto extent = static_cast<std::size_t>(dims[axis]);
+
             if (extent == 1) {
                 --outer_axes;
                 continue;
             }
+
             if (span == 1) {
                 step = static_cast<std::size_t>(strides[axis]);
             } else if (static_cast<std::size_t>(strides[axis]) != step * span) {
                 break;
             }
+
             span *= extent;
             --outer_axes;
         }
 
         // Shared storage must keep sequential reads after each output write.
         const bool repeat_value = step == 0 && out.buffer() != input.buffer();
+
         for (std::size_t begin = 0; begin < elements; begin += span) {
             const auto offset = storage_offset(begin, input);
+
             if (step == 1) {
                 for (std::size_t i = 0; i < span; ++i) {
                     out_data[begin + i] = apply(input_data[offset + i]);

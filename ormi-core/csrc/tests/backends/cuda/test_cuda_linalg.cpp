@@ -66,6 +66,7 @@ namespace {
                 bytes
             );
             ormi::core::memory::Buffer host(ormi::core::Device::cpu(), bytes);
+
             if (bytes != 0) {
                 std::memcpy(host.data(), values.data(), bytes);
                 ormi::core::memory::copy(*device_buffer, host);
@@ -86,9 +87,11 @@ namespace {
                 values.size() * sizeof(T)
             );
             ormi::core::memory::copy(host, *tensor.buffer());
+
             if (host.bytes() != 0) {
                 std::memcpy(values.data(), host.data(), host.bytes());
             }
+
             return values;
         }
     };
@@ -97,6 +100,7 @@ namespace {
         const auto vector = tensor<float>({3}, {1.0f, 2.0f, 3.0f});
         const auto dot_rhs = tensor<float>({3}, {4.0f, 5.0f, 6.0f});
         auto dot = ormi::core::ops::matmul(vector, dot_rhs);
+
         EXPECT_EQ(dot->shape(), ormi::core::Shape{});
         EXPECT_FLOAT_EQ(host_values<float>(*dot)[0], 32.0f);
 
@@ -106,6 +110,7 @@ namespace {
         );
         auto matrix_vector = ormi::core::ops::matmul(matrix, vector);
         const auto matrix_vector_values = host_values<float>(*matrix_vector);
+
         EXPECT_EQ(matrix_vector->shape(), (ormi::core::Shape{2}));
         EXPECT_FLOAT_EQ(matrix_vector_values[0], 14.0f);
         EXPECT_FLOAT_EQ(matrix_vector_values[1], 32.0f);
@@ -116,6 +121,7 @@ namespace {
         );
         auto vector_matrix = ormi::core::ops::matmul(vector, rhs);
         const auto vector_matrix_values = host_values<float>(*vector_matrix);
+
         EXPECT_EQ(vector_matrix->shape(), (ormi::core::Shape{2}));
         EXPECT_FLOAT_EQ(vector_matrix_values[0], 22.0f);
         EXPECT_FLOAT_EQ(vector_matrix_values[1], 28.0f);
@@ -137,6 +143,7 @@ namespace {
 
         EXPECT_EQ(result->shape(), (ormi::core::Shape{2, 2}));
         ASSERT_EQ(values.size(), 4u);
+
         for (const auto value : values) {
             EXPECT_FLOAT_EQ(value, -2.0f);
         }
@@ -174,6 +181,7 @@ namespace {
             tensor<double>({2}, {2.0, 3.0}),
             tensor<double>({2}, {4.0, 5.0})
         );
+
         EXPECT_DOUBLE_EQ(host_values<double>(*float64_result)[0], 23.0);
 
         auto float16_result = ormi::core::ops::matmul(
@@ -186,6 +194,7 @@ namespace {
                 {ormi::core::Float16{4.0f}, ormi::core::Float16{5.0f}}
             )
         );
+
         EXPECT_FLOAT_EQ(
             static_cast<float>(host_values<ormi::core::Float16>(*float16_result)[0]),
             23.0f
@@ -195,6 +204,7 @@ namespace {
             tensor<std::int32_t>({2}, {2, 3}),
             tensor<std::int32_t>({2}, {4, 5})
         );
+
         EXPECT_EQ(host_values<std::int32_t>(*int32_result)[0], 23);
     }
 
@@ -212,6 +222,7 @@ namespace {
             tensor<float>({0, 3}, {}),
             tensor<float>({3, 2}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f})
         );
+
         EXPECT_NO_THROW(empty->realize());
         EXPECT_EQ(empty->numel(), 0u);
         EXPECT_EQ(empty->data(), nullptr);

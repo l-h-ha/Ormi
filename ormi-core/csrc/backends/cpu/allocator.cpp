@@ -40,6 +40,7 @@ namespace ormi::backends::cpu {
             if (bytes == 0) {
                 return nullptr;
             }
+
             return ::operator new(bytes, std::align_val_t{alignment}, std::nothrow);
         }
 
@@ -68,6 +69,7 @@ namespace ormi::backends::cpu {
                     std::lock_guard<std::mutex> lock(mutex_);
 
                     auto it = free_blocks_.find(aligned_bytes);
+
                     if (it != free_blocks_.end() && !it->second.empty()) {
                         void* ptr = it->second.back();
                         it->second.pop_back();

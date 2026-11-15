@@ -25,12 +25,14 @@ namespace ormi::core::runtime::fusion::layout {
                     reduced_axes.end(),
                     static_cast<std::int64_t>(axis)
                 );
+
                 if (is_reduced == reduced) {
                     selected.push_back(axis);
                 }
             }
 
             std::size_t size = 1;
+
             for (const auto axis : selected) {
                 size *= static_cast<std::size_t>(shape[axis]);
             }
@@ -53,6 +55,7 @@ namespace ormi::core::runtime::fusion::layout {
                 };
                 divisor *= extent;
             }
+
             return Iteration{size, std::move(axes)};
         }
     }
@@ -60,9 +63,11 @@ namespace ormi::core::runtime::fusion::layout {
     inline std::vector<std::size_t> dimensions(const Shape& shape) {
         std::vector<std::size_t> result;
         result.reserve(shape.rank());
+
         for (std::size_t dimension = 0; dimension < shape.rank(); ++dimension) {
             result.push_back(static_cast<std::size_t>(shape[dimension]));
         }
+
         return result;
     }
 
@@ -73,6 +78,7 @@ namespace ormi::core::runtime::fusion::layout {
         std::vector<Axis>& axes
     ) {
         axes.clear();
+
         if (shape.rank() > output.rank()) {
             return false;
         }
@@ -102,6 +108,7 @@ namespace ormi::core::runtime::fusion::layout {
                 });
             }
         }
+
         return true;
     }
 

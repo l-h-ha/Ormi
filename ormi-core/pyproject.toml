@@ -1,9 +1,9 @@
 [project]
 name = "ormi-core"
-version = "0.1.0a7"
+version = "0.1.0a8"
 description = "Lazy tensors and automatic differentiation for Python and C++."
 readme = "README.md"
-authors = [{ name = "Ha H. Le" }]
+authors = [{ name = "Hong Ha Le" }]
 license = { text = "MIT" }
 requires-python = ">=3.10,<3.14"
 dependencies = [
@@ -11,7 +11,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-cuda = ["ormi-cuda==0.1.0a7"]
+cuda = ["ormi-cuda==0.1.0a8"]
 
 [build-system]
 requires = ["scikit-build-core>=1.0.0", "pybind11>=3.0.0", "PyYAML>=6.0"]

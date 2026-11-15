@@ -21,19 +21,21 @@ namespace ormi::core::runtime {
             Preparation preparation
         ) {
             const auto& target = backend(output.device()).fusion;
+
             if (!target.execute) {
                 return std::nullopt;
             }
 
             std::optional<fusion::Expr> expression;
+
             if (auxiliary_outputs.empty()) {
                 expression = boundaries
-                    ? fusion::build(output, *boundaries)
-                    : fusion::build(output);
+                    ? fusion::build(output, *boundaries, target.max_operations)
+                    : fusion::build(output, target.max_operations);
             } else {
                 expression = boundaries
-                    ? fusion::build(output, auxiliary_outputs, *boundaries)
-                    : fusion::build(output, auxiliary_outputs);
+                    ? fusion::build(output, auxiliary_outputs, *boundaries, target.max_operations)
+                    : fusion::build(output, auxiliary_outputs, target.max_operations);
             }
 
             if (
@@ -47,6 +49,7 @@ namespace ormi::core::runtime {
                 auxiliary_outputs.begin(),
                 auxiliary_outputs.end()
             };
+
             if (preparation == Preparation::deferred && (target.prepare || target.prepare_many)) {
                 return Step::deferred_fusion(
                     output,
@@ -57,6 +60,7 @@ namespace ormi::core::runtime {
                     std::move(outputs)
                 );
             }
+
             return Step::fusion(
                 output,
                 target.execute,
@@ -73,18 +77,22 @@ namespace ormi::core::runtime {
         ) {
             if (candidates) {
                 const auto group = candidates->find(&tensor);
+
                 if (group != candidates->end() && !group->second.empty()) {
                     if (auto step = lower_fusion(tensor, group->second, boundaries, preparation)) {
                         return std::move(*step);
                     }
                 }
             }
+
             if (auto step = lower_fusion(tensor, {}, boundaries, preparation)) {
                 return std::move(*step);
             }
+
             if (tensor.op()->output == Output::alias) {
                 return Step::alias(tensor);
             }
+
             return Step::compute(
                 tensor,
                 tensor.op()->compute,

@@ -9,13 +9,20 @@ from . import DType, Device, Tensor, Replay, Plan, Autocast
 
 __all__ = ['CacheInfo', 'info', 'clear']
 
+###
+###
+###
+
 class CacheInfo:
     @property
     def path(self) -> Any: ...
+
     @property
     def entries(self) -> int: ...
+
     @property
     def bytes(self) -> int: ...
+
     @property
     def limit(self) -> int: ...
 

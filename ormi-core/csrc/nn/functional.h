@@ -15,6 +15,7 @@ namespace ormi::nn::detail {
         if (normalized_shape.rank() == 0 || normalized_shape.empty()) {
             ORMI_THROW(ShapeError, "Normalized shape must have at least one axis, all with positive sizes.");
         }
+
         if (!std::isfinite(eps) || eps <= 0) {
             ORMI_THROW(OperationError, "Normalization eps must be finite and positive.");
         }
@@ -24,6 +25,7 @@ namespace ormi::nn::detail {
         if (!input) {
             ORMI_THROW(OperationError, "A tensor is required.");
         }
+
         if (!core::is_floating(input->dtype())) {
             ORMI_THROW(DTypeError, "NN operations require floating-point tensors.");
         }
@@ -37,6 +39,7 @@ namespace ormi::nn::detail {
         if (input->dtype() == core::DType::float32) {
             scalar = static_cast<float>(value);
         }
+
         if (input->dtype() == core::DType::float16) {
             scalar = core::Float16(static_cast<float>(value));
         }
@@ -52,6 +55,7 @@ namespace ormi::nn::detail {
         if (value < 0 || value >= static_cast<std::int64_t>(input.rank())) {
             ORMI_THROW(ShapeError, "Class axis is out of range.");
         }
+
         if (input.shape()[static_cast<std::size_t>(value)] == 0) {
             ORMI_THROW(ShapeError, "Class axis cannot be empty.");
         }
@@ -69,6 +73,7 @@ namespace ormi::nn::detail {
         if (values->shape() != targets->shape()) {
             ORMI_THROW(ShapeError, "Loss prediction and target shapes must match.");
         }
+
         if (values->device() != targets->device()) {
             ORMI_THROW(DeviceError, "Loss prediction and target must use the same device.");
         }
@@ -78,6 +83,7 @@ namespace ormi::nn::detail {
         if (values->dtype() != dtype) {
             values = core::ops::cast(values, dtype);
         }
+
         if (targets->dtype() != dtype) {
             targets = core::ops::cast(targets, dtype);
         }
@@ -100,6 +106,7 @@ namespace ormi::nn::detail {
         if (reduction == "none") {
             return value;
         }
+
         if (reduction == "sum") {
             return core::ops::sum(value);
         }

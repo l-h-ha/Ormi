@@ -53,6 +53,7 @@ namespace {
         } else {
             std::fill_n(static_cast<float*>(result->data()), result->numel(), 0.5f);
         }
+
         return result;
     }
 
@@ -201,6 +202,7 @@ namespace {
                 square->realize();
                 sum->realize();
             }
+
             output->realize();
             benchmark::DoNotOptimize(output->data());
         }
@@ -228,6 +230,7 @@ namespace {
                 square->realize();
                 sum->realize();
             }
+
             output->realize();
             benchmark::DoNotOptimize(output->data());
         }
@@ -274,6 +277,7 @@ namespace {
                 square->realize();
                 added->realize();
             }
+
             output->realize();
             benchmark::DoNotOptimize(output->data());
         }
@@ -321,9 +325,11 @@ namespace {
 
         auto warmup_mapped = broadcast_chain(input, input);
         auto warmup = reduce(warmup_mapped, reduction);
+
         if (force_materialized) {
             warmup_mapped->realize();
         }
+
         warmup->realize();
 
         for (auto _ : state) {
@@ -337,6 +343,7 @@ namespace {
             if (force_materialized) {
                 mapped->realize();
             }
+
             output->realize();
             benchmark::DoNotOptimize(output->data());
         }
@@ -371,6 +378,7 @@ namespace {
             } else {
                 ormi::backends::cpu::jit::execute(*root, expression);
             }
+
             benchmark::ClobberMemory();
         }
 
@@ -413,6 +421,7 @@ namespace {
             } else {
                 ormi::backends::cpu::jit::execute(*root, expression);
             }
+
             benchmark::ClobberMemory();
         }
 
@@ -470,6 +479,7 @@ namespace {
             } else {
                 ormi::backends::cpu::jit::execute(*root, expression);
             }
+
             benchmark::ClobberMemory();
         }
 
@@ -575,9 +585,11 @@ namespace {
 
         auto warmup_mapped = broadcast_chain(input, input);
         auto warmup = ormi::core::ops::sum(warmup_mapped, {1});
+
         if (force_materialized) {
             warmup_mapped->realize();
         }
+
         warmup->realize();
 
         for (auto _ : state) {
@@ -589,6 +601,7 @@ namespace {
             if (force_materialized) {
                 mapped->realize();
             }
+
             output->realize();
             benchmark::DoNotOptimize(output->data());
         }
@@ -607,9 +620,11 @@ namespace {
 
         auto warmup_mapped = arithmetic_chain(input);
         auto warmup = ormi::core::ops::sum(warmup_mapped, {1});
+
         if (force_materialized) {
             warmup_mapped->realize();
         }
+
         warmup->realize();
 
         for (auto _ : state) {
@@ -621,6 +636,7 @@ namespace {
             if (force_materialized) {
                 mapped->realize();
             }
+
             output->realize();
             benchmark::DoNotOptimize(output->data());
         }
@@ -846,9 +862,11 @@ namespace {
         };
 
         auto [warmup_mapped, warmup] = build();
+
         if (force_materialized) {
             warmup_mapped->realize();
         }
+
         warmup->realize();
 
         for (auto _ : state) {
@@ -859,6 +877,7 @@ namespace {
             if (force_materialized) {
                 mapped->realize();
             }
+
             output->realize();
             benchmark::DoNotOptimize(output->data());
         }

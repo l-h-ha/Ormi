@@ -101,6 +101,7 @@ namespace {
             ormi::core::runtime::device::synchronize(device);
 
             CUmemoryPool allocation_pool = nullptr;
+
             ASSERT_EQ(
                 cuPointerGetAttribute(
                     &allocation_pool,
@@ -113,6 +114,7 @@ namespace {
             pool = reinterpret_cast<cudaMemPool_t>(allocation_pool);
 
             std::uint64_t used_during = 0;
+
             ASSERT_EQ(
                 cudaMemPoolGetAttribute(
                     pool,
@@ -127,6 +129,7 @@ namespace {
         ormi::core::runtime::device::synchronize(device);
 
         std::uint64_t used_after = 0;
+
         ASSERT_EQ(
             cudaMemPoolGetAttribute(
                 pool,
@@ -154,6 +157,7 @@ namespace {
             ormi::core::runtime::device::synchronize(device);
 
             CUmemoryPool allocation_pool = nullptr;
+
             ASSERT_EQ(
                 cuPointerGetAttribute(
                     &allocation_pool,
@@ -169,6 +173,7 @@ namespace {
         ormi::core::runtime::device::synchronize(device);
 
         std::uint64_t reserved_before = 0;
+
         ASSERT_EQ(
             cudaMemPoolGetAttribute(
                 pool,
@@ -182,6 +187,7 @@ namespace {
         allocator->empty_cache();
 
         std::uint64_t reserved_after = 0;
+
         ASSERT_EQ(
             cudaMemPoolGetAttribute(
                 pool,

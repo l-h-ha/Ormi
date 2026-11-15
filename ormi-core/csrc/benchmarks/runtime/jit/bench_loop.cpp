@@ -45,6 +45,7 @@ namespace {
             : state.range(0) == 32 ? DType::float32 : DType::float64;
         auto input = tensor({32, 64}, dtype);
         auto rhs = input;
+
         switch (layout) {
             case Layout::flat:
                 input = tensor({2048}, dtype);
@@ -74,9 +75,11 @@ namespace {
         }
 
         auto root = ops::mul(input, input);
+
         for (std::int64_t i = 0; i < state.range(1); ++i) {
             root = ops::add(root, rhs);
         }
+
         switch (layout) {
             case Layout::global_reduction:
             case Layout::conflicting_reduction:
@@ -96,10 +99,12 @@ namespace {
         }
 
         const auto expression = runtime::fusion::build(*root).value();
+
         for (auto _ : state) {
             auto loop = ormi::backends::cpu::jit::plan(expression);
             benchmark::DoNotOptimize(loop);
         }
+
         state.counters["nodes"] = static_cast<double>(expression.nodes.size());
         state.counters["inputs"] = static_cast<double>(expression.inputs.size());
     }

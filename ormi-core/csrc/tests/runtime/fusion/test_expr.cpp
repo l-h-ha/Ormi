@@ -5,12 +5,14 @@
 #include <gtest/gtest.h>
 
 #include <ormi/core/autocast.h>
+#include <ormi/core/autograd.h>
 #include <ormi/core/device.h>
 #include <ormi/core/dtype.h>
 #include <ormi/core/ops/creation.h>
 #include <ormi/core/ops/pointwise.h>
 #include <ormi/core/ops/reduction.h>
 #include <ormi/core/ops/view.h>
+#include <ormi/core/plan.h>
 #include <ormi/core/shape.h>
 #include <ormi/core/tensor.h>
 
@@ -26,6 +28,112 @@ namespace {
             std::move(shape),
             dtype
         );
+    }
+
+    TEST(FusionExprTest, limitsOperationsWithoutRealizingInputs) {
+        const auto x = tensor({4});
+        auto output = x;
+
+        for (std::size_t i = 0; i < 128; ++i) {
+            output = ormi::core::ops::sin(output);
+        }
+
+        const auto full = ormi::core::runtime::fusion::build(*output);
+        const auto limited = ormi::core::runtime::fusion::build(*output, 8);
+
+        ASSERT_TRUE(full);
+        ASSERT_TRUE(limited);
+        EXPECT_EQ(full->operations, 128u);
+        EXPECT_EQ(limited->operations, 8u);
+        ASSERT_EQ(limited->inputs.size(), 1u);
+        EXPECT_FALSE(limited->inputs[0]->realized());
+        EXPECT_NE(limited->inputs[0], output.get());
+        EXPECT_FALSE(output->realized());
+    }
+
+    TEST(FusionExprTest, keepsRequestedOutputsInsideLimitedExpression) {
+        const auto x = tensor({4});
+        auto shared = x;
+
+        for (std::size_t i = 0; i < 16; ++i) {
+            shared = ormi::core::ops::sin(shared);
+        }
+
+        const auto output = ormi::core::ops::cos(shared);
+        const auto other = ormi::core::ops::exp(shared);
+        const std::array<ormi::core::Tensor*, 2> auxiliaries{shared.get(), other.get()};
+        const auto limited = ormi::core::runtime::fusion::build(*output, auxiliaries, 4);
+
+        ASSERT_TRUE(limited);
+        EXPECT_LE(limited->operations, 4u);
+        ASSERT_EQ(limited->auxiliary_outputs.size(), 2u);
+
+        for (const auto* input : limited->inputs) {
+            EXPECT_NE(input, output.get());
+            EXPECT_NE(input, shared.get());
+            EXPECT_NE(input, other.get());
+        }
+
+        EXPECT_FALSE(ormi::core::runtime::fusion::build(*output, auxiliaries, 2));
+    }
+
+    TEST(FusionExprTest, keepsSmallExpressionsUnchangedWithLimit) {
+        const auto x = tensor({4});
+        const auto output = ormi::core::ops::sin(ormi::core::ops::mul(x, x));
+        const auto full = ormi::core::runtime::fusion::build(*output);
+        const auto limited = ormi::core::runtime::fusion::build(*output, 256);
+
+        ASSERT_TRUE(full);
+        ASSERT_TRUE(limited);
+        EXPECT_EQ(full->nodes, limited->nodes);
+        EXPECT_EQ(full->inputs, limited->inputs);
+        EXPECT_EQ(full->output, limited->output);
+        EXPECT_EQ(full->operations, limited->operations);
+    }
+
+    TEST(FusionExprTest, rejectsCutsThatCouldDependOnGroupedOutputs) {
+        const auto x = tensor({4});
+        const auto shared = ormi::core::ops::sin(x);
+        auto output = shared;
+
+        for (std::size_t i = 0; i < 32; ++i) {
+            output = ormi::core::ops::cos(output);
+        }
+
+        const std::array<ormi::core::Tensor*, 1> auxiliaries{shared.get()};
+
+        EXPECT_TRUE(ormi::core::runtime::fusion::build(*output, auxiliaries));
+        EXPECT_FALSE(ormi::core::runtime::fusion::build(*output, auxiliaries, 8));
+        EXPECT_TRUE(ormi::core::runtime::fusion::build(*output, 8));
+    }
+
+    TEST(FusionExprTest, executesLongGraphsAndHigherDerivativesWithPlanReuse) {
+        const auto x = tensor({}, ormi::core::DType::float64);
+        *static_cast<double*>(x->data()) = 0.5;
+        auto output = x;
+        constexpr std::size_t terms = 512;
+
+        for (std::size_t i = 0; i < terms; ++i) {
+            output = ormi::core::ops::add(output, ormi::core::ops::mul(x, x));
+        }
+
+        const auto first = ormi::core::grad(output, x);
+        const auto second = ormi::core::grad(first, x);
+        ormi::core::Plan plan({output, first, second});
+
+        EXPECT_FALSE(output->realized());
+        plan.run();
+
+        EXPECT_DOUBLE_EQ(*static_cast<const double*>(output->data()), 128.5);
+        EXPECT_DOUBLE_EQ(*static_cast<const double*>(first->data()), 513.0);
+        EXPECT_DOUBLE_EQ(*static_cast<const double*>(second->data()), 1024.0);
+
+        *static_cast<double*>(x->data()) = -0.25;
+        plan.run();
+
+        EXPECT_DOUBLE_EQ(*static_cast<const double*>(output->data()), 31.75);
+        EXPECT_DOUBLE_EQ(*static_cast<const double*>(first->data()), -255.0);
+        EXPECT_DOUBLE_EQ(*static_cast<const double*>(second->data()), 1024.0);
     }
 
     TEST(FusionExprTest, buildsFlatTypedDag) {
@@ -242,6 +350,7 @@ namespace {
         const auto x = tensor({4});
 
         const auto output = ormi::core::ops::neg(x);
+
         EXPECT_FALSE(ormi::core::runtime::fusion::build(*output).has_value());
     }
 
@@ -250,6 +359,7 @@ namespace {
         auto output = input;
 
         constexpr std::size_t operations = 128;
+
         for (std::size_t operation = 0; operation < operations; ++operation) {
             output = ormi::core::ops::add(output, input);
         }
@@ -313,6 +423,7 @@ namespace {
         const auto& rhs_input = std::get<ormi::core::runtime::fusion::Input>(
             expression->nodes[1].instruction
         );
+
         EXPECT_FALSE(rhs_input.linear);
         EXPECT_TRUE(rhs_input.axes.empty());
     }
@@ -328,6 +439,7 @@ namespace {
         const auto& input = std::get<ormi::core::runtime::fusion::Input>(
             expression->nodes[0].instruction
         );
+
         EXPECT_FALSE(input.linear);
         ASSERT_EQ(input.axes.size(), 2u);
         EXPECT_EQ(input.axes[0], (ormi::core::runtime::fusion::Axis{2, 3, 1}));
@@ -344,6 +456,7 @@ namespace {
         const auto& input = std::get<ormi::core::runtime::fusion::Input>(
             expression->nodes[0].instruction
         );
+
         EXPECT_FALSE(input.linear);
         ASSERT_EQ(input.axes.size(), 1u);
         EXPECT_EQ(input.axes[0], (ormi::core::runtime::fusion::Axis{3, 2, 1}));
@@ -386,6 +499,7 @@ namespace {
         const auto& cast = std::get<ormi::core::runtime::fusion::Cast>(
             expression->nodes[1].instruction
         );
+
         EXPECT_EQ(cast.input, 0u);
         EXPECT_EQ(
             std::get<ormi::core::runtime::fusion::Unary>(

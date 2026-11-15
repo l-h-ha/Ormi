@@ -9,8 +9,13 @@ from . import DType, Device, Tensor, Replay, Plan, Autocast
 
 __all__ = ['ScalePolicy', 'GradScaler', 'sgd']
 
+###
+###
+###
+
 class ScalePolicy:
     def __init__(self) -> None: ...
+
     growth: float
     backoff: float
     interval: int
@@ -19,13 +24,18 @@ class ScalePolicy:
 class GradScaler:
     @overload
     def __init__(self, scale: float) -> None: ...
+
     @overload
     def __init__(self, scale: float, policy: ScalePolicy) -> None: ...
+
     @property
     def value(self) -> float: ...
+
     def scale(self, loss: Tensor) -> Tensor: ...
+
     @overload
     def step(self, parameter: Tensor, scaled_gradient: Tensor, learning_rate: float) -> Tensor | None: ...
+
     @overload
     def step(self, parameters: Sequence[Tensor], scaled_gradients: Sequence[Tensor], learning_rate: float) -> list[Tensor] | None: ...
 

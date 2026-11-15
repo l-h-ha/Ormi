@@ -1,5 +1,7 @@
 #include <array>
 #include <memory>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -17,10 +19,10 @@
 #include "core/runtime/lower.h"
 
 namespace {
-    std::shared_ptr<ormi::core::Tensor> tensor() {
+    std::shared_ptr<ormi::core::Tensor> tensor(ormi::core::Shape shape = {4}) {
         return std::make_shared<ormi::core::Tensor>(
             ormi::core::Device::cpu(),
-            ormi::core::Shape{4},
+            std::move(shape),
             ormi::core::DType::float32
         );
     }
@@ -52,6 +54,7 @@ namespace {
 
         ASSERT_EQ(candidates.size(), 1u);
         const auto group = candidates.find(negative.get());
+
         ASSERT_NE(group, candidates.end());
         EXPECT_EQ(
             group->second,
@@ -74,11 +77,110 @@ namespace {
 
         ASSERT_EQ(candidates.size(), 1u);
         const auto group = candidates.find(negative.get());
+
         ASSERT_NE(group, candidates.end());
         EXPECT_EQ(
             group->second,
             (std::vector<ormi::core::Tensor*>{exponential.get()})
         );
+    }
+
+    TEST(FusionCandidateTest, recordsSharedScalarsWithoutRealizingThem) {
+        const auto input = tensor({});
+        const auto shared = ormi::core::ops::mul(input, input);
+        const auto left = ormi::core::ops::add(shared, input);
+        const auto right = ormi::core::ops::sub(shared, input);
+        const auto root = ormi::core::ops::mul(left, right);
+        const std::array<ormi::core::Tensor*, 1> roots{root.get()};
+        std::unordered_set<const ormi::core::Tensor*> shared_scalars;
+
+        ormi::core::runtime::fusion::find_candidates(roots, &shared_scalars);
+
+        EXPECT_EQ(shared_scalars, (std::unordered_set<const ormi::core::Tensor*>{shared.get()}));
+        EXPECT_FALSE(shared->realized());
+    }
+
+    TEST(FusionCandidateTest, leavesSharedVectorsOutOfScalarBoundaries) {
+        const auto input = tensor();
+        const auto shared = ormi::core::ops::mul(input, input);
+        const auto root = ormi::core::ops::add(shared, shared);
+        const std::array<ormi::core::Tensor*, 1> roots{root.get()};
+        std::unordered_set<const ormi::core::Tensor*> shared_scalars;
+
+        ormi::core::runtime::fusion::find_candidates(roots, &shared_scalars);
+
+        EXPECT_TRUE(shared_scalars.empty());
+    }
+
+    TEST(FusionCandidateTest, keepsSmallScalarGraphsWithinOneKernel) {
+        const auto input = tensor({});
+        const auto shared = ormi::core::ops::mul(input, input);
+        const auto root = ormi::core::ops::add(shared, shared);
+        const std::array<ormi::core::Tensor*, 1> roots{root.get()};
+        std::unordered_set<const ormi::core::Tensor*> shared_scalars;
+
+        ormi::core::runtime::fusion::find_candidates(roots, &shared_scalars, 256);
+
+        EXPECT_TRUE(shared_scalars.empty());
+    }
+
+    TEST(FusionCandidateTest, keepsWideBatchOfSmallScalarGraphsFused) {
+        const auto input = tensor({});
+        std::vector<std::shared_ptr<ormi::core::Tensor>> outputs;
+        std::vector<ormi::core::Tensor*> roots;
+
+        for (int i = 0; i < 128; ++i) {
+            const auto shared = ormi::core::ops::mul(input, input);
+            const auto left = ormi::core::ops::add(shared, input);
+            const auto right = ormi::core::ops::sub(shared, input);
+            outputs.push_back(ormi::core::ops::mul(left, right));
+            roots.push_back(outputs.back().get());
+        }
+
+        std::unordered_set<const ormi::core::Tensor*> shared_scalars;
+
+        ormi::core::runtime::fusion::find_candidates(roots, &shared_scalars, 256);
+
+        EXPECT_TRUE(shared_scalars.empty());
+    }
+
+    TEST(FusionCandidateTest, detectsLargeRootAfterItsDependenciesWereVisited) {
+        const auto input = tensor({});
+        std::vector<std::shared_ptr<ormi::core::Tensor>> outputs;
+        std::vector<ormi::core::Tensor*> roots;
+
+        for (int i = 0; i < 128; ++i) {
+            const auto shared = ormi::core::ops::mul(input, input);
+            outputs.push_back(ormi::core::ops::add(shared, shared));
+            roots.push_back(outputs.back().get());
+        }
+
+        auto combined = outputs.front();
+
+        for (std::size_t i = 1; i < outputs.size(); ++i) {
+            combined = ormi::core::ops::add(combined, outputs[i]);
+        }
+
+        roots.push_back(combined.get());
+        std::unordered_set<const ormi::core::Tensor*> shared_scalars;
+
+        ormi::core::runtime::fusion::find_candidates(roots, &shared_scalars, 256);
+
+        EXPECT_FALSE(shared_scalars.empty());
+    }
+
+    TEST(FusionCandidateTest, ignoresRealizedSharedScalars) {
+        const auto input = tensor({});
+        *static_cast<float*>(input->data()) = 0.25f;
+        const auto shared = ormi::core::ops::mul(input, input);
+        shared->realize();
+        const auto root = ormi::core::ops::add(shared, shared);
+        const std::array<ormi::core::Tensor*, 1> roots{root.get()};
+        std::unordered_set<const ormi::core::Tensor*> shared_scalars;
+
+        ormi::core::runtime::fusion::find_candidates(roots, &shared_scalars);
+
+        EXPECT_TRUE(shared_scalars.empty());
     }
 
     TEST(FusionCandidateTest, leavesDifferentParentsSeparate) {
@@ -167,6 +269,7 @@ namespace {
 
         ASSERT_EQ(candidates.size(), 1u);
         const auto group = candidates.find(first.get());
+
         ASSERT_NE(group, candidates.end());
         ASSERT_EQ(
             group->second,
@@ -175,6 +278,7 @@ namespace {
         const auto step = ormi::core::runtime::lower(
             *first, candidates, ormi::core::runtime::Preparation::direct
         );
+
         EXPECT_FALSE(step.allocates());
         EXPECT_EQ(step.output_count(), 1u);
         EXPECT_EQ(&step.input(0), mapped.get());

@@ -66,12 +66,14 @@ namespace ormi::backends::cpu::jit::codegen {
                     return x + " > " + zero + " ? " + x + " + " + log1p + "(" + exp + "(-" + x +
                            ")) : " + log1p + "(" + exp + "(" + x + "))";
             }
+
             ORMI_THROW(OperationError, "CPU fusion received an unknown unary operation.");
         }
 
         std::string binary(core::ops::BinaryOp op, std::string_view lhs, std::string_view rhs) {
             const auto left = std::string(lhs);
             const auto right = std::string(rhs);
+
             switch (op) {
                 case core::ops::BinaryOp::add:
                     return left + " + " + right;
@@ -88,6 +90,7 @@ namespace ormi::backends::cpu::jit::codegen {
                            right + " : (" + left + comparison + right + " ? " + left + " : " + right + "))";
                 }
             }
+
             ORMI_THROW(OperationError, "CPU fusion received an unknown binary operation.");
         }
 
@@ -95,6 +98,7 @@ namespace ormi::backends::cpu::jit::codegen {
             if (dtype == core::DType::float16) {
                 return "ormi_half_round(" + expression + ")";
             }
+
             return expression;
         }
 
@@ -122,6 +126,7 @@ namespace ormi::backends::cpu::jit::codegen {
 
         std::string packed_binary(core::ops::BinaryOp op, std::string_view lhs, std::string_view rhs) {
             std::string intrinsic;
+
             switch (op) {
                 case core::ops::BinaryOp::add:
                     intrinsic = "_mm256_add_ps";
@@ -136,6 +141,7 @@ namespace ormi::backends::cpu::jit::codegen {
                     intrinsic = "_mm256_div_ps";
                     break;
             }
+
             return intrinsic + "(" + std::string(lhs) + ", " + std::string(rhs) + ")";
         }
 
@@ -193,6 +199,7 @@ namespace ormi::backends::cpu::jit::codegen {
         if (dtype == core::DType::float16) {
             return "ormi_half_bits(" + std::string(expression) + ")";
         }
+
         return std::string(expression);
     }
 
@@ -202,6 +209,7 @@ namespace ormi::backends::cpu::jit::codegen {
                 return true;
             }
         }
+
         return false;
     }
 
@@ -216,22 +224,19 @@ namespace ormi::backends::cpu::jit::codegen {
                 if (input->index >= code.expr.inputs.size()) {
                     ORMI_THROW(OperationError, "Fusion expression references an invalid input.");
                 }
-                code.out << input_value(node.dtype, *input, code.loop);
 
+                code.out << input_value(node.dtype, *input, code.loop);
             } else if (const auto* constant = std::get_if<core::runtime::fusion::Constant>(&instruction)) {
                 code.out << literal(node.dtype, *constant);
-
             } else if (const auto* cast = std::get_if<core::runtime::fusion::Cast>(&instruction)) {
                 require_prior(cast->input, i);
                 code.out << cast_value(node.dtype, value(cast->input));
-
             } else if (const auto* unary_node = std::get_if<core::runtime::fusion::Unary>(&instruction)) {
                 require_prior(unary_node->input, i);
                 const auto operation = unary(unary_node->op, value(unary_node->input));
                 code.out
                     << (is_output(code.expr, i) && !code.expr.reduction ? operation
                                                                         : rounded(node.dtype, operation));
-
             } else if (const auto* binary_node = std::get_if<core::runtime::fusion::Binary>(&instruction)) {
                 require_prior(binary_node->lhs, i);
                 require_prior(binary_node->rhs, i);
@@ -278,13 +283,12 @@ namespace ormi::backends::cpu::jit::codegen {
 
             if (const auto* input = std::get_if<core::runtime::fusion::Input>(&instruction)) {
                 operation = packed_input(*input, node.dtype, code.loop);
-
             } else if (const auto* constant = std::get_if<core::runtime::fusion::Constant>(&instruction)) {
                 operation = *constant == core::runtime::fusion::Constant::zero ? "_mm256_setzero_ps()"
                                                                                : "_mm256_set1_ps(1.0f)";
-
             } else if (const auto* unary_node = std::get_if<core::runtime::fusion::Unary>(&instruction)) {
                 require_prior(unary_node->input, i);
+
                 if (unary_node->op == core::ops::UnaryOp::neg) {
                     operation = "_mm256_sub_ps(_mm256_setzero_ps(), " + packed(unary_node->input) + ")";
                 } else if (code.loop.math) {
@@ -293,16 +297,15 @@ namespace ormi::backends::cpu::jit::codegen {
                 } else {
                     ORMI_THROW(OperationError, "Packed Float16 fusion only supports arithmetic.");
                 }
-
             } else if (const auto* binary_node = std::get_if<core::runtime::fusion::Binary>(&instruction)) {
                 require_prior(binary_node->lhs, i);
                 require_prior(binary_node->rhs, i);
                 operation =
                     packed_binary(binary_node->op, packed(binary_node->lhs), packed(binary_node->rhs));
-
             } else if (const auto* cast = std::get_if<core::runtime::fusion::Cast>(&instruction)) {
                 require_prior(cast->input, i);
                 operation = packed(cast->input);
+
                 if (node.dtype == core::DType::float16) {
                     operation = "ormi_half_round8(" + operation + ")";
                 }
@@ -310,6 +313,7 @@ namespace ormi::backends::cpu::jit::codegen {
 
             const bool arithmetic = std::holds_alternative<core::runtime::fusion::Unary>(instruction) ||
                                     std::holds_alternative<core::runtime::fusion::Binary>(instruction);
+
             if (node.dtype == core::DType::float16 && arithmetic &&
                 (!is_output(code.expr, i) || code.expr.reduction)) {
                 operation = "ormi_half_round8(" + operation + ")";

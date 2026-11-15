@@ -187,7 +187,9 @@ namespace {
             (std::vector<float>{1.0f, 1.0f})
         );
         const auto empty_values = host_values<float>(*empty);
+
         ASSERT_EQ(empty_values.size(), 6u);
+
         for (const auto value : empty_values) {
             EXPECT_TRUE(std::isnan(value));
         }

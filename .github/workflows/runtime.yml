@@ -8,12 +8,14 @@ on:
       - "ormi-core/CMakeLists.txt"
       - "ormi-core/CMakePresets.json"
       - "ormi-core/csrc/**"
+      - "!ormi-core/csrc/bindings/**"
   pull_request:
     paths:
       - ".github/workflows/runtime.yml"
       - "ormi-core/CMakeLists.txt"
       - "ormi-core/CMakePresets.json"
       - "ormi-core/csrc/**"
+      - "!ormi-core/csrc/bindings/**"
   workflow_dispatch:
 
 concurrency:

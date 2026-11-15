@@ -50,6 +50,7 @@ namespace {
         for (std::size_t i = 0; i < count; ++i) {
             result[i] = function(spacing * static_cast<double>(i));
         }
+
         return result;
     }
 
@@ -97,6 +98,7 @@ namespace {
         for (std::size_t i = 0; i < count; ++i) {
             result += lhs[i] * rhs[i];
         }
+
         return result;
     }
 
@@ -145,6 +147,7 @@ namespace {
         for (std::size_t i = 0; i + 1 < count; ++i) {
             EXPECT_DOUBLE_EQ(original_output[i], changed_output[i]);
         }
+
         EXPECT_NE(original_output[count - 1], changed_output[count - 1]);
     }
 
@@ -158,6 +161,7 @@ namespace {
             EXPECT_GT(medium, fine);
 
             const auto observed = std::log2(medium / fine);
+
             EXPECT_NEAR(observed, 2.0 - alpha, 0.08);
         }
     }

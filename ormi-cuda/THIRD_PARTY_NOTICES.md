@@ -6,9 +6,11 @@ ORMI CUDA's MIT license does not replace the licenses below.
 
 The CUDA plugin includes compiled cuRAND Philox device code. CUDA-enabled
 binary distributions may also include CUDA Runtime, cuBLAS, cuBLASLt, NVRTC,
-and NVRTC builtins libraries. Release wheels use CUDA Toolkit 12.4.
+and NVRTC builtins libraries. Version 0.1.0a8 wheel builds use CUDA Toolkit 12.8.
 
 CUDA Toolkit license: https://docs.nvidia.com/cuda/archive/12.4.0/eula/index.html
+
+CUDA 12.8 Update 1 license: https://docs.nvidia.com/cuda/archive/12.8.1/eula/index.html
 
 Copyright 2010-2014 NVIDIA Corporation. All rights reserved.
 

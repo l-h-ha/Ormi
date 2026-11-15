@@ -13,9 +13,11 @@ namespace ormi::core::runtime::fractional {
         const Caputo& attrs
     ) {
         const auto& selected = backend(out.device());
+
         if (!selected.fractional.prepare) {
             return {};
         }
+
         return selected.fractional.prepare(op, out, attrs);
     }
 

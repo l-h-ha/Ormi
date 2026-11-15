@@ -41,6 +41,7 @@ namespace ormi::backends::cpu::jit::codegen {
             } else {
                 reduction::emit_scalar_strided(code);
             }
+
             return;
         }
 

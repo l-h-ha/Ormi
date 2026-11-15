@@ -192,6 +192,7 @@ namespace {
                 {std::numeric_limits<float>::infinity()}
             )
         };
+
         EXPECT_FALSE(scaler.step(parameters, overflow_gradients, 0.1).has_value());
         EXPECT_DOUBLE_EQ(scaler.value(), 4.0);
     }

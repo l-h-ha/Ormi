@@ -8,7 +8,7 @@
 #include <ormi/nn/modules/module.h>
 
 namespace ormi::nn {
-    // Normalize the trailing axes that match normalized_shape, leaving leading axes unchanged.
+    // Normalize trailing axes matching normalized_shape. Leading axes stay unchanged.
     // Weights start at one and biases at zero. Float16 statistics use Float32.
     class LayerNorm final : public Module {
     public:

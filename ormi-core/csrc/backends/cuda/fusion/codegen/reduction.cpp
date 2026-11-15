@@ -31,6 +31,7 @@ namespace ormi::backends::cuda::fusion {
             std::string_view indent
         ) {
             std::size_t stride = 1;
+
             for (const auto dimension : dimensions) {
                 stride *= expression.shape[dimension];
             }
@@ -42,6 +43,7 @@ namespace ormi::backends::cuda::fusion {
                 source
                     << indent << "const unsigned long long index"
                     << dimension << " = ";
+
                 if (extent == 1) {
                     source << "0";
                 } else if (dimensions.size() == 1) {
@@ -54,6 +56,7 @@ namespace ormi::backends::cuda::fusion {
                     source << "(" << flat << " / " << stride
                         << "ull) % " << extent << "ull";
                 }
+
                 source << ";\n";
             }
         }
@@ -64,16 +67,21 @@ namespace ormi::backends::cuda::fusion {
         ) {
             auto stride = expression.reduction->output.size;
             std::string result;
+
             for (const auto dimension : tile.output) {
                 stride /= expression.shape[dimension];
+
                 if (!result.empty()) {
                     result += " + ";
                 }
+
                 result += "index" + std::to_string(dimension);
+
                 if (stride != 1) {
                     result += " * " + std::to_string(stride);
                 }
             }
+
             return result;
         }
     }
@@ -149,11 +157,13 @@ namespace ormi::backends::cuda::fusion {
         const auto& reduction = *expression.reduction;
         const auto scalar = value_type(expression.dtype);
         std::vector<std::size_t> outer;
+
         for (const auto dimension : tile.output) {
             if (dimension != tile.axis) {
                 outer.push_back(dimension);
             }
         }
+
         const auto extent = expression.shape[tile.axis];
         const auto tiles =
             (extent + tile.width - 1) / tile.width;

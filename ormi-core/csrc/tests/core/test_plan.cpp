@@ -126,6 +126,85 @@ namespace {
         );
     }
 
+    TEST(CPUPlanTest, reusesSharedScalarsAcrossOutputsAndRuns) {
+        const auto input = scalar(0.5f);
+        const auto shared = ormi::core::ops::add(ormi::core::ops::mul(input, input), input);
+        auto chain = shared;
+
+        for (int step = 0; step < 300; ++step) {
+            chain = ormi::core::ops::neg(chain);
+        }
+
+        const auto sine = ormi::core::ops::sin(chain);
+        const auto cosine = ormi::core::ops::cos(shared);
+        Plan plan({sine, cosine});
+
+        EXPECT_FALSE(shared->realized());
+        EXPECT_FALSE(sine->realized());
+        EXPECT_FALSE(cosine->realized());
+        plan.run();
+
+        EXPECT_TRUE(shared->realized());
+        EXPECT_NEAR(*static_cast<const float*>(sine->data()), std::sin(0.75f), 1e-6f);
+        EXPECT_NEAR(*static_cast<const float*>(cosine->data()), std::cos(0.75f), 1e-6f);
+        *static_cast<float*>(input->data()) = -0.25f;
+        plan.run();
+
+        EXPECT_NEAR(*static_cast<const float*>(sine->data()), std::sin(-0.1875f), 1e-6f);
+        EXPECT_NEAR(*static_cast<const float*>(cosine->data()), std::cos(-0.1875f), 1e-6f);
+
+        const auto derivative = ormi::core::grad(sine, input);
+        const auto curvature = ormi::core::grad(derivative, input);
+
+        EXPECT_FALSE(derivative->realized());
+        EXPECT_FALSE(curvature->realized());
+        EXPECT_NEAR(*static_cast<const float*>(derivative->data()), 0.5f*std::cos(-0.1875f), 1e-6f);
+        EXPECT_NEAR(*static_cast<const float*>(curvature->data()),
+                    2.f*std::cos(-0.1875f) - 0.25f*std::sin(-0.1875f), 1e-6f);
+    }
+
+    TEST(CPUPlanTest, keepsSmallSharedScalarGraphFused) {
+        const auto input = scalar(0.5f);
+        const auto shared = ormi::core::ops::add(ormi::core::ops::mul(input, input), input);
+        const auto output = ormi::core::ops::add(ormi::core::ops::sin(shared), ormi::core::ops::cos(shared));
+        Plan plan({output});
+
+        EXPECT_EQ(plan.steps(), 1u);
+        plan.run();
+
+        EXPECT_FALSE(shared->realized());
+        EXPECT_NEAR(*static_cast<const float*>(output->data()), std::sin(0.75f) + std::cos(0.75f), 1e-6f);
+    }
+
+    TEST(CPUPlanTest, keepsWideBatchOfSmallScalarGraphsFused) {
+        const auto input = scalar(0.5f);
+        std::vector<Tensor> shared;
+        std::vector<Tensor> outputs;
+
+        for (int i = 0; i < 128; ++i) {
+            shared.push_back(ormi::core::ops::mul(input, input));
+            const auto left = ormi::core::ops::add(shared.back(), input);
+            const auto right = ormi::core::ops::sub(shared.back(), input);
+            outputs.push_back(ormi::core::ops::mul(left, right));
+        }
+
+        Plan plan(outputs);
+
+        EXPECT_EQ(plan.steps(), outputs.size());
+        EXPECT_EQ(plan.storage_buffers(), outputs.size());
+
+        for (const float value : {0.5f, -0.25f}) {
+            *static_cast<float*>(input->data()) = value;
+            plan.run();
+            const auto expected = (value*value + value)*(value*value - value);
+
+            for (std::size_t i = 0; i < outputs.size(); ++i) {
+                EXPECT_FALSE(shared[i]->realized());
+                EXPECT_FLOAT_EQ(*static_cast<const float*>(outputs[i]->data()), expected);
+            }
+        }
+    }
+
     TEST(CPUPlanTest, reportsNoStorageForAliasOnlyPlan) {
         const auto input = ormi::core::ops::full({2, 3}, 1.0f, ormi::core::Device::cpu());
         input->realize();
@@ -136,6 +215,7 @@ namespace {
         EXPECT_EQ(plan.storage_buffers(), 0u);
         EXPECT_EQ(plan.storage_bytes(), 0u);
         plan.run();
+
         EXPECT_EQ(output->buffer(), input->buffer());
         EXPECT_EQ(plan.storage_buffers(), 0u);
         EXPECT_EQ(plan.storage_bytes(), 0u);
@@ -148,17 +228,20 @@ namespace {
         const auto output = storage_tensor(scalar(1.0f), {0, 7});
         {
             Plan plan({output});
+
             EXPECT_EQ(setup_creates, 1);
             EXPECT_EQ(setup_runs, 0);
             EXPECT_EQ(plan.storage_buffers(), 2u);
             EXPECT_EQ(plan.storage_bytes(), 96u);
             EXPECT_FALSE(output->realized());
             plan.run();
+
             EXPECT_TRUE(output->realized());
             EXPECT_EQ(setup_runs, 1);
             EXPECT_EQ(plan.storage_buffers(), 2u);
             EXPECT_EQ(plan.storage_bytes(), 96u);
         }
+
         EXPECT_EQ(setup_drops, 1);
     }
 
@@ -168,16 +251,19 @@ namespace {
         reported_bytes = std::numeric_limits<std::size_t>::max();
         {
             Plan plan({storage_tensor(scalar(1.0f), {0})});
+
             EXPECT_EQ(plan.storage_buffers(), reported_buffers);
             EXPECT_EQ(plan.storage_bytes(), reported_bytes);
             EXPECT_EQ(setup_creates, 1);
             EXPECT_EQ(setup_runs, 0);
         }
+
         EXPECT_EQ(setup_drops, 1);
     }
 
     TEST(CPUPlanTest, rejectsAggregateStorageOverflowAndReleasesPreparedStates) {
         const auto input = scalar(1.0f);
+
         for (const bool buffers : {true, false}) {
             SCOPED_TRACE(buffers ? "buffer count" : "byte count");
             setup_creates = setup_runs = setup_drops = 0;
@@ -198,6 +284,7 @@ namespace {
 
     TEST(CPUPlanTest, rejectsOutputAndWorkspaceStorageOverflow) {
         const auto input = scalar(1.0f);
+
         for (const bool buffers : {true, false}) {
             SCOPED_TRACE(buffers ? "buffer count" : "byte count");
             setup_creates = setup_runs = setup_drops = 0;
@@ -246,6 +333,7 @@ namespace {
 
             plan.run();
             plan.run();
+
             EXPECT_EQ(setup_runs, 2);
             EXPECT_EQ(fallback_runs, 0);
             EXPECT_FLOAT_EQ(
@@ -301,6 +389,7 @@ namespace {
 
         plan.run();
         const auto* first = static_cast<const float*>(output->data());
+
         EXPECT_FLOAT_EQ(first[0], std::sin(-0.25f));
         EXPECT_FLOAT_EQ(first[1], 0.0f);
         EXPECT_FLOAT_EQ(first[2], std::sin(0.75f));
@@ -311,6 +400,7 @@ namespace {
         plan.run();
 
         const auto* second = static_cast<const float*>(output->data());
+
         EXPECT_FLOAT_EQ(second[0], std::sin(2.0f));
         EXPECT_FLOAT_EQ(second[1], std::sin(6.0f));
         EXPECT_FLOAT_EQ(second[2], std::sin(12.0f));
@@ -343,8 +433,10 @@ namespace {
         plan.run();
         const auto* sine_values = static_cast<const float*>(sine->data());
         const auto* cosine_values = static_cast<const float*>(cosine->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             const auto expected = values[i] * values[i] + values[i];
+
             EXPECT_FLOAT_EQ(sine_values[i], std::sin(expected));
             EXPECT_FLOAT_EQ(cosine_values[i], std::cos(expected));
         }
@@ -353,6 +445,7 @@ namespace {
         values[1] = 2.0f;
         values[2] = 3.0f;
         plan.run();
+
         EXPECT_FLOAT_EQ(
             static_cast<const float*>(sine->data())[1],
             std::sin(6.0f)
@@ -389,8 +482,10 @@ namespace {
             static_cast<const float*>(negative->data());
         const auto* exponential_values =
             static_cast<const float*>(exponential->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             const auto expected = 2.0f * values[i];
+
             EXPECT_FLOAT_EQ(negative_values[i], -expected);
             EXPECT_FLOAT_EQ(exponential_values[i], std::exp(expected));
         }
@@ -401,10 +496,13 @@ namespace {
         values[1] = 1.0f;
         values[2] = 1.5f;
         plan.run();
+
         EXPECT_EQ(negative->buffer(), negative_buffer);
         EXPECT_EQ(exponential->buffer(), exponential_buffer);
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             const auto expected = 2.0f * values[i];
+
             EXPECT_FLOAT_EQ(negative_values[i], -expected);
             EXPECT_FLOAT_EQ(exponential_values[i], std::exp(expected));
         }
@@ -438,15 +536,18 @@ namespace {
         float expected_loss = 0.0f;
         const auto* gradient_values =
             static_cast<const float*>(gradient->data());
+
         for (std::size_t i = 0; i < input->numel(); ++i) {
             const auto mapped_value = values[i] * values[i] + values[i];
             expected_loss += std::sin(mapped_value);
+
             EXPECT_NEAR(
                 gradient_values[i],
                 std::cos(mapped_value) * (2.0f * values[i] + 1.0f),
                 1e-6f
             );
         }
+
         EXPECT_NEAR(
             *static_cast<const float*>(loss->data()),
             expected_loss,
@@ -471,6 +572,7 @@ namespace {
         Plan plan({output});
 
         EXPECT_EQ(plan.steps(), 1u);
+
         if (
             plan.storage_buffers() == 1u &&
             plan.storage_bytes() == sizeof(double)
@@ -478,6 +580,7 @@ namespace {
             GTEST_SKIP()
                 << "This check requires a parallel partial reduction.";
         }
+
         EXPECT_EQ(plan.storage_buffers(), 2u);
         EXPECT_GT(plan.storage_bytes(), sizeof(double));
 
@@ -511,6 +614,7 @@ namespace {
         moved.run();
 
         const auto result = output.lock();
+
         ASSERT_NE(result, nullptr);
         EXPECT_FLOAT_EQ(
             *static_cast<const float*>(result->data()),
@@ -529,6 +633,7 @@ namespace {
 
         EXPECT_EQ(plan.steps(), 1u);
         plan.run();
+
         EXPECT_FLOAT_EQ(
             *static_cast<const float*>(output->data()),
             16.0f
@@ -536,6 +641,7 @@ namespace {
 
         *static_cast<float*>(boundary->data()) = 3.0f;
         plan.run();
+
         EXPECT_FLOAT_EQ(
             *static_cast<const float*>(output->data()),
             9.0f
@@ -550,6 +656,7 @@ namespace {
         );
         input->realize();
         auto* input_data = static_cast<float*>(input->data());
+
         for (std::size_t i = 0; i < 6; ++i) {
             input_data[i] = static_cast<float>(i + 1);
         }
@@ -566,6 +673,7 @@ namespace {
         plan.run();
 
         const auto* first = static_cast<const float*>(output->data());
+
         EXPECT_FLOAT_EQ(first[0], 2.0f);
         EXPECT_FLOAT_EQ(first[1], 8.0f);
         EXPECT_FLOAT_EQ(first[2], 4.0f);
@@ -575,6 +683,7 @@ namespace {
 
         input_data[0] = 10.0f;
         plan.run();
+
         EXPECT_FLOAT_EQ(
             static_cast<const float*>(output->data())[0],
             20.0f
@@ -608,6 +717,7 @@ namespace {
         EXPECT_EQ(plan.storage_buffers(), 3u);
         EXPECT_EQ(plan.storage_bytes(), 3u * 4u * sizeof(float));
         plan.run();
+
         EXPECT_FLOAT_EQ(
             static_cast<const float*>(first->data())[0],
             std::sin(8.0f)
@@ -630,12 +740,14 @@ namespace {
 
         EXPECT_EQ(plan.steps(), 1u);
         plan.run();
+
         EXPECT_FLOAT_EQ(
             *static_cast<const float*>(parameter->data()),
             1.9f
         );
 
         plan.run();
+
         EXPECT_FLOAT_EQ(
             *static_cast<const float*>(parameter->data()),
             1.8f
@@ -658,6 +770,7 @@ namespace {
         );
 
         plan.run();
+
         EXPECT_FLOAT_EQ(
             *static_cast<const float*>(first->data()),
             5.0f
@@ -668,6 +781,7 @@ namespace {
         );
 
         plan.run();
+
         EXPECT_FLOAT_EQ(
             *static_cast<const float*>(first->data()),
             11.0f
@@ -692,6 +806,7 @@ namespace {
         );
 
         plan.run();
+
         EXPECT_FLOAT_EQ(
             *static_cast<const float*>(loss->data()),
             4.0f
@@ -702,6 +817,7 @@ namespace {
         );
 
         plan.run();
+
         EXPECT_FLOAT_EQ(
             *static_cast<const float*>(loss->data()),
             2.56f
@@ -832,8 +948,10 @@ namespace {
         );
 
         plan.run();
+
         EXPECT_THROW(static_cast<void>(plan.record()), ormi::OperationError);
         plan.run();
+
         EXPECT_FLOAT_EQ(*static_cast<const float*>(output->data()), 4.0f);
     }
 

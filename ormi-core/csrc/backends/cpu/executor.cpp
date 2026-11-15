@@ -13,8 +13,10 @@ namespace ormi::backends::cpu::executor {
     namespace {
         constexpr std::size_t parallel_threshold = 512 * 1024;
         constexpr std::size_t work_per_participant = 192 * 1024;
+
         std::size_t configured_threads() {
             const char* value = std::getenv("ORMI_CPU_THREADS");
+
             if (!value || !*value) {
                 return platform::cpu_cores();
             }
@@ -26,6 +28,7 @@ namespace ormi::backends::cpu::executor {
                 text.data() + text.size(),
                 result
             );
+
             if (
                 parsed.ec != std::errc{} ||
                 parsed.ptr != text.data() + text.size() ||
@@ -36,6 +39,7 @@ namespace ormi::backends::cpu::executor {
                     "ORMI_CPU_THREADS must be a positive integer."
                 );
             }
+
             return result;
         }
 
@@ -63,11 +67,14 @@ namespace ormi::backends::cpu::executor {
                 "CPU execution partition unit must be positive."
             );
         }
+
         if (work < parallel_threshold) {
             return 1;
         }
+
         const auto units = range / unit +
             static_cast<std::size_t>(range % unit != 0);
+
         if (units < 2 || thread_count() <= 1) {
             return 1;
         }
@@ -89,10 +96,12 @@ namespace ormi::backends::cpu::executor {
         void* context
     ) {
         const auto participants = slots(range, unit, work);
+
         if (participants == 1) {
             function(context, 0, 0, range);
             return;
         }
+
         pool().run(range, unit, participants, function, context);
     }
 }

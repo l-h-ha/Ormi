@@ -27,6 +27,7 @@ namespace {
         const auto output = std::make_shared<ormi::core::Tensor>(
             ormi::core::op_ref<failing_alias>(), std::vector{input}
         );
+
         for (int attempt = 0; attempt < 2; ++attempt) {
             EXPECT_THROW(output->realize(), std::runtime_error);
             EXPECT_FALSE(output->realized());
@@ -42,6 +43,7 @@ namespace {
         const auto gradient = ormi::core::grad(ormi::core::ops::sum(output), input);
         ormi::core::Plan plan({gradient});
         plan.run();
+
         EXPECT_EQ(output->buffer(), input->buffer());
         EXPECT_EQ(output->data(), input->data());
         EXPECT_DOUBLE_EQ(static_cast<const double*>(destination->data())[0], 7);
@@ -51,6 +53,7 @@ namespace {
 
     TEST(NNStateTest, rejectsInvalidDestinationsAndDependencies) {
         const auto value = nn_test::leaf({2});
+
         EXPECT_THROW(ormi::nn::detail::update(value, nullptr, value), ormi::OperationError);
         EXPECT_THROW(ormi::nn::detail::update(value, value, nn_test::leaf({3})), ormi::ShapeError);
         EXPECT_THROW(ormi::nn::detail::depend(value, nullptr), ormi::OperationError);

@@ -35,7 +35,7 @@ namespace ormi::core {
             friend class Plan::Impl;
         };
 
-        // Copy value into destination after all scheduled steps have finished submitting work.
+        // Copy value into destination after all steps have submitted their work.
         // Both must be contiguous and match shape, dtype, and device. Destination must be realized.
         struct Update {
             std::shared_ptr<Tensor> destination;
@@ -55,7 +55,7 @@ namespace ormi::core {
         Plan(Plan&&) noexcept;
         Plan& operator=(Plan&&) noexcept;
 
-        // Rerun all steps and explicit updates, reusing output storage and reading current leaf values.
+        // Rerun steps and explicit updates with current leaf values and reused output storage.
         // CUDA work may still be queued when this call returns.
         void run();
         // Requires a successful run, one device, and backend recording support.

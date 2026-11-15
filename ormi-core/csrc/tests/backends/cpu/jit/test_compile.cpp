@@ -23,6 +23,7 @@
 #include <ormi/core/tensor.h>
 
 #include "backends/cpu/jit/compile.h"
+#include "backends/cpu/jit/codegen.h"
 #include "backends/cpu/jit/execute.h"
 #include "backends/cpu/jit/loop.h"
 #include "core/runtime/fusion/expr.h"
@@ -40,6 +41,7 @@ namespace {
 
     std::size_t work(const std::shared_ptr<ormi::core::Tensor>& output) {
         const auto expression = ormi::core::runtime::fusion::build(*output);
+
         EXPECT_TRUE(expression.has_value());
         return ormi::backends::cpu::jit::parallel_work(*expression, false);
     }
@@ -53,15 +55,50 @@ namespace {
         const auto x = input();
         std::fill_n(static_cast<float*>(x->data()), elements, value);
         auto root = ormi::core::ops::mul(x, x);
+
         for (std::size_t i = 0; i < additions; ++i) {
             root = ormi::core::ops::add(root, x);
         }
+
         root = ormi::core::ops::sin(root);
         auto expression = ormi::core::runtime::fusion::build(*root);
+
         if (!expression) {
             throw std::logic_error("Cannot build CPU JIT compile test expression.");
         }
+
         return Graph{std::move(root), std::move(*expression)};
+    }
+
+    TEST(CPUJITCompileTest, singleElementKernelPreservesEmptyRanges) {
+        const auto x = std::make_shared<ormi::core::Tensor>(
+            ormi::core::Device::cpu(), ormi::core::Shape{}, ormi::core::DType::float64
+        );
+        auto* input = static_cast<double*>(x->data());
+        *input = 1.5;
+        const auto output = ormi::core::ops::add(ormi::core::ops::mul(x, x), x);
+        const auto expression = ormi::core::runtime::fusion::build(*output);
+
+        ASSERT_TRUE(expression.has_value());
+        ASSERT_EQ(expression->inputs.size(), 1u);
+        const auto compiled = ormi::backends::cpu::jit::compile(*expression);
+        alignas(64) double value = 17;
+        void* outputs[]{&value};
+        const void* inputs[]{input};
+
+        compiled->function(outputs, inputs, 1, 0, 0, compiled->math);
+
+        EXPECT_DOUBLE_EQ(value, 17);
+        compiled->function(outputs, inputs, 1, 1, 1, compiled->math);
+
+        EXPECT_DOUBLE_EQ(value, 17);
+        compiled->function(outputs, inputs, 1, 0, 1, compiled->math);
+
+        EXPECT_DOUBLE_EQ(value, 3.75);
+        *input = -2;
+        compiled->function(outputs, inputs, 1, 0, 1, compiled->math);
+
+        EXPECT_DOUBLE_EQ(value, 2);
     }
 
     TEST(CPUJITCompileTest, weightsOnlyTranscendentalOperations) {
@@ -94,6 +131,7 @@ namespace {
             auxiliaries,
             boundaries
         );
+
         ASSERT_TRUE(paired.has_value());
         EXPECT_EQ(
             ormi::backends::cpu::jit::parallel_work(*paired, false),
@@ -156,12 +194,14 @@ namespace {
                     const auto* expected = first_kernel
                         ? expected_first.get()
                         : expected_second.get();
+
                     if (compiled.get() != expected) {
                         correct.store(false, std::memory_order_relaxed);
                     }
                 }
             });
         }
+
         workers.clear();
 
         EXPECT_TRUE(correct.load(std::memory_order_relaxed));
@@ -196,6 +236,42 @@ namespace {
         EXPECT_TRUE(ormi::backends::cpu::jit::compile(expressions).empty());
     }
 
+    TEST(CPUJITCompileTest, splitsLargeSourceBatchesAndPreservesRequestOrder) {
+        std::vector<Graph> graphs;
+        std::size_t source_bytes = 0;
+
+        while (source_bytes <= 1024 * 1024) {
+            graphs.push_back(graph(128 + graphs.size(), 0.125f));
+            const auto& expression = graphs.back().expression;
+            source_bytes += ormi::backends::cpu::jit::emit(
+                expression, ormi::backends::cpu::jit::plan(expression)
+            ).size();
+        }
+
+        std::vector<const ormi::core::runtime::fusion::Expr*> expressions;
+
+        for (const auto& value : graphs) {
+            expressions.push_back(&value.expression);
+        }
+
+        const auto compiled = ormi::backends::cpu::jit::compile(expressions);
+
+        ASSERT_EQ(compiled.size(), expressions.size());
+        EXPECT_NE(compiled.front()->library.get(), compiled.back()->library.get());
+
+        for (std::size_t i = 0; i < compiled.size(); ++i) {
+            EXPECT_EQ(compiled[i], ormi::backends::cpu::jit::compile(*expressions[i]));
+            ormi::core::Tensor output(
+                ormi::core::Device::cpu(), {static_cast<std::int64_t>(elements)},
+                ormi::core::DType::float32
+            );
+            ormi::backends::cpu::jit::execution::run(output, {}, *expressions[i], *compiled[i]);
+            const auto expected = std::sin(0.125f*0.125f + static_cast<float>(128 + i)*0.125f);
+
+            EXPECT_NEAR(*static_cast<const float*>(output.data()), expected, 1e-5f);
+        }
+    }
+
     TEST(CPUJITCompileTest, rejectsNullBatchEntry) {
         const std::array<const ormi::core::runtime::fusion::Expr*, 1> expressions{nullptr};
 
@@ -223,6 +299,7 @@ namespace {
             std::sin(1.0f + 23.0f),
             std::sin(0.5f * 0.5f + 29.0f * 0.5f)
         };
+
         for (std::size_t i = 0; i < expressions.size(); ++i) {
             ormi::core::Tensor output(
                 ormi::core::Device::cpu(), {static_cast<std::int64_t>(elements)},
@@ -230,6 +307,7 @@ namespace {
             );
             ormi::backends::cpu::jit::execution::run(output, {}, *expressions[i], *compiled[i]);
             const auto* values = static_cast<const float*>(output.data());
+
             for (std::size_t element = 0; element < elements; ++element) {
                 ASSERT_NEAR(values[element], expected[i], 1e-5f);
             }
@@ -282,9 +360,11 @@ namespace {
         std::array<std::exception_ptr, workers> errors{};
         std::barrier start(static_cast<std::ptrdiff_t>(workers));
         std::vector<std::jthread> threads;
+
         for (std::size_t worker = 0; worker < workers; ++worker) {
             threads.emplace_back([&, worker] {
                 start.arrive_and_wait();
+
                 try {
                     results[worker] = ormi::backends::cpu::jit::compile(expressions);
                 } catch (...) {
@@ -292,11 +372,13 @@ namespace {
                 }
             });
         }
+
         threads.clear();
 
         for (const auto& error : errors) {
             ASSERT_FALSE(error);
         }
+
         for (const auto& result : results) {
             ASSERT_EQ(result.size(), expressions.size());
             EXPECT_EQ(result[0].get(), results[0][0].get());

@@ -50,6 +50,7 @@ namespace {
                 ormi::core::ops::reshape(tensors.back(), {1})
             );
         }
+
         return tensors;
     }
 
@@ -73,6 +74,7 @@ namespace {
         if (++retry_runs == 1) {
             ORMI_THROW(ormi::OperationError, "First realization failed.");
         }
+
         *static_cast<float*>(output.data()) =
             *static_cast<const float*>(output.parents()[0]->data());
     }
@@ -138,6 +140,7 @@ namespace {
 
         EXPECT_EQ(output->buffer(), buffer);
         const ormi::core::Tensor& cached = *output;
+
         EXPECT_FLOAT_EQ(*static_cast<const float*>(cached.data()), 2.0f);
         EXPECT_EQ(shared_dependency_runs, 1);
     }
@@ -155,9 +158,11 @@ namespace {
                 leaf->shape(),
                 leaf->dtype()
             );
+
             if (ready) {
                 input->realize();
             }
+
             const auto output = std::make_shared<ormi::core::Tensor>(
                 ormi::core::op_ref<retry_op>(),
                 std::vector<Tensor>{input},
@@ -177,6 +182,7 @@ namespace {
             EXPECT_TRUE(output->realized());
             EXPECT_FLOAT_EQ(*static_cast<const float*>(output->data()), 3.0f);
             output->realize();
+
             EXPECT_EQ(shared_dependency_runs, 1);
             EXPECT_EQ(retry_runs, 2);
         }
@@ -197,8 +203,10 @@ namespace {
 
         {
             ormi::core::Plan plan({tensors.back()});
+
             EXPECT_EQ(plan.steps(), depth);
             plan.run();
+
             EXPECT_TRUE(tensors.back()->realized());
             EXPECT_EQ(tensors.back()->buffer(), tensors.front()->buffer());
         }
@@ -285,6 +293,29 @@ namespace {
             *static_cast<const float*>(output->data()),
             std::exp(4.0f) - 4.0f
         );
+    }
+
+    TEST(ScheduleTest, realizesSharedScalarBranchesOnce) {
+        const auto input = scalar(0.25f);
+        auto shared = ormi::core::ops::add(ormi::core::ops::mul(input, input), input);
+
+        for (int step = 0; step < 300; ++step) {
+            shared = ormi::core::ops::neg(shared);
+        }
+
+        const auto negative = ormi::core::ops::neg(shared);
+        const auto exponential = ormi::core::ops::exp(shared);
+        const auto output = std::make_shared<ormi::core::Tensor>(
+            ormi::core::op_ref<add_parents_op>(),
+            std::vector<Tensor>{negative, exponential},
+            input->device(), input->shape(), input->dtype()
+        );
+
+        output->realize();
+
+        EXPECT_TRUE(shared->realized());
+        EXPECT_FLOAT_EQ(*static_cast<const float*>(shared->data()), 0.3125f);
+        EXPECT_FLOAT_EQ(*static_cast<const float*>(output->data()), std::exp(0.3125f) - 0.3125f);
     }
 
     TEST(ScheduleTest, leavesFailedOutputLazy) {

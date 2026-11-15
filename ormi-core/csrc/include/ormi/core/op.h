@@ -1,6 +1,7 @@
 #pragma once
 #include <cstddef>
 #include <memory>
+#include <limits>
 #include <string_view>
 #include <variant>
 
@@ -8,6 +9,8 @@
 #include <ormi/core/setup.h>
 
 namespace ormi::core {
+    inline constexpr std::size_t variadic_parents = std::numeric_limits<std::size_t>::max();
+
     class Grads;
     class Tensor;
 

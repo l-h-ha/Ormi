@@ -52,9 +52,11 @@ namespace ormi::backends::cpu::jit {
         if (requested == "auto") {
             return Target{.avx2 = avx2, .f16c = f16c};
         }
+
         if (requested == "baseline") {
             return {};
         }
+
         if (requested == "avx2") {
             if (!avx2) {
                 ORMI_THROW(
@@ -63,6 +65,7 @@ namespace ormi::backends::cpu::jit {
                     "system does not support AVX2."
                 );
             }
+
             return Target{.avx2 = true, .f16c = f16c};
         }
 
@@ -76,6 +79,7 @@ namespace ormi::backends::cpu::jit {
         if (!target.avx2 && !target.f16c) {
             return "baseline";
         }
+
         if (target.avx2) {
             return target.f16c ? "avx2+f16c" : "avx2";
         }
@@ -87,6 +91,7 @@ namespace ormi::backends::cpu::jit {
         if (!target.avx2 && !target.f16c) {
             return {};
         }
+
         if (!target.avx2) {
             ORMI_THROW(jitError, "F16C cannot be selected without AVX2.");
         }
@@ -96,19 +101,24 @@ namespace ormi::backends::cpu::jit {
                 "-mavx2",
                 "-DORMI_USE_AVX2=1"
             };
+
             if (target.f16c) {
                 result.emplace_back("-mf16c");
                 result.emplace_back("-DORMI_USE_F16C=1");
             }
+
             return result;
         }
+
         std::vector<std::string> result{
             "/arch:AVX2",
             "/DORMI_USE_AVX2=1"
         };
+
         if (target.f16c) {
             result.emplace_back("/DORMI_USE_F16C=1");
         }
+
         return result;
     }
 
@@ -121,6 +131,7 @@ namespace ormi::backends::cpu::jit {
         if (!selected_target().avx2) {
             return {};
         }
+
         return math(
             compatible_vector_abi(compiler)
                 ? MathABI::direct
@@ -130,9 +141,11 @@ namespace ormi::backends::cpu::jit {
 
     std::string context(Math functions) {
         auto result = to_string(selected_target());
+
         if (!functions.functions) {
             return result + "+scalar-math";
         }
+
         return result + (
             functions.abi == MathABI::direct
                 ? "+sleef-direct-3.9.0"

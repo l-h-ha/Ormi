@@ -4,9 +4,8 @@ ORMI is an alpha tensor library for Python and C++. It builds operations as a
 graph, runs them when needed, and computes derivatives automatically.
 It supports x86-64 Windows and Linux.
 
-`ormi` provides the Python API and uses `ormi_core` objects directly.
-`ormi-core` contains the C++ runtime and Python bindings. `ormi-cuda` adds
-the optional CUDA backend.
+`ormi` exposes `ormi_core` objects as the Python API. `ormi-core` contains the
+C++ runtime and bindings. `ormi-cuda` adds CUDA support.
 
 ## Users
 
@@ -18,25 +17,24 @@ Windows or Linux.
 CPU:
 
 ```bash
-python -m pip install "ormi==0.1.0a7" --extra-index-url https://l-h-ha.github.io/Ormi/whl/
+python -m pip install "ormi==0.1.0a8" --extra-index-url https://l-h-ha.github.io/Ormi/whl/
 ```
 
-CPU and CUDA 12.4:
+CPU and CUDA 12.8:
 
 ```bash
-python -m pip install "ormi[cuda]==0.1.0a7" --extra-index-url https://l-h-ha.github.io/Ormi/whl/
+python -m pip install "ormi[cuda]==0.1.0a8" --extra-index-url https://l-h-ha.github.io/Ormi/whl/
 ```
 
 ### Requirements
 
-CPU wheels bundle OpenBLAS and SLEEF. A C++ compiler is optional: ORMI uses
-precompiled CPU kernels when no compatible compiler is available. Installing
-a supported C++20 compiler enables CPU fusion. See the
+CPU wheels bundle OpenBLAS and SLEEF. Without a compatible compiler, ORMI uses
+precompiled CPU kernels. A supported C++20 compiler enables CPU fusion. See the
 [exact requirements](ormi-core/README.md#requirements).
 
-The CUDA extra bundles CUDA
-Runtime, cuBLAS, and NVRTC. CUDA execution needs a supported NVIDIA GPU and an installed
-[NVIDIA driver](https://www.nvidia.com/Download/index.aspx/).
+The CUDA extra bundles CUDA Runtime, cuBLAS, and NVRTC. CUDA execution requires
+a supported NVIDIA GPU and [NVIDIA driver](https://www.nvidia.com/Download/index.aspx/).
+Wheel users need no CMake, Ninja, or CUDA Toolkit.
 
 ## Example
 
@@ -52,24 +50,28 @@ print(y.item(), dx.numpy())
 
 Operations and derivatives stay lazy until their graph runs. The
 [Python guide](ormi/README.md) covers training, batching, model checkpoints,
-and higher-order derivatives.
+and higher-order derivatives. See [examples](ormi/README.md#examples) for
+PINN and minibatch training scripts.
 
 ## Builders
 
 ### From Source
 
-Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and a
-supported [C++20 compiler](ormi-core/README.md#cpu-fusion-compiler).
-From the repository root, run:
+Install [Git](https://git-scm.com/downloads),
+[uv](https://docs.astral.sh/uv/getting-started/installation/), and a supported
+[C++20 compiler](ormi-core/README.md#compilers).
+On Windows with MSVC, use an x64 Visual Studio 2022 developer shell.
 
 ```bash
+git clone https://github.com/l-h-ha/Ormi.git
+cd Ormi
 uv sync
-uv run python ormi/examples/pinn.py
 ```
 
-This builds the CPU core with CUDA, OpenBLAS, and SLEEF disabled.
-See the [build requirements](ormi-core/README.md#builders) for CMake, Ninja,
-and optional dependencies.
+For an existing checkout, run `uv sync` from its root.
+It creates `.venv`, installs development dependencies, and builds the CPU
+core with CUDA, OpenBLAS, and SLEEF disabled. Use `uv run` for commands in
+this environment. Python builds install CMake and Ninja when needed.
 
 For C++ builds, compiler-specific presets, sanitizers, and optional OpenBLAS,
 SLEEF, or CUDA support, follow the [core build instructions](ormi-core/README.md#builders).

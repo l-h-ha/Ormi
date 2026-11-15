@@ -22,7 +22,6 @@ def train(
     batch_size: int = 32,
     drop_last: bool = False,
 ) -> nn.Module:
-
     if epochs < 1:
         raise ValueError("epochs must be positive")
 

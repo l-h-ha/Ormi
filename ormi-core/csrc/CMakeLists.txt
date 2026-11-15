@@ -25,6 +25,7 @@ set(ORMI_CORE_SRCS
     core/ops/linalg.cpp
     core/ops/index.cpp
     core/ops/select.cpp
+    core/ops/slice.cpp
     core/ops/creation.cpp
     core/ops/reduction.cpp
     core/ops/view.cpp

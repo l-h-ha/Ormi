@@ -83,6 +83,7 @@ namespace {
         ormi::core::memory::copy(host_output, device);
 
         const auto* output = static_cast<const unsigned char*>(host_output.data());
+
         for (std::size_t i = 0; i < bytes; ++i) {
             EXPECT_EQ(output[i], value) << "byte " << i;
         }
@@ -108,6 +109,7 @@ namespace {
         ormi::core::memory::copy(host, device);
 
         const auto* output = static_cast<const float*>(host.data());
+
         for (std::size_t i = 0; i < elements; ++i) {
             EXPECT_FLOAT_EQ(output[i], expected);
         }

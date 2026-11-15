@@ -28,11 +28,13 @@ namespace ormi::backends::cpu::caputo {
             std::size_t axis
         ) {
             std::size_t result = 1;
+
             for (std::size_t i = axis; i < initial_derivative.rank(); ++i) {
                 result *= static_cast<std::size_t>(
                     initial_derivative.shape()[i]
                 );
             }
+
             return result;
         }
 
@@ -46,31 +48,41 @@ namespace ormi::backends::cpu::caputo {
         ) {
             if (coordinate == 0) {
                 double value = 0.0;
+
                 for (std::size_t n = 1; n < job.attrs.count; ++n) {
                     auto weight = -2.0 * job.attrs.coefficients->forward[n - 1];
+
                     if (n >= 2) {
                         weight += job.attrs.coefficients->forward[n - 2];
                     }
+
                     value += weight * static_cast<double>(
                         input[base + n * input_axis_stride]
                     );
                 }
+
                 return value;
             }
+
             if (coordinate == 1) {
                 double value = 0.0;
+
                 for (std::size_t n = 1; n < job.attrs.count; ++n) {
                     auto weight = 2.0 * job.attrs.coefficients->forward[n - 1];
+
                     if (n >= 2) {
                         weight -= 2.0 * job.attrs.coefficients->forward[n - 2];
                     }
+
                     if (n >= 3) {
                         weight += job.attrs.coefficients->forward[n - 3];
                     }
+
                     value += weight * static_cast<double>(
                         input[base + n * input_axis_stride]
                     );
                 }
+
                 return value;
             }
 
@@ -78,6 +90,7 @@ namespace ormi::backends::cpu::caputo {
                 static_cast<double>(
                     input[base + coordinate * input_axis_stride]
                 );
+
             for (
                 std::size_t n = coordinate + 1;
                 n < job.attrs.count;
@@ -88,6 +101,7 @@ namespace ormi::backends::cpu::caputo {
                         input[base + n * input_axis_stride]
                     );
             }
+
             return value;
         }
 
@@ -102,6 +116,7 @@ namespace ormi::backends::cpu::caputo {
         ) {
             const T* initial = nullptr;
             std::size_t initial_offset = 0;
+
             if (job.initial_derivative) {
                 initial = static_cast<const T*>(job.initial_derivative->data());
                 const auto outer =
@@ -114,6 +129,7 @@ namespace ormi::backends::cpu::caputo {
             }
 
             double result = 0.0;
+
             for (std::size_t k = 0; k < coordinate; ++k) {
                 const auto difference = coordinate - 1 - k;
                 double second_difference = 0.0;
@@ -125,6 +141,7 @@ namespace ormi::backends::cpu::caputo {
                         ) -
                         static_cast<double>(input[base])
                     );
+
                     if (initial) {
                         second_difference -= 2.0 * job.attrs.spacing *
                             static_cast<double>(initial[initial_offset]);
@@ -136,8 +153,10 @@ namespace ormi::backends::cpu::caputo {
                         2.0 * static_cast<double>(input[center]) +
                         static_cast<double>(input[center - input_axis_stride]);
                 }
+
                 result += job.attrs.coefficients->forward[k] * second_difference;
             }
+
             return result;
         }
 
@@ -164,6 +183,7 @@ namespace ormi::backends::cpu::caputo {
                             job.input
                         )]);
                 }
+
                 out[linear] = static_cast<T>(result);
             }
         }
@@ -249,6 +269,7 @@ namespace ormi::backends::cpu::caputo {
             ) {
                 return std::numeric_limits<std::size_t>::max();
             }
+
             return elements * count;
         }
 

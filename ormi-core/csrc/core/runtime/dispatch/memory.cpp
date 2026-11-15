@@ -56,6 +56,7 @@ namespace ormi::core::runtime::memory {
         }
 
         const auto& destination = backend(dst_device);
+
         if (
             destination.memory.direct_copy &&
             destination.memory.direct_copy(
