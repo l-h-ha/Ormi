@@ -618,6 +618,57 @@ namespace {
         EXPECT_EQ(read(other), "other compiler's output");
     }
 
+    TEST(CPUJITCacheTest, exclusiveTryLockDoesNotWaitForReaders) {
+        Directory cache;
+        std::filesystem::create_directories(cache.path);
+        const auto path = cache.path / "test.lock";
+
+        {
+            ormi::platform::FileLock reader(path, ormi::platform::Lock::shared);
+            ormi::platform::FileLock writer(path, ormi::platform::Lock::try_exclusive);
+            EXPECT_FALSE(writer.opened());
+
+            ormi::platform::FileLock another_reader(path, ormi::platform::Lock::shared);
+            EXPECT_TRUE(another_reader.opened());
+        }
+
+        ormi::platform::FileLock writer(path, ormi::platform::Lock::try_exclusive);
+        EXPECT_TRUE(writer.opened());
+    }
+
+    TEST(CPUJITCacheTest, exclusiveTryLockDoesNotWaitForWriters) {
+        Directory cache;
+        std::filesystem::create_directories(cache.path);
+        const auto path = cache.path / "test.lock";
+
+        {
+            ormi::platform::FileLock writer(path);
+            ormi::platform::FileLock another_writer(path, ormi::platform::Lock::try_exclusive);
+            EXPECT_FALSE(another_writer.opened());
+        }
+
+        ormi::platform::FileLock writer(path, ormi::platform::Lock::try_exclusive);
+        EXPECT_TRUE(writer.opened());
+    }
+
+    TEST(CPUJITCacheTest, exclusiveTryLockPreservesOpenErrors) {
+        Directory cache;
+        const auto path = cache.path / "missing" / "test.lock";
+
+        EXPECT_THROW(
+            ormi::platform::FileLock(path, ormi::platform::Lock::try_exclusive),
+            ormi::jitError
+        );
+
+        ormi::platform::FileLock missing(
+            path,
+            ormi::platform::Lock::try_exclusive,
+            ormi::platform::FileLock::Open::existing
+        );
+        EXPECT_FALSE(missing.opened());
+        EXPECT_FALSE(std::filesystem::exists(cache.path));
+    }
+
     TEST(CPUJITCacheTest, serializesConcurrentMisses) {
         Directory cache;
         environment("ORMI_CPU_JIT_CACHE_DIR", cache.path.string().c_str());
@@ -629,6 +680,24 @@ namespace {
         auto second = std::async(std::launch::async, [] {
             return ormi::backends::cpu::jit::cache::get("concurrent", build);
         });
+        const auto first_status = first.wait_for(std::chrono::seconds(5));
+        const auto second_status = second.wait_for(std::chrono::seconds(5));
+
+        if (first_status != std::future_status::ready || second_status != std::future_status::ready) {
+            // Release completed leases so a blocked writer can finish before reporting failure.
+            if (first_status == std::future_status::ready) {
+                first.get();
+            }
+
+            if (second_status == std::future_status::ready) {
+                second.get();
+            }
+
+            EXPECT_EQ(first_status, std::future_status::ready);
+            EXPECT_EQ(second_status, std::future_status::ready);
+            return;
+        }
+
         const auto first_artifact = first.get();
         const auto second_artifact = second.get();
 

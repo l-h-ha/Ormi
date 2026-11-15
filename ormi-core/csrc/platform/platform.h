@@ -12,7 +12,8 @@
 namespace ormi::platform {
     enum class Lock {
         shared,
-        exclusive
+        exclusive,
+        try_exclusive
     };
 
     // Check state first. Read the exit code only for a normal compiler exit.
@@ -53,7 +54,8 @@ namespace ormi::platform {
         );
         ~FileLock();
 
-        // Opening an absent file with Open::existing leaves the lock unopened.
+        // Open::existing leaves missing files unopened.
+        // A contended try_exclusive lock is also left unopened.
         bool opened() const noexcept { return handle_ != -1; }
 
         FileLock(const FileLock&) = delete;

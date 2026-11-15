@@ -26,6 +26,8 @@
 
 ### Fixed
 
+- Fixed a deadlock when concurrent CPU JIT cache misses retained a read lock
+  before another caller acquired the write lock.
 - Prevented signed overflow in stride calculations and contiguity checks.
   Corrected empty-shape counts when large dimensions precede a zero.
 - Selected an NVRTC-supported PTX target for GPUs newer than the bundled

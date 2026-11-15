@@ -630,7 +630,12 @@ namespace ormi::backends::cpu::jit::cache {
 
             std::uintmax_t limit = 0;
             {
-                platform::FileLock lock(paths.lock);
+                // Another caller may have published and retained a shared lease.
+                platform::FileLock lock(paths.lock, platform::Lock::try_exclusive);
+
+                if (!lock.opened()) {
+                    continue;
+                }
 
                 if (valid(paths, generated)) {
                     continue;
