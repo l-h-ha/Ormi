@@ -19,6 +19,7 @@ def cuda_build():
 def test_windows_toolkit_and_paths_match(cuda_build):
     build, job = cuda_build
     install = next(step for step in job["steps"] if step.get("name") == "Install CUDA (Windows)")
+    assert install["uses"] == "Jimver/cuda-toolkit@v0.2.36"
     assert install["with"]["cuda"] == "12.8.1"
     directory = "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.8/bin"
     assert build["windows"]["environment"]["CUDACXX"] == f"{directory}/nvcc.exe"
