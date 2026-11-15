@@ -82,16 +82,28 @@ namespace ormi::platform {
             ORMI_THROW(jitError, "Cannot open cache lock: " + path.string());
         }
 
-        const auto operation = mode == Lock::exclusive ? LOCK_EX : LOCK_SH;
+        auto operation = mode == Lock::shared ? LOCK_SH : LOCK_EX;
+
+        if (mode == Lock::try_exclusive) {
+            operation |= LOCK_NB;
+        }
 
         while (flock(handle, operation) != 0) {
-            if (errno != EINTR) {
-                close(handle);
-                ORMI_THROW(
-                    jitError,
-                    "Cannot lock cache entry: " + path.string()
-                );
+            if (errno == EINTR) {
+                continue;
             }
+
+            const auto code = errno;
+            close(handle);
+
+            if (mode == Lock::try_exclusive && (code == EWOULDBLOCK || code == EAGAIN)) {
+                return;
+            }
+
+            ORMI_THROW(
+                jitError,
+                "Cannot lock cache entry: " + path.string()
+            );
         }
 
         handle_ = handle;

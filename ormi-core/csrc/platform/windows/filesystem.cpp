@@ -62,9 +62,11 @@ namespace ormi::platform {
         }
 
         OVERLAPPED overlap{};
-        const auto flags = mode == Lock::exclusive
-            ? LOCKFILE_EXCLUSIVE_LOCK
-            : 0;
+        auto flags = mode == Lock::shared ? 0 : LOCKFILE_EXCLUSIVE_LOCK;
+
+        if (mode == Lock::try_exclusive) {
+            flags |= LOCKFILE_FAIL_IMMEDIATELY;
+        }
 
         if (!LockFileEx(
             handle,
@@ -74,7 +76,13 @@ namespace ormi::platform {
             MAXDWORD,
             &overlap
         )) {
+            const auto code = GetLastError();
             CloseHandle(handle);
+
+            if (mode == Lock::try_exclusive && code == ERROR_LOCK_VIOLATION) {
+                return;
+            }
+
             ORMI_THROW(
                 jitError,
                 "Cannot lock cache entry: " + path.string()
